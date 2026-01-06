@@ -1,16 +1,19 @@
 import React, { useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { Card, CardBody } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { useAuthStore } from '../store/authStore';
+import { useCardStore } from '../store/cardStore';
 import { Maximize2, Copy, Check, Sun, Smartphone } from 'lucide-react';
 import { Modal } from '../components/ui/Modal';
 import { motion } from 'framer-motion';
 
 const QRCodePage: React.FC = () => {
   const { user } = useAuthStore();
+  const { getSelectedTemplate } = useCardStore();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+
+  const template = getSelectedTemplate();
 
   const qrData = JSON.stringify({
     type: 'USER_QR',
@@ -45,13 +48,19 @@ const QRCodePage: React.FC = () => {
 
         <div className="bg-white dark:bg-slate-900 rounded-3xl overflow-hidden shadow-2xl border border-slate-100 dark:border-slate-800">
           
-          {/* Top Banner / Header do Ticket */}
-          <div className="bg-hero-primary h-24 relative overflow-hidden">
-             <div className="absolute inset-0 bg-black/10"></div>
-             <div className="absolute -right-4 -top-8 w-24 h-24 bg-white/20 rounded-full blur-2xl"></div>
+          {/* Top Banner / Header do Ticket com Imagem do Card */}
+          <div className="h-32 relative overflow-hidden">
+             {/* Imagem de Fundo do Template */}
+             <img 
+               src={template.imageUrl} 
+               alt="Card Background" 
+               className="absolute inset-0 w-full h-full object-cover"
+             />
+             {/* Overlay Escuro para Contraste */}
+             <div className="absolute inset-0 bg-black/30"></div>
              
-             <div className="absolute top-4 left-0 right-0 flex justify-center">
-                <div className="bg-white/20 backdrop-blur-md px-3 py-1 rounded-full flex items-center gap-2">
+             <div className="absolute top-4 left-0 right-0 flex justify-center z-10">
+                <div className="bg-black/30 backdrop-blur-md px-3 py-1 rounded-full flex items-center gap-2 border border-white/20">
                    <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
                    <span className="text-[10px] font-bold text-white uppercase tracking-widest">Assinante Ativo</span>
                 </div>
@@ -59,9 +68,9 @@ const QRCodePage: React.FC = () => {
           </div>
 
           {/* Avatar e Conteúdo */}
-          <div className="px-8 pb-8 -mt-10 flex flex-col items-center relative z-10">
+          <div className="px-8 pb-8 -mt-12 flex flex-col items-center relative z-10">
             {/* Avatar */}
-            <div className="w-20 h-20 rounded-full border-4 border-white dark:border-slate-900 bg-slate-200 overflow-hidden shadow-md mb-6">
+            <div className="w-24 h-24 rounded-full border-[5px] border-white dark:border-slate-900 bg-slate-200 overflow-hidden shadow-lg mb-4">
                <img src={user?.avatarUrl || `https://picsum.photos/seed/${user?.id}/100`} alt="User" className="w-full h-full object-cover" />
             </div>
 
