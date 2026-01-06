@@ -28,6 +28,8 @@ export const COLOR_OPTIONS = [
   // Clássicos
   { name: 'Branco', value: '#FFFFFF', type: 'classic' },
   { name: 'Preto', value: '#000000', type: 'classic' },
+  { name: 'Azul Marinho', value: '#000080', type: 'classic' },
+  { name: 'Vermelho Sangue', value: '#8a0303', type: 'classic' },
   // Metálicos
   { name: 'Ouro', value: '#FFD700', type: 'metallic' }, 
   { name: 'Prata', value: '#C0C0C0', type: 'metallic' },
