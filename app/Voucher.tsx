@@ -1,17 +1,25 @@
-
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Card, CardBody } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { useAuthStore } from '../store/authStore';
 import { fakeApi } from '../lib/fakeApi';
 import { MonthlyBenefit, Subscription } from '../types';
-import { Ticket, Gift, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { QrCode, Lock, CheckCircle2, Calendar, Utensils, ChevronRight } from 'lucide-react';
+import { motion } from 'framer-motion';
 
 const Voucher: React.FC = () => {
   const { user } = useAuthStore();
+  const navigate = useNavigate();
   const [sub, setSub] = useState<Subscription | null>(null);
   const [benefit, setBenefit] = useState<MonthlyBenefit | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Get current month name
+  const currentDate = new Date();
+  const monthName = currentDate.toLocaleString('pt-BR', { month: 'long' });
+  const capitalizedMonth = monthName.charAt(0).toUpperCase() + monthName.slice(1);
+  const currentYear = currentDate.getFullYear();
 
   useEffect(() => {
     if (user) {
@@ -27,67 +35,149 @@ const Voucher: React.FC = () => {
     }
   }, [user]);
 
-  if (loading) return <div className="text-center p-10 font-bold text-slate-400">Consultando status...</div>;
+  if (loading) return (
+    <div className="flex flex-col items-center justify-center min-h-[60vh] text-slate-400 gap-4">
+      <div className="w-8 h-8 border-4 border-hero-primary border-t-transparent rounded-full animate-spin"></div>
+      <p className="text-sm font-medium animate-pulse">Sincronizando satélites...</p>
+    </div>
+  );
 
-  const isEligible = sub?.status === 'ACTIVE' && !benefit?.burgerRedeemed;
+  const isActive = sub?.status === 'ACTIVE';
+  const isRedeemed = benefit?.burgerRedeemed;
+  const isEligible = isActive && !isRedeemed;
+
+  // Visual assets based on state
+  const burgerImage = "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80"; // High quality burger
 
   return (
-    <div className="space-y-6">
-      <h2 className="text-2xl font-black">Resgate Mensal</h2>
+    <div className="space-y-8 pb-10">
+      
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-black text-slate-800 dark:text-white">Drops Mensal</h2>
+          <p className="text-slate-500 font-medium text-sm flex items-center gap-1">
+            <Calendar size={14} /> {capitalizedMonth} de {currentYear}
+          </p>
+        </div>
+      </div>
 
-      <Card className={`border-2 ${isEligible ? 'border-hero-primary' : 'border-slate-100'}`}>
-        <CardBody className="p-8 text-center space-y-6">
-          <div className={`w-20 h-20 mx-auto rounded-full flex items-center justify-center ${isEligible ? 'bg-hero-primary text-white' : 'bg-slate-100 text-slate-400'}`}>
-            <Ticket size={40} />
-          </div>
+      {/* Main Voucher Card */}
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ duration: 0.5 }}
+        className="relative w-full aspect-[4/5] md:aspect-[16/9] rounded-3xl overflow-hidden shadow-2xl group"
+      >
+        {/* Background Image with Zoom Effect */}
+        <div className="absolute inset-0 bg-slate-900">
+           <img 
+             src={burgerImage} 
+             alt="Burger of the Month" 
+             className={`w-full h-full object-cover transition-transform duration-700 ${isEligible ? 'group-hover:scale-110' : 'grayscale opacity-40'}`}
+           />
+           <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent"></div>
+        </div>
 
+        {/* Status Badge */}
+        <div className="absolute top-4 right-4">
+          {isRedeemed ? (
+            <div className="bg-slate-900/80 backdrop-blur-md text-white px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-widest border border-white/20 flex items-center gap-2">
+              <CheckCircle2 size={14} className="text-green-500" /> Resgatado
+            </div>
+          ) : isActive ? (
+            <div className="bg-hero-primary text-white px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-widest shadow-lg shadow-hero-primary/40 animate-pulse">
+              Disponível
+            </div>
+          ) : (
+            <div className="bg-red-500/90 backdrop-blur-md text-white px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-widest flex items-center gap-2">
+              <Lock size={14} /> Bloqueado
+            </div>
+          )}
+        </div>
+
+        {/* Content Overlay */}
+        <div className="absolute bottom-0 left-0 right-0 p-6 md:p-8 flex flex-col gap-4">
           <div>
-            <h3 className="text-xl font-black">
-              {benefit?.burgerRedeemed ? 'Resgate Concluído!' : 'Seu Burger de Outubro'}
+            <span className="text-hero-primary font-black text-xs uppercase tracking-[0.2em] mb-2 block">
+              Burger do Mês
+            </span>
+            <h3 className="text-3xl md:text-4xl font-black text-white leading-tight mb-2">
+              {isRedeemed ? 'Missão Cumprida' : 'Double Smash Hero'}
             </h3>
-            <p className="text-sm text-slate-500 mt-1">
-              {isEligible ? 'Você tem direito a 1 hambúrguer gratuito este mês.' : 'O benefício deste mês já foi utilizado ou sua assinatura está inativa.'}
+            <p className="text-slate-300 text-sm md:text-base max-w-sm">
+              {isRedeemed 
+                ? `Você saboreou este drop épico em ${new Date(benefit!.redeemedAt!).toLocaleDateString()}.`
+                : isActive 
+                  ? 'Duas carnes smash de 80g, queijo cheddar inglês, cebola caramelizada e maionese secreta.'
+                  : 'Sua assinatura está inativa. Reative agora para desbloquear este item lendário.'
+              }
             </p>
           </div>
 
-          {!isEligible && benefit?.burgerRedeemed && (
-            <div className="bg-green-50 p-4 rounded-xl flex items-center gap-3 text-green-700 text-left">
-              <CheckCircle2 size={20} />
-              <div>
-                <p className="text-sm font-bold">Já Resgatado</p>
-                <p className="text-xs">Data: {new Date(benefit.redeemedAt!).toLocaleDateString()}</p>
-              </div>
-            </div>
-          )}
+          <div className="pt-2">
+            {isEligible ? (
+              <Button 
+                onClick={() => navigate('/app/qrcode')}
+                className="w-full bg-white text-slate-900 hover:bg-slate-100 border-none h-14 text-base rounded-2xl shadow-xl hover:shadow-2xl hover:scale-[1.02] transition-all"
+              >
+                <QrCode className="mr-2 text-hero-primary" size={20} /> Usar no Balcão
+              </Button>
+            ) : isRedeemed ? (
+               <Button 
+                 disabled 
+                 className="w-full bg-slate-800/50 text-slate-400 border border-slate-700 h-14 rounded-2xl cursor-not-allowed"
+               >
+                 Já Utilizado
+               </Button>
+            ) : (
+              <Button 
+                onClick={() => navigate('/plans')}
+                className="w-full bg-red-600 hover:bg-red-700 text-white border-none h-14 rounded-2xl shadow-lg shadow-red-900/20"
+              >
+                Reativar Assinatura
+              </Button>
+            )}
+          </div>
+        </div>
+      </motion.div>
 
-          {!isEligible && !benefit?.burgerRedeemed && (
-            <div className="bg-amber-50 p-4 rounded-xl flex items-center gap-3 text-amber-700 text-left">
-              <AlertCircle size={20} />
-              <div>
-                <p className="text-sm font-bold">Assinatura Inativa</p>
-                <p className="text-xs">Ative seu plano para liberar este benefício.</p>
-              </div>
-            </div>
-          )}
+      {/* History Timeline */}
+      <div className="space-y-4">
+        <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest pl-2">Histórico de Conquistas</h3>
+        
+        <Card className="border-none shadow-none bg-transparent">
+          <CardBody className="p-0 space-y-4">
+             {/* Simulated History Items */}
+             {[1].map((_, i) => (
+                <div key={i} className="relative pl-8 before:absolute before:left-[11px] before:top-8 before:bottom-[-16px] before:w-[2px] before:bg-slate-200 dark:before:bg-slate-800 last:before:hidden">
+                   <div className="absolute left-0 top-1 w-6 h-6 rounded-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center z-10">
+                      <div className="w-2 h-2 rounded-full bg-slate-400"></div>
+                   </div>
+                   <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-100 dark:border-slate-800 flex items-center justify-between opacity-60">
+                      <div className="flex items-center gap-4">
+                         <div className="w-10 h-10 bg-slate-100 dark:bg-slate-800 rounded-xl flex items-center justify-center text-slate-400">
+                            <Utensils size={18} />
+                         </div>
+                         <div>
+                            <p className="text-sm font-bold text-slate-700 dark:text-slate-300">Resgate de Setembro</p>
+                            <p className="text-xs text-slate-400">Expirado</p>
+                         </div>
+                      </div>
+                   </div>
+                </div>
+             ))}
 
-          <Button 
-            className="w-full" 
-            size="lg" 
-            disabled={!isEligible}
-            onClick={() => alert('Para resgatar, mostre seu QR Code ao garçom!')}
-          >
-            <Gift className="mr-2" size={20} /> {isEligible ? 'Como Resgatar?' : 'Indisponível'}
-          </Button>
-        </CardBody>
-      </Card>
-
-      <div className="space-y-3">
-        <h3 className="font-black text-slate-400 text-xs uppercase tracking-widest">Histórico de Resgates</h3>
-        <Card>
-          <CardBody className="p-0">
-            <div className="p-5 flex items-center justify-center text-slate-400 text-sm font-medium">
-               Nenhum resgate anterior encontrado.
-            </div>
+             {/* Empty State / Future */}
+             <div className="relative pl-8">
+                <div className="absolute left-0 top-1 w-6 h-6 rounded-full bg-hero-primary/20 flex items-center justify-center z-10">
+                   <div className="w-2 h-2 rounded-full bg-hero-primary animate-pulse"></div>
+                </div>
+                <div className="p-4 rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-800 flex flex-col items-center justify-center text-center py-8 gap-2">
+                   <p className="text-sm font-bold text-slate-500">Próximo drop em breve</p>
+                   <p className="text-xs text-slate-400 max-w-[200px]">Aguarde o início do próximo mês para liberar novos benefícios.</p>
+                </div>
+             </div>
           </CardBody>
         </Card>
       </div>
