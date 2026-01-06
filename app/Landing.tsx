@@ -75,12 +75,11 @@ const Landing: React.FC = () => {
       </section>
 
       {/* Benefits */}
-      <section className="relative py-24 px-6 bg-slate-900 text-white overflow-hidden">
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-hero-primary/10 blur-[150px] rounded-full -z-0"></div>
-        <div className="relative z-10 max-w-6xl mx-auto">
+      <section className="py-24 px-6 bg-white">
+        <div className="max-w-6xl mx-auto">
           <div className="text-center">
-            <h2 className="text-3xl font-black mb-4">Poderes de Assinante</h2>
-            <p className="text-slate-400 max-w-xl mx-auto mb-16">Ser um Herói assinante vai muito além do burger mensal. Veja seus privilégios:</p>
+            <h2 className="text-3xl font-black mb-4 text-slate-800">Poderes de Assinante</h2>
+            <p className="text-slate-500 max-w-xl mx-auto mb-16">Ser um Herói assinante vai muito além do burger mensal. Veja seus privilégios:</p>
           </div>
           <motion.div 
             className="grid grid-cols-1 md:grid-cols-3 gap-8"
@@ -91,13 +90,13 @@ const Landing: React.FC = () => {
           >
             {benefits.map((item, i) => (
               <motion.div key={i} variants={itemVariants}>
-                <Card className="h-full text-center hover:-translate-y-2 transition-transform duration-300 bg-slate-800/50 border border-slate-700 backdrop-blur-sm">
+                <Card className="h-full text-center hover:-translate-y-2 transition-transform duration-300">
                   <CardBody className="p-8">
                     <div className="w-14 h-14 bg-hero-primary/10 text-hero-primary rounded-2xl flex items-center justify-center mb-5 mx-auto">
                       <item.icon size={28} />
                     </div>
-                    <h3 className="text-lg font-bold mb-3 text-white">{item.title}</h3>
-                    <p className="text-slate-400 leading-relaxed">{item.desc}</p>
+                    <h3 className="text-lg font-bold mb-3 text-slate-800">{item.title}</h3>
+                    <p className="text-slate-500 leading-relaxed">{item.desc}</p>
                   </CardBody>
                 </Card>
               </motion.div>
