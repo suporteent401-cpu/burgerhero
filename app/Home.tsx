@@ -78,10 +78,10 @@ const Home: React.FC = () => {
       {/* Quick Actions */}
       <div className="grid grid-cols-2 gap-4">
         <Link to="/app/qrcode" className="block group">
-          <Card className="h-full bg-slate-800 text-white border-slate-700 group-hover:border-hero-primary transition-all group-hover:-translate-y-1">
+          <Card className="h-full group-hover:border-hero-primary transition-all group-hover:-translate-y-1">
             <CardBody className="flex flex-col items-center py-6 text-center">
               <QrCode size={24} className="text-hero-primary mb-2" />
-              <span className="text-sm font-bold">Meu QR Code</span>
+              <span className="text-sm font-bold text-slate-700">Meu QR Code</span>
             </CardBody>
           </Card>
         </Link>
