@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { useAuthStore } from '../store/authStore';
 import { useThemeStore } from '../store/themeStore';
@@ -6,8 +5,10 @@ import { useLocation, Link } from 'react-router-dom';
 import { Card, CardBody } from '../components/ui/Card';
 
 const Debug: React.FC = () => {
-  const { user, isAuthed } = useAuthStore();
-  const { heroTheme, mode } = useThemeStore();
+  const user = useAuthStore(state => state.user);
+  const isAuthed = useAuthStore(state => state.isAuthed);
+  const heroTheme = useThemeStore(state => state.heroTheme);
+  const mode = useThemeStore(state => state.mode);
   const location = useLocation();
 
   const data = {

@@ -9,7 +9,7 @@ import { QrCode, Lock, CheckCircle2, Calendar, Utensils, ChevronRight } from 'lu
 import { motion } from 'framer-motion';
 
 const Voucher: React.FC = () => {
-  const { user } = useAuthStore();
+  const user = useAuthStore(state => state.user);
   const navigate = useNavigate();
   const [sub, setSub] = useState<Subscription | null>(null);
   const [benefit, setBenefit] = useState<MonthlyBenefit | null>(null);

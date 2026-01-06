@@ -15,7 +15,7 @@ const Auth: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const navigate = useNavigate();
-  const { login } = useAuthStore();
+  const login = useAuthStore(state => state.login);
   
   const { register, handleSubmit, watch, formState: { errors } } = useForm();
 

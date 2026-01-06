@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { Card, CardBody } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
@@ -14,7 +14,7 @@ const StaffValidate: React.FC = () => {
   const [result, setResult] = useState<{ success: boolean; message: string; user?: User } | null>(null);
   const [isScannerOpen, setIsScannerOpen] = useState(false);
 
-  const handleValidate = async (val: string) => {
+  const handleValidate = useCallback(async (val: string) => {
     if (!val) return;
     setLoading(true);
     setResult(null);
@@ -22,13 +22,13 @@ const StaffValidate: React.FC = () => {
     const res = await fakeApi.staffValidateByPayload(val);
     setResult(res);
     setLoading(false);
-  };
+  }, []);
 
-  const handleScanSuccess = (decodedText: string) => {
+  const handleScanSuccess = useCallback((decodedText: string) => {
     setIsScannerOpen(false);
     setQuery(decodedText);
     handleValidate(decodedText);
-  };
+  }, [handleValidate]);
 
   const confirmRedeem = async () => {
     if (!result?.user) return;

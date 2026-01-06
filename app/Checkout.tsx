@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Card, CardBody, CardHeader, CardFooter } from '../components/ui/Card';
@@ -12,7 +11,7 @@ const Checkout: React.FC = () => {
   const [params] = useSearchParams();
   const planId = params.get('planId');
   const navigate = useNavigate();
-  const { user } = useAuthStore();
+  const user = useAuthStore(state => state.user);
   const [plan, setPlan] = useState<Plan | null>(null);
   const [method, setMethod] = useState<'card' | 'pix'>('card');
   const [loading, setLoading] = useState(false);
@@ -27,7 +26,7 @@ const Checkout: React.FC = () => {
       if (p) setPlan(p);
       else navigate('/plans');
     });
-  }, [planId]);
+  }, [planId, navigate]);
 
   const handlePayment = async () => {
     if (!user || !planId) return;

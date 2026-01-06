@@ -8,7 +8,7 @@ import { Modal } from '../components/ui/Modal';
 import { motion } from 'framer-motion';
 
 const QRCodePage: React.FC = () => {
-  const { user } = useAuthStore();
+  const user = useAuthStore(state => state.user);
   const { getSelectedTemplate } = useCardStore();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [copied, setCopied] = useState(false);

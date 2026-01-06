@@ -10,13 +10,20 @@ import { fakeApi } from '../lib/fakeApi';
 import HeroCard from '../components/HeroCard';
 
 const Profile: React.FC = () => {
-  const { user, logout, updateUser } = useAuthStore();
-  const { heroTheme, setHeroTheme, mode, setMode } = useThemeStore();
+  const user = useAuthStore(state => state.user);
+  const logout = useAuthStore(state => state.logout);
+  const updateUser = useAuthStore(state => state.updateUser);
+  
+  const heroTheme = useThemeStore(state => state.heroTheme);
+  const setHeroTheme = useThemeStore(state => state.setHeroTheme);
+  const mode = useThemeStore(state => state.mode);
+  const setMode = useThemeStore(state => state.setMode);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Name Edit State
   const [isEditingName, setIsEditingName] = useState(false);
-  const [editName, setEditName] = useState('');
+  const [editName, setEditName] = useState(user?.name || '');
   
   // Card Store hooks
   const { 
