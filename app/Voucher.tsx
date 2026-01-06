@@ -50,24 +50,24 @@ const Voucher: React.FC = () => {
   const burgerImage = "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80"; // High quality burger
 
   return (
-    <div className="space-y-8 pb-10">
+    <div className="space-y-6 pb-10">
       
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-black text-slate-800 dark:text-white">Drops Mensal</h2>
-          <p className="text-slate-500 dark:text-slate-400 font-medium text-sm flex items-center gap-1">
-            <Calendar size={14} /> {capitalizedMonth} de {currentYear}
+          <h2 className="text-xl font-black text-slate-800 dark:text-white">Drops Mensal</h2>
+          <p className="text-slate-500 dark:text-slate-400 font-medium text-xs flex items-center gap-1">
+            <Calendar size={12} /> {capitalizedMonth} de {currentYear}
           </p>
         </div>
       </div>
 
-      {/* Main Voucher Card */}
+      {/* Main Voucher Card - Reduzido Significativamente */}
       <motion.div 
-        initial={{ opacity: 0, scale: 0.95 }}
+        initial={{ opacity: 0, scale: 0.98 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 0.5 }}
-        className="relative w-full aspect-[4/5] md:aspect-[16/9] rounded-3xl overflow-hidden shadow-2xl group"
+        className="relative w-full h-[280px] rounded-2xl overflow-hidden shadow-xl group"
       >
         {/* Background Image with Zoom Effect */}
         <div className="absolute inset-0 bg-slate-900">
@@ -80,60 +80,60 @@ const Voucher: React.FC = () => {
         </div>
 
         {/* Status Badge */}
-        <div className="absolute top-4 right-4">
+        <div className="absolute top-3 right-3">
           {isRedeemed ? (
-            <div className="bg-slate-900/80 backdrop-blur-md text-white px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-widest border border-white/20 flex items-center gap-2">
-              <CheckCircle2 size={14} className="text-green-500" /> Resgatado
+            <div className="bg-slate-900/80 backdrop-blur-md text-white px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest border border-white/20 flex items-center gap-1.5">
+              <CheckCircle2 size={12} className="text-green-500" /> Resgatado
             </div>
           ) : isActive ? (
-            <div className="bg-hero-primary text-white px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-widest shadow-lg shadow-hero-primary/40 animate-pulse">
+            <div className="bg-hero-primary text-white px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest shadow-lg shadow-hero-primary/40 animate-pulse">
               Disponível
             </div>
           ) : (
-            <div className="bg-red-500/90 backdrop-blur-md text-white px-4 py-1.5 rounded-full text-xs font-bold uppercase tracking-widest flex items-center gap-2">
-              <Lock size={14} /> Bloqueado
+            <div className="bg-red-500/90 backdrop-blur-md text-white px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest flex items-center gap-1.5">
+              <Lock size={12} /> Bloqueado
             </div>
           )}
         </div>
 
         {/* Content Overlay */}
-        <div className="absolute bottom-0 left-0 right-0 p-6 md:p-8 flex flex-col gap-4">
+        <div className="absolute bottom-0 left-0 right-0 p-5 flex flex-col gap-2">
           <div>
-            <span className="text-hero-primary font-black text-xs uppercase tracking-[0.2em] mb-2 block">
+            <span className="text-hero-primary font-black text-[10px] uppercase tracking-[0.2em] mb-1 block">
               Burger do Mês
             </span>
-            <h3 className="text-3xl md:text-4xl font-black text-white leading-tight mb-2">
+            <h3 className="text-2xl font-black text-white leading-tight mb-1">
               {isRedeemed ? 'Missão Cumprida' : 'Double Smash Hero'}
             </h3>
-            <p className="text-slate-300 text-sm md:text-base max-w-sm">
+            <p className="text-slate-300 text-xs max-w-sm line-clamp-2 leading-relaxed">
               {isRedeemed 
                 ? `Você saboreou este drop épico em ${new Date(benefit!.redeemedAt!).toLocaleDateString()}.`
                 : isActive 
                   ? 'Duas carnes smash de 80g, queijo cheddar inglês, cebola caramelizada e maionese secreta.'
-                  : 'Sua assinatura está inativa. Reative agora para desbloquear este item lendário.'
+                  : 'Sua assinatura está inativa. Reative agora para desbloquear.'
               }
             </p>
           </div>
 
-          <div className="pt-2">
+          <div className="pt-1">
             {isEligible ? (
               <Button 
                 onClick={() => navigate('/app/qrcode')}
-                className="w-full bg-white text-slate-900 hover:bg-slate-100 border-none h-14 text-base rounded-2xl shadow-xl hover:shadow-2xl hover:scale-[1.02] transition-all"
+                className="w-full bg-white text-slate-900 hover:bg-slate-100 border-none h-10 text-sm rounded-xl shadow-lg hover:shadow-xl hover:scale-[1.02] transition-all font-bold"
               >
-                <QrCode className="mr-2 text-hero-primary" size={20} /> Usar no Balcão
+                <QrCode className="mr-2 text-hero-primary" size={16} /> Usar no Balcão
               </Button>
             ) : isRedeemed ? (
                <Button 
                  disabled 
-                 className="w-full bg-slate-800/50 text-slate-400 border border-slate-700 h-14 rounded-2xl cursor-not-allowed"
+                 className="w-full bg-slate-800/50 text-slate-400 border border-slate-700 h-10 rounded-xl cursor-not-allowed text-xs font-bold"
                >
                  Já Utilizado
                </Button>
             ) : (
               <Button 
                 onClick={() => navigate('/plans')}
-                className="w-full bg-red-600 hover:bg-red-700 text-white border-none h-14 rounded-2xl shadow-lg shadow-red-900/20"
+                className="w-full bg-red-600 hover:bg-red-700 text-white border-none h-10 rounded-xl shadow-lg shadow-red-900/20 text-xs font-bold"
               >
                 Reativar Assinatura
               </Button>
@@ -144,7 +144,7 @@ const Voucher: React.FC = () => {
 
       {/* History Timeline */}
       <div className="space-y-4">
-        <h3 className="text-sm font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest pl-2">Histórico de Conquistas</h3>
+        <h3 className="text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest pl-2">Histórico</h3>
         
         <Card className="border-none shadow-none bg-transparent">
           <CardBody className="p-0 space-y-4">
@@ -152,16 +152,16 @@ const Voucher: React.FC = () => {
              {[1].map((_, i) => (
                 <div key={i} className="relative pl-8 before:absolute before:left-[11px] before:top-8 before:bottom-[-16px] before:w-[2px] before:bg-slate-200 dark:before:bg-slate-800 last:before:hidden">
                    <div className="absolute left-0 top-1 w-6 h-6 rounded-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center z-10">
-                      <div className="w-2 h-2 rounded-full bg-slate-400"></div>
+                      <div className="w-1.5 h-1.5 rounded-full bg-slate-400"></div>
                    </div>
-                   <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-100 dark:border-slate-800 flex items-center justify-between opacity-60">
-                      <div className="flex items-center gap-4">
-                         <div className="w-10 h-10 bg-slate-100 dark:bg-slate-800 rounded-xl flex items-center justify-center text-slate-400 dark:text-slate-500">
-                            <Utensils size={18} />
+                   <div className="bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-100 dark:border-slate-800 flex items-center justify-between opacity-60">
+                      <div className="flex items-center gap-3">
+                         <div className="w-8 h-8 bg-slate-100 dark:bg-slate-800 rounded-lg flex items-center justify-center text-slate-400 dark:text-slate-500">
+                            <Utensils size={14} />
                          </div>
                          <div>
-                            <p className="text-sm font-bold text-slate-700 dark:text-slate-300">Resgate de Setembro</p>
-                            <p className="text-xs text-slate-400 dark:text-slate-500">Expirado</p>
+                            <p className="text-xs font-bold text-slate-700 dark:text-slate-300">Resgate de Setembro</p>
+                            <p className="text-[10px] text-slate-400 dark:text-slate-500">Expirado</p>
                          </div>
                       </div>
                    </div>
@@ -171,11 +171,11 @@ const Voucher: React.FC = () => {
              {/* Empty State / Future */}
              <div className="relative pl-8">
                 <div className="absolute left-0 top-1 w-6 h-6 rounded-full bg-hero-primary/20 flex items-center justify-center z-10">
-                   <div className="w-2 h-2 rounded-full bg-hero-primary animate-pulse"></div>
+                   <div className="w-1.5 h-1.5 rounded-full bg-hero-primary animate-pulse"></div>
                 </div>
-                <div className="p-4 rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-800 flex flex-col items-center justify-center text-center py-8 gap-2">
-                   <p className="text-sm font-bold text-slate-500 dark:text-slate-300">Próximo drop em breve</p>
-                   <p className="text-xs text-slate-400 dark:text-slate-500 max-w-[200px]">Aguarde o início do próximo mês para liberar novos benefícios.</p>
+                <div className="p-3 rounded-xl border-2 border-dashed border-slate-200 dark:border-slate-800 flex flex-col items-center justify-center text-center py-6 gap-1">
+                   <p className="text-xs font-bold text-slate-500 dark:text-slate-300">Próximo drop em breve</p>
+                   <p className="text-[10px] text-slate-400 dark:text-slate-500 max-w-[180px]">Aguarde o início do próximo mês.</p>
                 </div>
              </div>
           </CardBody>
