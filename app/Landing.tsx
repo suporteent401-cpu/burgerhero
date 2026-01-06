@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '../components/ui/Button';
-import { ShieldCheck, Utensils, Zap, Star } from 'lucide-react';
+import { ShieldCheck, Utensils, Zap, Star, Instagram, Facebook, Globe } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 const Landing: React.FC = () => {
@@ -37,7 +37,7 @@ const Landing: React.FC = () => {
               <Button size="lg" className="w-auto">Assinar Agora</Button>
             </Link>
             <Link to="/auth">
-              <Button variant="outline" size="lg" className="w-auto text-white border-white/20 hover:bg-white/10">Já sou assinante</Button>
+              <Button size="lg" className="w-auto bg-white text-slate-900 hover:bg-slate-200">Já sou assinante</Button>
             </Link>
           </div>
         </motion.div>
@@ -73,10 +73,23 @@ const Landing: React.FC = () => {
             <h2 className="text-2xl font-black">Burger<span className="text-hero-primary">Hero</span></h2>
             <p className="text-slate-400 mt-2 text-sm">Alimentando a força de quem faz a diferença.</p>
           </div>
-          <div className="flex gap-8 text-sm font-bold uppercase tracking-widest text-slate-400">
-            <Link to="/auth" className="hover:text-white">Login</Link>
-            <Link to="/plans" className="hover:text-white">Planos</Link>
-            <Link to="/terms" className="hover:text-white">Termos</Link>
+          <div className="flex flex-col items-center md:items-end gap-6">
+            <div className="flex gap-8 text-sm font-bold uppercase tracking-widest text-slate-400">
+              <Link to="/auth" className="hover:text-white">Login</Link>
+              <Link to="/plans" className="hover:text-white">Planos</Link>
+              <Link to="/terms" className="hover:text-white">Termos</Link>
+            </div>
+            <div className="flex gap-6 text-slate-400">
+              <a href="https://www.instagram.com/heroisburgerbrasilia" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">
+                <Instagram size={24} />
+              </a>
+              <a href="https://www.facebook.com/heroisburgerbrasilia" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">
+                <Facebook size={24} />
+              </a>
+              <a href="https://www.heroisburgerbsb.com.br/" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">
+                <Globe size={24} />
+              </a>
+            </div>
           </div>
         </div>
         <div className="mt-12 pt-8 border-t border-white/5 text-center text-xs text-slate-500">
