@@ -15,15 +15,15 @@ const Landing: React.FC = () => {
           transition={{ duration: 0.8 }}
           className="relative z-10"
         >
+          <div className="inline-flex items-center gap-2 bg-hero-primary/20 border border-hero-primary/30 px-4 py-1.5 rounded-full mb-8">
+            <Star size={16} className="text-hero-primary fill-hero-primary" />
+            <span className="text-xs font-bold tracking-widest uppercase">Exclusividade Heroica</span>
+          </div>
           <img 
             src="https://ik.imagekit.io/lflb43qwh/Heros/images.jpg" 
             alt="BurgerHero Logo" 
             className="w-32 h-32 rounded-full mx-auto mb-8 border-4 border-white/10 shadow-lg" 
           />
-          <div className="inline-flex items-center gap-2 bg-hero-primary/20 border border-hero-primary/30 px-4 py-1.5 rounded-full mb-8">
-            <Star size={16} className="text-hero-primary fill-hero-primary" />
-            <span className="text-xs font-bold tracking-widest uppercase">Exclusividade Heroica</span>
-          </div>
           <h1 className="text-5xl md:text-7xl font-black tracking-tighter mb-6 leading-[1.1]">
             Torne-se um <span className="text-hero-primary">Herói</span> <br /> 
             e coma burgers todo mês
