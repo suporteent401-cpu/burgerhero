@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router-dom';
@@ -54,6 +53,11 @@ const Auth: React.FC = () => {
     <div className="min-h-screen bg-slate-50 flex flex-col justify-center items-center px-4 py-12">
       <div className="w-full max-w-md">
         <div className="text-center mb-10">
+          <img 
+            src="https://ik.imagekit.io/lflb43qwh/Heros/images.jpg" 
+            alt="BurgerHero Logo" 
+            className="w-24 h-24 rounded-full mx-auto mb-6 border-4 border-white shadow-lg" 
+          />
           <h1 className="text-3xl font-black mb-2 tracking-tight">
             Burger<span className="text-hero-primary">Hero</span>
           </h1>
@@ -132,7 +136,7 @@ const Auth: React.FC = () => {
 
               <Button 
                 type="submit" 
-                className="w-full" 
+                className="w-full rounded-full py-2" 
                 isLoading={loading}
               >
                 {!isLogin && step === 1 ? 'Próximo Passo' : (isLogin ? 'Entrar' : 'Finalizar Cadastro')}
