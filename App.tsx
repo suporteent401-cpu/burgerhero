@@ -1,4 +1,3 @@
-
 import React, { useEffect } from 'react';
 import { HashRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { useAuthStore } from './store/authStore';
@@ -19,6 +18,7 @@ import Voucher from './app/Voucher';
 import Profile from './app/Profile';
 import AdminDashboard from './app/AdminDashboard';
 import AdminUsers from './app/AdminUsers';
+import AdminPlans from './app/AdminPlans';
 import StaffValidate from './app/StaffValidate';
 import Debug from './app/Debug';
 
@@ -67,7 +67,7 @@ const App: React.FC = () => {
           <Route index element={<AdminDashboard />} />
           <Route path="users" element={<AdminUsers />} />
           <Route path="users/:id" element={<div className="p-10 text-center">Detalhes do usuário (Em desenvolvimento)</div>} />
-          <Route path="plans" element={<div className="p-10 text-center">Gestão de Planos</div>} />
+          <Route path="plans" element={<AdminPlans />} />
           <Route path="coupons" element={<div className="p-10 text-center">Gestão de Cupons</div>} />
         </Route>
 

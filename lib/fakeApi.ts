@@ -1,4 +1,3 @@
-
 import { User, Plan, Subscription, MonthlyBenefit, Coupon, ScanPayload, HeroTheme } from '../types';
 
 // Storage Keys
@@ -124,6 +123,34 @@ export const fakeApi = {
 
   listPlans: async (): Promise<Plan[]> => {
     return getFromStorage<Plan>(PLANS_KEY).filter(p => p.active);
+  },
+
+  adminListAllPlans: async (): Promise<Plan[]> => {
+    return getFromStorage<Plan>(PLANS_KEY);
+  },
+
+  adminCreatePlan: async (data: Omit<Plan, 'id'>): Promise<Plan> => {
+    await new Promise(r => setTimeout(r, 500));
+    const plans = getFromStorage<Plan>(PLANS_KEY);
+    const newPlan: Plan = {
+      ...data,
+      id: `p-${Date.now()}`,
+    };
+    plans.push(newPlan);
+    saveToStorage(PLANS_KEY, plans);
+    return newPlan;
+  },
+
+  adminUpdatePlan: async (planId: string, data: Partial<Plan>): Promise<Plan> => {
+    await new Promise(r => setTimeout(r, 500));
+    const plans = getFromStorage<Plan>(PLANS_KEY);
+    const planIndex = plans.findIndex(p => p.id === planId);
+    if (planIndex === -1) throw new Error('Plano não encontrado.');
+    
+    const updatedPlan = { ...plans[planIndex], ...data };
+    plans[planIndex] = updatedPlan;
+    saveToStorage(PLANS_KEY, plans);
+    return updatedPlan;
   },
 
   createCheckout: async (userId: string, planId: string): Promise<void> => {
