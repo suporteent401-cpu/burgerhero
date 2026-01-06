@@ -47,6 +47,17 @@ export interface Coupon {
   discountPercent: number;
   expiresAt: string;
   active: boolean;
+  ruleOnlyForInactives: boolean;
+  activations?: number; // Mock
+}
+
+export interface CampaignLog {
+  id: string;
+  dispatchedAt: string;
+  couponCode: string;
+  segment: string;
+  reach: number;
+  reactivations: number; // Mock
 }
 
 export interface ScanPayload {

@@ -21,6 +21,7 @@ import AdminDashboard from './app/AdminDashboard';
 import AdminUsers from './app/AdminUsers';
 import AdminUserDetails from './app/AdminUserDetails';
 import AdminPlans from './app/AdminPlans';
+import AdminCoupons from './app/AdminCoupons';
 import StaffValidate from './app/StaffValidate';
 import Debug from './app/Debug';
 
@@ -31,7 +32,6 @@ const ProtectedRoute = ({ children, allowedRoles }: { children?: React.ReactNode
   
   if (!isAuthed) return <Navigate to="/auth" replace />;
   if (allowedRoles && user && !allowedRoles.includes(user.role)) {
-    // Redirect based on role if unauthorized for this route
     if (user.role === 'ADMIN') return <Navigate to="/admin" replace />;
     if (user.role === 'STAFF') return <Navigate to="/staff/validate" replace />;
     return <Navigate to="/app" replace />;
@@ -40,12 +40,8 @@ const ProtectedRoute = ({ children, allowedRoles }: { children?: React.ReactNode
 };
 
 const App: React.FC = () => {
-  // Use selector to only subscribe to applyTheme
   const applyTheme = useThemeStore(state => state.applyTheme);
-
-  useEffect(() => {
-    applyTheme();
-  }, [applyTheme]);
+  useEffect(() => { applyTheme(); }, [applyTheme]);
 
   return (
     <HashRouter>
@@ -72,7 +68,7 @@ const App: React.FC = () => {
           <Route path="users" element={<AdminUsers />} />
           <Route path="users/:id" element={<AdminUserDetails />} />
           <Route path="plans" element={<AdminPlans />} />
-          <Route path="coupons" element={<div className="p-10 text-center">Gestão de Cupons</div>} />
+          <Route path="coupons" element={<AdminCoupons />} />
         </Route>
 
         {/* Staff Area */}

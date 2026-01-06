@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -7,48 +7,76 @@ interface ModalProps {
   onClose: () => void;
   title?: string;
   children: React.ReactNode;
-  size?: 'default' | 'fullscreen';
+  footer?: React.ReactNode;
+  size?: 'default' | 'lg' | 'fullscreen';
 }
 
-export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, size = 'default' }) => {
-  const isFullscreen = size === 'fullscreen';
+export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, footer, size = 'default' }) => {
+  
+  useEffect(() => {
+    const handleEsc = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    if (isOpen) {
+      document.addEventListener('keydown', handleEsc);
+      document.body.style.overflow = 'hidden';
+    }
+    return () => {
+      document.removeEventListener('keydown', handleEsc);
+      document.body.style.overflow = 'auto';
+    };
+  }, [isOpen, onClose]);
+
+  const sizeClasses = {
+    default: 'sm:max-w-lg',
+    lg: 'sm:max-w-2xl',
+    fullscreen: 'w-full h-full sm:h-auto sm:max-h-[95vh] sm:max-w-4xl'
+  };
 
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-0">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4">
+          {/* Overlay */}
           <motion.div 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
+            className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
           />
+          
+          {/* Modal Content */}
           <motion.div 
-            initial={{ opacity: 0, scale: isFullscreen ? 1.05 : 0.95, y: isFullscreen ? 0 : 20 }}
+            initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: isFullscreen ? 1.05 : 0.95, y: isFullscreen ? 0 : 20 }}
-            transition={{ duration: 0.2 }}
+            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+            transition={{ duration: 0.2, ease: 'easeOut' }}
             className={`
-              flex flex-col
-              ${isFullscreen 
-                ? 'w-full h-full bg-slate-900 text-white' 
-                : 'relative w-full max-w-md bg-white rounded-3xl shadow-2xl max-h-[90vh] m-4'
-              }
+              relative flex flex-col w-full h-full bg-white dark:bg-slate-900
+              sm:h-auto sm:max-h-[90vh] sm:rounded-2xl shadow-2xl
+              ${sizeClasses[size]}
             `}
           >
-            <div className={`
-              flex-shrink-0 flex items-center justify-between p-5 
-              ${isFullscreen ? 'absolute top-0 left-0 right-0 z-10 bg-gradient-to-b from-black/50 to-transparent' : 'border-b border-slate-50'}
-            `}>
-              <h3 className={`text-lg font-bold ${isFullscreen ? 'text-white' : 'text-slate-800'}`}>{title}</h3>
-              <button onClick={onClose} className={`p-2 rounded-full transition-colors ${isFullscreen ? 'bg-black/30 hover:bg-black/50' : 'hover:bg-slate-100'}`}>
-                <X size={20} className={`${isFullscreen ? 'text-white' : 'text-slate-500'}`} />
+            {/* Header */}
+            <div className="flex-shrink-0 flex items-center justify-between p-4 border-b border-slate-100 dark:border-slate-800">
+              <h3 className="text-lg font-bold text-slate-800 dark:text-white">{title}</h3>
+              <button onClick={onClose} className="p-2 rounded-full text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+                <X size={20} />
               </button>
             </div>
-            <div className={`overflow-y-auto ${isFullscreen ? 'flex-1' : 'p-6'}`}>
+
+            {/* Body (Scrollable) */}
+            <div className="flex-1 overflow-y-auto p-6">
               {children}
             </div>
+
+            {/* Footer */}
+            {footer && (
+              <div className="flex-shrink-0 p-4 border-t border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 sm:rounded-b-2xl">
+                {footer}
+              </div>
+            )}
           </motion.div>
         </div>
       )}
