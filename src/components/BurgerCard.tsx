@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Burger } from '../lib/burgersCatalog';
 import { Plus, Flame, Sparkles, Heart } from 'lucide-react';
 import { Card, CardBody } from './ui/Card';
@@ -12,6 +12,11 @@ interface BurgerCardProps {
 
 const BurgerCard: React.FC<BurgerCardProps> = ({ burger, isFavorite, onToggleFavorite, onClick }) => {
   const [loaded, setLoaded] = useState(false);
+
+  // Reset loaded state if burger changes
+  useEffect(() => {
+    setLoaded(false);
+  }, [burger.images]);
 
   return (
     <div onClick={onClick} className="group cursor-pointer h-full relative">
@@ -49,6 +54,7 @@ const BurgerCard: React.FC<BurgerCardProps> = ({ burger, isFavorite, onToggleFav
             alt={burger.name}
             className={`w-full h-full object-cover group-hover:scale-110 transition-transform duration-500 ${loaded ? 'opacity-100' : 'opacity-0'}`}
             onLoad={() => {
+              // Safety check: only update if not already loaded to prevent loop
               if (!loaded) setLoaded(true);
             }}
           />

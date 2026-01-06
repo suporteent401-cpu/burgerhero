@@ -16,13 +16,14 @@ const Home: React.FC = () => {
 
   const cardTemplate = getSelectedTemplate();
 
+  // FIX: Depender de user.id em vez do objeto user inteiro evita loops infinitos
   useEffect(() => {
-    if (user) {
+    if (user?.id) {
       fakeApi.getSubscriptionStatus(user.id).then(setSub);
       const monthKey = new Date().toISOString().slice(0, 7);
       fakeApi.getMonthlyBenefit(user.id, monthKey).then(setBenefit);
     }
-  }, [user]);
+  }, [user?.id]);
 
   const isActive = sub?.status === 'ACTIVE';
 
