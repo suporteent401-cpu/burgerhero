@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { Home, QrCode, Ticket, UtensilsCrossed, User } from 'lucide-react';
@@ -20,7 +21,9 @@ const ClientLayout: React.FC = () => {
           <h1 className="text-xl font-extrabold tracking-tight">
             Burger<span className="text-hero-primary">Hero</span>
           </h1>
-          <img src="https://ik.imagekit.io/lflb43qwh/Heros/images.jpg" alt="BurgerHero Logo" className="h-10 w-10 rounded-full" />
+          <div className="w-8 h-8 rounded-full bg-slate-200 overflow-hidden">
+             <img src="https://picsum.photos/seed/profile/100" alt="Avatar" className="w-full h-full object-cover" />
+          </div>
         </div>
       </header>
 

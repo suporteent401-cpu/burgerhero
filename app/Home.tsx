@@ -40,18 +40,13 @@ const Home: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <div>
-          <h2 className="text-2xl font-black">Olá, {user?.name.split(' ')[0]}!</h2>
-          <p className="text-slate-400 text-sm font-medium">Status: 
-            <span className={isActive ? 'text-green-500 font-bold' : 'text-red-500 font-bold'}>
-              {isActive ? ' Assinatura Ativa' : ' Sem Plano Ativo'}
-            </span>
-          </p>
-        </div>
-        <Link to="/app/profile" className="w-12 h-12 rounded-full bg-slate-200 overflow-hidden border-2 border-white shadow-md">
-          <img src={user?.avatarUrl || `https://picsum.photos/seed/${user?.id}/100`} alt="Avatar" className="w-full h-full object-cover" />
-        </Link>
+      <div>
+        <h2 className="text-2xl font-black">Olá, {user?.name.split(' ')[0]}!</h2>
+        <p className="text-slate-400 text-sm font-medium">Status: 
+          <span className={isActive ? 'text-green-500 font-bold' : 'text-red-500 font-bold'}>
+            {isActive ? ' Assinatura Ativa' : ' Sem Plano Ativo'}
+          </span>
+        </p>
       </div>
 
       {/* Hero Card */}
