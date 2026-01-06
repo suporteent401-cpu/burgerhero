@@ -6,15 +6,23 @@ interface HeroCardProps {
   imageUrl: string;
   memberSince?: string; 
   className?: string;
+  fontFamily?: string;
+  textColor?: string;
 }
 
-const HeroCard: React.FC<HeroCardProps> = ({ user, imageUrl, className = '' }) => {
+const HeroCard: React.FC<HeroCardProps> = ({ 
+  user, 
+  imageUrl, 
+  className = '',
+  fontFamily = 'Inter, sans-serif',
+  textColor = '#FFFFFF'
+}) => {
   return (
     <div className={`w-full max-w-[420px] mx-auto ${className}`}>
-      {/* Container Principal: Aspecto Cartão de Crédito, Borda Sutil, Sombra Física */}
+      {/* Container Principal */}
       <div className="relative aspect-[1.586/1] w-full rounded-2xl shadow-xl overflow-hidden ring-1 ring-black/10 isolate bg-slate-900">
         
-        {/* 1. Imagem de Fundo (Edge-to-Edge 100%) */}
+        {/* Imagem de Fundo */}
         <img
           src={imageUrl}
           alt="Cartão Hero"
@@ -22,7 +30,7 @@ const HeroCard: React.FC<HeroCardProps> = ({ user, imageUrl, className = '' }) =
           style={{ filter: 'none' }}
         />
 
-        {/* 2. Logo BurgerHero (Canto Superior Direito) */}
+        {/* Logo BurgerHero */}
         <div className="absolute top-5 right-5 z-10">
           <img 
             src="https://ik.imagekit.io/lflb43qwh/Heros/images.jpg" 
@@ -31,12 +39,21 @@ const HeroCard: React.FC<HeroCardProps> = ({ user, imageUrl, className = '' }) =
           />
         </div>
 
-        {/* 3. Nome e ID (Direto na imagem, sem fundo) */}
-        <div className="absolute bottom-6 left-6 z-10 pr-4">
-          <p className="text-xl md:text-2xl font-normal text-white tracking-wide drop-shadow-md truncate">
+        {/* Nome e ID com Estilo Dinâmico */}
+        <div 
+          className="absolute bottom-6 left-6 z-10 pr-4"
+          style={{ color: textColor }}
+        >
+          <p 
+            className="text-xl md:text-2xl tracking-wide drop-shadow-md truncate"
+            style={{ fontFamily: fontFamily, fontWeight: 400 }}
+          >
             {user?.name || 'Visitante'}
           </p>
-          <p className="text-sm font-medium text-white/90 tracking-widest drop-shadow-md mt-0.5 font-mono">
+          <p 
+            className="text-sm tracking-widest drop-shadow-md mt-0.5 opacity-90"
+            style={{ fontFamily: fontFamily, fontWeight: 500 }}
+          >
             {user?.customerCode || 'HE-----'}
           </p>
         </div>

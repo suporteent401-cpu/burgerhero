@@ -10,7 +10,7 @@ import HeroCard from '../components/HeroCard';
 
 const Home: React.FC = () => {
   const { user } = useAuthStore();
-  const { getSelectedTemplate } = useCardStore();
+  const { getSelectedTemplate, selectedFont, selectedColor } = useCardStore();
   const [sub, setSub] = useState<Subscription | null>(null);
   const [benefit, setBenefit] = useState<MonthlyBenefit | null>(null);
 
@@ -52,6 +52,8 @@ const Home: React.FC = () => {
           user={user} 
           imageUrl={cardTemplate.imageUrl} 
           memberSince={sub?.currentPeriodStart}
+          fontFamily={selectedFont}
+          textColor={selectedColor}
         />
       </div>
 

@@ -16,9 +16,29 @@ export const CARD_TEMPLATES: CardTemplate[] = [
   { id: 'hero-7', imageUrl: 'https://ik.imagekit.io/lflb43qwh/Heros/7.png' },
 ];
 
+export const FONT_OPTIONS = [
+  { name: 'Padrão', value: 'Inter, sans-serif' },
+  { name: 'Épico', value: '"Cinzel", serif' },
+  { name: 'Elegante', value: '"Playfair Display", serif' },
+  { name: 'Técnico', value: '"Roboto Mono", monospace' },
+  { name: 'Manual', value: '"Permanent Marker", cursive' },
+];
+
+export const COLOR_OPTIONS = [
+  { name: 'Branco', value: '#FFFFFF' },
+  { name: 'Dourado', value: '#FCD34D' }, // amber-300
+  { name: 'Prata', value: '#E2E8F0' },   // slate-200
+  { name: 'Preto', value: '#000000' },
+  { name: 'Vermelho', value: '#EF4444' }, // red-500
+];
+
 interface CardState {
   selectedTemplateId: string;
+  selectedFont: string;
+  selectedColor: string;
   setTemplateId: (id: string) => void;
+  setFont: (font: string) => void;
+  setColor: (color: string) => void;
   getSelectedTemplate: () => CardTemplate;
 }
 
@@ -26,12 +46,16 @@ export const useCardStore = create<CardState>()(
   persist(
     (set, get) => ({
       selectedTemplateId: 'hero-1',
+      selectedFont: 'Inter, sans-serif',
+      selectedColor: '#FFFFFF',
       setTemplateId: (id) => set({ selectedTemplateId: id }),
+      setFont: (font) => set({ selectedFont: font }),
+      setColor: (color) => set({ selectedColor: color }),
       getSelectedTemplate: () => {
         const { selectedTemplateId } = get();
         return CARD_TEMPLATES.find(t => t.id === selectedTemplateId) || CARD_TEMPLATES[0];
       }
     }),
-    { name: 'burger-hero-card-prefs-v2' }
+    { name: 'burger-hero-card-prefs-v3' }
   )
 );

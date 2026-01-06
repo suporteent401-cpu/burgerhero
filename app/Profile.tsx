@@ -3,8 +3,8 @@ import { Card, CardBody, CardHeader } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { useAuthStore } from '../store/authStore';
 import { useThemeStore } from '../store/themeStore';
-import { useCardStore, CARD_TEMPLATES } from '../store/cardStore';
-import { LogOut, Palette, Moon, Sun, Monitor, CreditCard, CheckCircle2 } from 'lucide-react';
+import { useCardStore, CARD_TEMPLATES, FONT_OPTIONS, COLOR_OPTIONS } from '../store/cardStore';
+import { LogOut, Palette, Moon, Sun, Monitor, CreditCard, CheckCircle2, Type } from 'lucide-react';
 import { HeroTheme, Subscription } from '../types';
 import { fakeApi } from '../lib/fakeApi';
 import HeroCard from '../components/HeroCard';
@@ -12,7 +12,18 @@ import HeroCard from '../components/HeroCard';
 const Profile: React.FC = () => {
   const { user, logout, updateUser } = useAuthStore();
   const { heroTheme, setHeroTheme, mode, setMode } = useThemeStore();
-  const { selectedTemplateId, setTemplateId, getSelectedTemplate } = useCardStore();
+  
+  // Card Store hooks
+  const { 
+    selectedTemplateId, 
+    setTemplateId, 
+    getSelectedTemplate,
+    selectedFont,
+    setFont,
+    selectedColor,
+    setColor
+  } = useCardStore();
+
   const [sub, setSub] = useState<Subscription | null>(null);
 
   useEffect(() => {
@@ -57,9 +68,9 @@ const Profile: React.FC = () => {
         </CardHeader>
         <CardBody className="p-6 space-y-8">
           
-          {/* Grid de Seleção */}
+          {/* 1. Escolha do Template */}
           <div>
-            <p className="text-sm font-bold text-slate-500 mb-3">Escolha seu modelo:</p>
+            <p className="text-sm font-bold text-slate-500 mb-3">Modelo:</p>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               {CARD_TEMPLATES.map((template) => {
                 const isSelected = selectedTemplateId === template.id;
@@ -90,6 +101,60 @@ const Profile: React.FC = () => {
             </div>
           </div>
 
+          {/* 2. Personalização de Texto (Fonte e Cor) */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            
+            {/* Fontes */}
+            <div>
+              <p className="text-sm font-bold text-slate-500 mb-3 flex items-center gap-2">
+                <Type size={16} /> Tipografia:
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {FONT_OPTIONS.map((font) => (
+                  <button
+                    key={font.name}
+                    onClick={() => setFont(font.value)}
+                    style={{ fontFamily: font.value }}
+                    className={`
+                      px-3 py-2 rounded-lg text-sm border transition-all
+                      ${selectedFont === font.value 
+                        ? 'bg-hero-primary text-white border-hero-primary shadow-md' 
+                        : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'}
+                    `}
+                  >
+                    {font.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Cores */}
+            <div>
+              <p className="text-sm font-bold text-slate-500 mb-3">Cor do Texto:</p>
+              <div className="flex items-center gap-3">
+                {COLOR_OPTIONS.map((color) => (
+                  <button
+                    key={color.name}
+                    onClick={() => setColor(color.value)}
+                    className={`
+                      w-10 h-10 rounded-full border-2 shadow-sm transition-all flex items-center justify-center
+                      ${selectedColor === color.value ? 'scale-110 ring-2 ring-offset-2 ring-hero-primary' : 'hover:scale-105'}
+                    `}
+                    style={{ backgroundColor: color.value, borderColor: color.value === '#FFFFFF' ? '#e2e8f0' : 'transparent' }}
+                    title={color.name}
+                  >
+                    {selectedColor === color.value && (
+                      <CheckCircle2 
+                        size={18} 
+                        className={color.value === '#FFFFFF' || color.value === '#FCD34D' || color.value === '#E2E8F0' ? 'text-black' : 'text-white'} 
+                      />
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
           {/* Prévia */}
           <div className="flex flex-col items-center border-t border-slate-50 pt-6">
              <p className="text-sm font-bold text-slate-500 mb-4 self-start">Prévia Atual:</p>
@@ -97,13 +162,15 @@ const Profile: React.FC = () => {
                user={user} 
                imageUrl={getSelectedTemplate().imageUrl} 
                memberSince={sub?.currentPeriodStart}
+               fontFamily={selectedFont}
+               textColor={selectedColor}
              />
           </div>
 
         </CardBody>
       </Card>
 
-      {/* TEMA HEROICO */}
+      {/* TEMA HEROICO (Mantido igual) */}
       <Card>
         <CardHeader>
           <div className="flex items-center gap-2 font-black text-xs uppercase tracking-widest text-slate-400">
