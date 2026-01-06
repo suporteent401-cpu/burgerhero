@@ -50,7 +50,7 @@ const Landing: React.FC = () => {
           <img 
             src="https://ik.imagekit.io/lflb43qwh/Heros/images.jpg" 
             alt="BurgerHero Logo" 
-            className="w-32 h-32 rounded-full mx-auto mb-8 border-4 border-white/10 shadow-lg" 
+            className="w-32 h-32 rounded-full mx-auto mb-8 border-4 border-white shadow-lg" 
           />
           <h1 className="text-5xl md:text-7xl font-black tracking-tighter mb-6 leading-[1.1]">
             Torne-se um <span className="text-hero-primary">Herói</span> <br /> 
