@@ -19,6 +19,7 @@ import Burgers from './app/Burgers';
 import Profile from './app/Profile';
 import AdminDashboard from './app/AdminDashboard';
 import AdminUsers from './app/AdminUsers';
+import AdminUserDetails from './app/AdminUserDetails';
 import AdminPlans from './app/AdminPlans';
 import StaffValidate from './app/StaffValidate';
 import Debug from './app/Debug';
@@ -69,7 +70,7 @@ const App: React.FC = () => {
         <Route path="/admin" element={<ProtectedRoute allowedRoles={['ADMIN']}><AdminLayout /></ProtectedRoute>}>
           <Route index element={<AdminDashboard />} />
           <Route path="users" element={<AdminUsers />} />
-          <Route path="users/:id" element={<div className="p-10 text-center">Detalhes do usuário (Em desenvolvimento)</div>} />
+          <Route path="users/:id" element={<AdminUserDetails />} />
           <Route path="plans" element={<AdminPlans />} />
           <Route path="coupons" element={<div className="p-10 text-center">Gestão de Cupons</div>} />
         </Route>

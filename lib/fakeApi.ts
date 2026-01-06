@@ -43,6 +43,18 @@ const INITIAL_USERS: User[] = [
     heroTheme: 'sombra-noturna',
     avatarUrl: 'https://picsum.photos/seed/client/200',
     customerCode: 'HE12345'
+  },
+  {
+    id: 'u-4',
+    name: 'Diana Prince',
+    cpf: '444.444.444-44',
+    whatsapp: '61987654321',
+    email: 'diana@them.com',
+    birthDate: '1985-03-17',
+    role: 'CLIENT',
+    heroTheme: 'guardiao-escarlate',
+    avatarUrl: 'https://picsum.photos/seed/diana/200',
+    customerCode: 'HE54321'
   }
 ];
 
@@ -74,7 +86,15 @@ const INITIAL_SUBS: Subscription[] = [
     status: 'ACTIVE',
     currentPeriodStart: '2023-10-01',
     currentPeriodEnd: '2023-11-01',
-    nextBillingDate: '2023-11-01'
+    nextBillingDate: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString()
+  },
+  {
+    userId: 'u-4',
+    planId: 'p-2',
+    status: 'CANCELED',
+    currentPeriodStart: '2023-09-01',
+    currentPeriodEnd: '2023-10-01',
+    nextBillingDate: new Date(Date.now() + 20 * 24 * 60 * 60 * 1000).toISOString()
   }
 ];
 
@@ -92,7 +112,10 @@ initStorage();
 const getFromStorage = <T,>(key: string): T[] => JSON.parse(localStorage.getItem(key) || '[]');
 const saveToStorage = <T,>(key: string, data: T[]) => localStorage.setItem(key, JSON.stringify(data));
 
+// ... (manter outras funções da API)
+
 export const fakeApi = {
+  // ... (manter authLogin, authRegister, etc.)
   authLogin: async (email: string, password: string): Promise<User> => {
     await new Promise(r => setTimeout(r, 800));
     const users = getFromStorage<User>(USERS_KEY);
@@ -207,17 +230,96 @@ export const fakeApi = {
     saveToStorage(BENEFITS_KEY, benefits);
   },
 
-  adminListUsers: async (search?: string): Promise<User[]> => {
+  adminListUsers: async (params: {
+    search?: string;
+    filters?: any;
+    page?: number;
+    limit?: number;
+  }) => {
+    const { search = '', filters = {}, page = 1, limit = 10 } = params;
+    await new Promise(r => setTimeout(r, 500)); // Simulate delay
+
     let users = getFromStorage<User>(USERS_KEY);
+    const subs = getFromStorage<Subscription>(SUBS_KEY);
+    const benefits = getFromStorage<MonthlyBenefit>(BENEFITS_KEY);
+    const monthKey = new Date().toISOString().slice(0, 7);
+
+    // 1. Search
     if (search) {
       const s = search.toLowerCase();
-      users = users.filter(u => u.name.toLowerCase().includes(s) || u.cpf.includes(s) || u.customerCode.toLowerCase().includes(s));
+      users = users.filter(u => 
+        u.name.toLowerCase().includes(s) || 
+        u.cpf.includes(s) || 
+        u.customerCode.toLowerCase().includes(s) ||
+        u.email.toLowerCase().includes(s) ||
+        u.whatsapp.includes(s)
+      );
     }
-    return users;
+
+    // 2. Filter
+    let filteredUsers = users.filter(u => {
+      const sub = subs.find(s => s.userId === u.id);
+      const benefit = benefits.find(b => b.userId === u.id && b.monthKey === monthKey);
+
+      if (filters.status && (sub?.status || 'INACTIVE') !== filters.status) return false;
+      if (filters.role && u.role !== filters.role) return false;
+      if (filters.planId && sub?.planId !== filters.planId) return false;
+      
+      const isRedeemed = benefit?.burgerRedeemed || false;
+      if (filters.hasRedeemed === 'yes' && !isRedeemed) return false;
+      if (filters.hasRedeemed === 'no' && isRedeemed) return false;
+
+      const canRedeem = sub?.status === 'ACTIVE' && !isRedeemed;
+      if (filters.canRedeem === 'yes' && !canRedeem) return false;
+      if (filters.canRedeem === 'no' && canRedeem) return false;
+
+      return true;
+    });
+
+    // 3. Sort (mocked)
+    if (filters.sortBy === 'newest') {
+      filteredUsers.reverse();
+    }
+
+    // 4. Paginate
+    const total = filteredUsers.length;
+    const paginated = filteredUsers.slice((page - 1) * limit, page * limit);
+
+    // 5. Augment data
+    const augmentedData = paginated.map(u => ({
+      ...u,
+      subscription: subs.find(s => s.userId === u.id) || null,
+      monthlyBenefit: benefits.find(b => b.userId === u.id && b.monthKey === monthKey) || null,
+    }));
+
+    return {
+      data: augmentedData,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    };
   },
 
   adminGetUser: async (id: string): Promise<User | null> => {
     return getFromStorage<User>(USERS_KEY).find(u => u.id === id) || null;
+  },
+  
+  adminGetUserDetails: async (id: string) => {
+    const user = await fakeApi.adminGetUser(id);
+    if (!user) return null;
+    
+    const subscription = await fakeApi.getSubscriptionStatus(id);
+    const plans = await fakeApi.adminListAllPlans();
+    const plan = subscription ? plans.find(p => p.id === subscription.planId) : null;
+    
+    // Mocked history
+    const redemptionHistory = [
+      { month: 'Outubro 2023', redeemedAt: '2023-10-15T19:30:00Z' },
+      { month: 'Setembro 2023', redeemedAt: '2023-09-12T20:00:00Z' },
+    ];
+    
+    return { user, subscription, plan, redemptionHistory };
   },
 
   staffValidateByPayload: async (input: string): Promise<{ success: boolean; message: string; user?: User }> => {
