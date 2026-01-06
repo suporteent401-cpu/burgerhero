@@ -6,13 +6,13 @@ import { Modal } from '../components/ui/Modal';
 import { Search, QrCode, ShieldCheck, ShieldAlert, CheckCircle, Award } from 'lucide-react';
 import { fakeApi } from '../lib/fakeApi';
 import { User } from '../types';
+import QrScanner from '../components/QrScanner';
 
 const StaffValidate: React.FC = () => {
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<{ success: boolean; message: string; user?: User } | null>(null);
   const [isScannerOpen, setIsScannerOpen] = useState(false);
-  const [scannerInput, setScannerInput] = useState('');
 
   const handleValidate = async (val: string) => {
     if (!val) return;
@@ -22,6 +22,12 @@ const StaffValidate: React.FC = () => {
     const res = await fakeApi.staffValidateByPayload(val);
     setResult(res);
     setLoading(false);
+  };
+
+  const handleScanSuccess = (decodedText: string) => {
+    setIsScannerOpen(false);
+    setQuery(decodedText);
+    handleValidate(decodedText);
   };
 
   const confirmRedeem = async () => {
@@ -129,18 +135,14 @@ const StaffValidate: React.FC = () => {
         )}
       </div>
 
-      <Modal isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} title="Simulador de Scanner">
-        <div className="space-y-4">
-          <p className="text-sm text-slate-500">Cole aqui o conteúdo do QR Code (JSON) ou o código do cliente:</p>
-          <Input 
-            autoFocus
-            placeholder="Conteúdo do QR..." 
-            value={scannerInput} 
-            onChange={e => setScannerInput(e.target.value)}
-          />
-          <Button className="w-full" onClick={() => { handleValidate(scannerInput); setIsScannerOpen(false); setScannerInput(''); }}>
-            Simular Leitura
-          </Button>
+      <Modal isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} title="Aponte para o QR Code" size="fullscreen">
+        <div className="w-full h-full flex flex-col items-center justify-center relative">
+          <QrScanner onScan={handleScanSuccess} />
+          <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black/70 to-transparent text-center">
+            <Button variant="secondary" onClick={() => setIsScannerOpen(false)} className="bg-white/90 text-slate-800 border-slate-200 hover:bg-white">
+              Usar digitação manual
+            </Button>
+          </div>
         </div>
       </Modal>
     </div>
