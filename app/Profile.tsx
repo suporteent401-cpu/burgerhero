@@ -31,19 +31,18 @@ const Profile: React.FC = () => {
 
   const [sub, setSub] = useState<Subscription | null>(null);
 
-  // Fix: Depend apenas do ID para buscar assinatura
   useEffect(() => {
     if (user?.id) {
       fakeApi.getSubscriptionStatus(user.id).then(setSub);
     }
   }, [user?.id]);
 
-  // Fix: Atualiza editName apenas quando o nome do user mudar e for diferente
+  // Sync editName when user name changes externally or on load, but only if not editing
   useEffect(() => {
-    if (user?.name && user.name !== editName) {
+    if (!isEditingName && user?.name) {
       setEditName(user.name);
     }
-  }, [user?.name]);
+  }, [user?.name, isEditingName]);
 
   const themes: { name: HeroTheme, color: string, label: string }[] = [
     { name: 'sombra-noturna', color: '#1e40af', label: 'Sombra' },
@@ -77,6 +76,7 @@ const Profile: React.FC = () => {
 
   const handleSaveName = async () => {
     if (!user || !editName.trim()) return;
+    
     // Optimistic update
     updateUser({ name: editName });
     setIsEditingName(false);
