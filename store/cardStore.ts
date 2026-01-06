@@ -25,11 +25,18 @@ export const FONT_OPTIONS = [
 ];
 
 export const COLOR_OPTIONS = [
-  { name: 'Branco', value: '#FFFFFF' },
-  { name: 'Dourado', value: '#FCD34D' }, // amber-300
-  { name: 'Prata', value: '#E2E8F0' },   // slate-200
-  { name: 'Preto', value: '#000000' },
-  { name: 'Vermelho', value: '#EF4444' }, // red-500
+  // Clássicos
+  { name: 'Branco', value: '#FFFFFF', type: 'classic' },
+  { name: 'Preto', value: '#000000', type: 'classic' },
+  // Metálicos
+  { name: 'Ouro', value: '#FFD700', type: 'metallic' }, 
+  { name: 'Prata', value: '#C0C0C0', type: 'metallic' },
+  { name: 'Cobre', value: '#B87333', type: 'metallic' },
+  // Vibrantes
+  { name: 'Ciano Neon', value: '#00FFFF', type: 'vibrant' },
+  { name: 'Magenta', value: '#FF00FF', type: 'vibrant' },
+  { name: 'Verde Lima', value: '#39FF14', type: 'vibrant' },
+  { name: 'Laranja', value: '#FF4500', type: 'vibrant' },
 ];
 
 interface CardState {
@@ -56,6 +63,6 @@ export const useCardStore = create<CardState>()(
         return CARD_TEMPLATES.find(t => t.id === selectedTemplateId) || CARD_TEMPLATES[0];
       }
     }),
-    { name: 'burger-hero-card-prefs-v3' }
+    { name: 'burger-hero-card-prefs-v4' }
   )
 );

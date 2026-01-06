@@ -1,10 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { Card, CardBody, CardHeader } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { useAuthStore } from '../store/authStore';
 import { useThemeStore } from '../store/themeStore';
 import { useCardStore, CARD_TEMPLATES, FONT_OPTIONS, COLOR_OPTIONS } from '../store/cardStore';
-import { LogOut, Palette, Moon, Sun, Monitor, CreditCard, CheckCircle2, Type } from 'lucide-react';
+import { LogOut, Palette, Moon, Sun, Monitor, CreditCard, CheckCircle2, Type, Camera, Upload } from 'lucide-react';
 import { HeroTheme, Subscription } from '../types';
 import { fakeApi } from '../lib/fakeApi';
 import HeroCard from '../components/HeroCard';
@@ -12,6 +12,7 @@ import HeroCard from '../components/HeroCard';
 const Profile: React.FC = () => {
   const { user, logout, updateUser } = useAuthStore();
   const { heroTheme, setHeroTheme, mode, setMode } = useThemeStore();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Card Store hooks
   const { 
@@ -49,13 +50,43 @@ const Profile: React.FC = () => {
     }
   };
 
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file && user) {
+      const reader = new FileReader();
+      reader.onloadend = async () => {
+        const base64 = reader.result as string;
+        await fakeApi.updateUserAvatar(user.id, base64);
+        updateUser({ avatarUrl: base64 });
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   return (
     <div className="space-y-6 pb-10">
+      
+      {/* CABEÇALHO DO PERFIL COM UPLOAD */}
       <div className="flex flex-col items-center">
-        <div className="w-24 h-24 rounded-3xl border-4 border-white shadow-xl bg-slate-200 overflow-hidden mb-4 relative">
-          <img src={user?.avatarUrl || 'https://picsum.photos/seed/hero/200'} alt="Profile" className="w-full h-full object-cover" />
+        <div className="relative">
+          <div className="w-28 h-28 rounded-full border-4 border-white dark:border-slate-800 shadow-xl bg-slate-200 overflow-hidden relative">
+            <img src={user?.avatarUrl || 'https://picsum.photos/seed/hero/200'} alt="Profile" className="w-full h-full object-cover" />
+          </div>
+          <button 
+            onClick={() => fileInputRef.current?.click()}
+            className="absolute bottom-0 right-0 bg-hero-primary text-white p-2 rounded-full shadow-lg hover:scale-110 transition-transform"
+          >
+            <Camera size={16} />
+          </button>
+          <input 
+            type="file" 
+            ref={fileInputRef} 
+            className="hidden" 
+            accept="image/*" 
+            onChange={handleFileChange}
+          />
         </div>
-        <h2 className="text-xl font-black">{user?.name}</h2>
+        <h2 className="text-xl font-black mt-3 dark:text-white">{user?.name}</h2>
         <p className="text-slate-400 font-medium text-sm">{user?.email}</p>
       </div>
 
@@ -68,10 +99,10 @@ const Profile: React.FC = () => {
         </CardHeader>
         <CardBody className="p-6 space-y-8">
           
-          {/* 1. Escolha do Template */}
+          {/* 1. Escolha do Template (Grid de 3) */}
           <div>
-            <p className="text-sm font-bold text-slate-500 mb-3">Modelo:</p>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <p className="text-sm font-bold text-slate-500 dark:text-slate-400 mb-3">Modelo:</p>
+            <div className="grid grid-cols-3 gap-3">
               {CARD_TEMPLATES.map((template) => {
                 const isSelected = selectedTemplateId === template.id;
                 return (
@@ -80,7 +111,7 @@ const Profile: React.FC = () => {
                     onClick={() => setTemplateId(template.id)}
                     className={`
                       relative rounded-xl overflow-hidden transition-all duration-200 aspect-[1.586/1]
-                      ${isSelected ? 'ring-4 ring-hero-primary shadow-lg scale-[1.02]' : 'ring-1 ring-slate-200 hover:ring-slate-300'}
+                      ${isSelected ? 'ring-4 ring-hero-primary shadow-lg scale-[1.02]' : 'ring-1 ring-slate-200 dark:ring-slate-700 hover:ring-slate-300'}
                     `}
                   >
                     <img 
@@ -102,11 +133,11 @@ const Profile: React.FC = () => {
           </div>
 
           {/* 2. Personalização de Texto (Fonte e Cor) */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 gap-6">
             
             {/* Fontes */}
             <div>
-              <p className="text-sm font-bold text-slate-500 mb-3 flex items-center gap-2">
+              <p className="text-sm font-bold text-slate-500 dark:text-slate-400 mb-3 flex items-center gap-2">
                 <Type size={16} /> Tipografia:
               </p>
               <div className="flex flex-wrap gap-2">
@@ -119,7 +150,7 @@ const Profile: React.FC = () => {
                       px-3 py-2 rounded-lg text-sm border transition-all
                       ${selectedFont === font.value 
                         ? 'bg-hero-primary text-white border-hero-primary shadow-md' 
-                        : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'}
+                        : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-slate-300'}
                     `}
                   >
                     {font.name}
@@ -128,25 +159,31 @@ const Profile: React.FC = () => {
               </div>
             </div>
 
-            {/* Cores */}
+            {/* Cores (Separadas por tipo) */}
             <div>
-              <p className="text-sm font-bold text-slate-500 mb-3">Cor do Texto:</p>
-              <div className="flex items-center gap-3">
+              <p className="text-sm font-bold text-slate-500 dark:text-slate-400 mb-3">Cor da Fonte:</p>
+              <div className="flex flex-wrap gap-3">
                 {COLOR_OPTIONS.map((color) => (
                   <button
                     key={color.name}
                     onClick={() => setColor(color.value)}
                     className={`
-                      w-10 h-10 rounded-full border-2 shadow-sm transition-all flex items-center justify-center
-                      ${selectedColor === color.value ? 'scale-110 ring-2 ring-offset-2 ring-hero-primary' : 'hover:scale-105'}
+                      w-10 h-10 rounded-full border-2 shadow-sm transition-all flex items-center justify-center relative group
+                      ${selectedColor === color.value ? 'scale-110 ring-2 ring-offset-2 ring-hero-primary dark:ring-offset-slate-900' : 'hover:scale-105'}
                     `}
                     style={{ backgroundColor: color.value, borderColor: color.value === '#FFFFFF' ? '#e2e8f0' : 'transparent' }}
                     title={color.name}
                   >
+                    {/* Tooltip simples */}
+                    <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-black text-white text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
+                      {color.name}
+                    </span>
+                    
                     {selectedColor === color.value && (
                       <CheckCircle2 
                         size={18} 
-                        className={color.value === '#FFFFFF' || color.value === '#FCD34D' || color.value === '#E2E8F0' ? 'text-black' : 'text-white'} 
+                        className="drop-shadow-md"
+                        style={{ color: ['#FFFFFF', '#FCD34D', '#C0C0C0', '#00FFFF', '#39FF14'].includes(color.value) ? '#000' : '#FFF' }}
                       />
                     )}
                   </button>
@@ -156,8 +193,8 @@ const Profile: React.FC = () => {
           </div>
 
           {/* Prévia */}
-          <div className="flex flex-col items-center border-t border-slate-50 pt-6">
-             <p className="text-sm font-bold text-slate-500 mb-4 self-start">Prévia Atual:</p>
+          <div className="flex flex-col items-center border-t border-slate-50 dark:border-slate-800 pt-6">
+             <p className="text-sm font-bold text-slate-500 dark:text-slate-400 mb-4 self-start">Prévia Atual:</p>
              <HeroCard 
                user={user} 
                imageUrl={getSelectedTemplate().imageUrl} 
@@ -170,54 +207,54 @@ const Profile: React.FC = () => {
         </CardBody>
       </Card>
 
-      {/* TEMA HEROICO (Mantido igual) */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center gap-2 font-black text-xs uppercase tracking-widest text-slate-400">
-            <Palette size={14} /> Tema do App
-          </div>
-        </CardHeader>
-        <CardBody className="p-6">
-          <div className="grid grid-cols-3 gap-3">
-            {themes.map(t => (
-              <button 
-                key={t.name}
-                onClick={() => handleThemeChange(t.name)}
-                className={`
-                  flex flex-col items-center gap-2 p-3 rounded-2xl border-2 transition-all
-                  ${heroTheme === t.name ? 'border-hero-primary bg-hero-primary/5 shadow-inner' : 'border-slate-50 hover:border-slate-100'}
-                `}
-              >
-                <div className="w-8 h-8 rounded-full" style={{ backgroundColor: t.color }}></div>
-                <span className="text-[10px] font-bold text-slate-500 uppercase">{t.label}</span>
-              </button>
-            ))}
-          </div>
-        </CardBody>
-      </Card>
+      {/* TEMA E APARÊNCIA */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Card className="h-full">
+          <CardHeader>
+            <div className="flex items-center gap-2 font-black text-xs uppercase tracking-widest text-slate-400">
+              <Palette size={14} /> Tema
+            </div>
+          </CardHeader>
+          <CardBody className="p-4">
+            <div className="grid grid-cols-3 gap-2">
+              {themes.map(t => (
+                <button 
+                  key={t.name}
+                  onClick={() => handleThemeChange(t.name)}
+                  className={`
+                    flex flex-col items-center gap-1 p-2 rounded-xl border-2 transition-all
+                    ${heroTheme === t.name ? 'border-hero-primary bg-hero-primary/5 shadow-inner' : 'border-slate-50 dark:border-slate-800 hover:border-slate-100'}
+                  `}
+                >
+                  <div className="w-6 h-6 rounded-full border dark:border-slate-600" style={{ backgroundColor: t.color }}></div>
+                </button>
+              ))}
+            </div>
+          </CardBody>
+        </Card>
 
-      {/* APARÊNCIA */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center gap-2 font-black text-xs uppercase tracking-widest text-slate-400">
-            <Monitor size={14} /> Aparência
-          </div>
-        </CardHeader>
-        <CardBody className="p-4 flex gap-2">
-            <button 
-              onClick={() => setMode('light')}
-              className={`flex-1 flex items-center justify-center gap-2 p-3 rounded-xl border-2 ${mode === 'light' ? 'border-hero-primary text-hero-primary' : 'border-slate-50 text-slate-400'}`}
-            >
-              <Sun size={18} /> <span className="text-xs font-bold uppercase">Claro</span>
-            </button>
-            <button 
-              onClick={() => setMode('dark')}
-              className={`flex-1 flex items-center justify-center gap-2 p-3 rounded-xl border-2 ${mode === 'dark' ? 'border-hero-primary text-hero-primary' : 'border-slate-50 text-slate-400'}`}
-            >
-              <Moon size={18} /> <span className="text-xs font-bold uppercase">Escuro</span>
-            </button>
-        </CardBody>
-      </Card>
+        <Card className="h-full">
+          <CardHeader>
+            <div className="flex items-center gap-2 font-black text-xs uppercase tracking-widest text-slate-400">
+              <Monitor size={14} /> Modo
+            </div>
+          </CardHeader>
+          <CardBody className="p-4 flex flex-col gap-2">
+              <button 
+                onClick={() => setMode('light')}
+                className={`flex items-center gap-3 p-3 rounded-xl border-2 transition-all ${mode === 'light' ? 'border-hero-primary text-hero-primary bg-hero-primary/5' : 'border-slate-50 dark:border-slate-800 text-slate-400'}`}
+              >
+                <Sun size={18} /> <span className="text-xs font-bold uppercase">Claro</span>
+              </button>
+              <button 
+                onClick={() => setMode('dark')}
+                className={`flex items-center gap-3 p-3 rounded-xl border-2 transition-all ${mode === 'dark' ? 'border-hero-primary text-hero-primary bg-hero-primary/5' : 'border-slate-50 dark:border-slate-800 text-slate-400'}`}
+              >
+                <Moon size={18} /> <span className="text-xs font-bold uppercase">Escuro</span>
+              </button>
+          </CardBody>
+        </Card>
+      </div>
 
       <div className="pt-4">
         <Button variant="danger" className="w-full py-4 rounded-2xl" onClick={() => logout()}>

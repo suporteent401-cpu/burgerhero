@@ -250,5 +250,14 @@ export const fakeApi = {
       users[idx].heroTheme = theme;
       saveToStorage(USERS_KEY, users);
     }
+  },
+
+  updateUserAvatar: async (userId: string, avatarUrl: string): Promise<void> => {
+    const users = getFromStorage<User>(USERS_KEY);
+    const idx = users.findIndex(u => u.id === userId);
+    if (idx >= 0) {
+      users[idx].avatarUrl = avatarUrl;
+      saveToStorage(USERS_KEY, users);
+    }
   }
 };
