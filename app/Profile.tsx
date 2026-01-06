@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Card, CardBody, CardHeader } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -13,7 +12,7 @@ const Profile: React.FC = () => {
   const { heroTheme, setHeroTheme, mode, setMode } = useThemeStore();
 
   const themes: { name: HeroTheme, color: string, label: string }[] = [
-    { name: 'sombra-noturna', color: '#a855f7', label: 'Sombra' },
+    { name: 'sombra-noturna', color: '#1e40af', label: 'Sombra' },
     { name: 'guardiao-escarlate', color: '#ef4444', label: 'Escarlate' },
     { name: 'tita-dourado', color: '#f59e0b', label: 'Dourado' },
     { name: 'tempestade-azul', color: '#3b82f6', label: 'Tempestade' },
