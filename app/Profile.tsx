@@ -31,12 +31,19 @@ const Profile: React.FC = () => {
 
   const [sub, setSub] = useState<Subscription | null>(null);
 
+  // Fix: Depend apenas do ID para buscar assinatura
   useEffect(() => {
-    if (user) {
+    if (user?.id) {
       fakeApi.getSubscriptionStatus(user.id).then(setSub);
+    }
+  }, [user?.id]);
+
+  // Fix: Atualiza editName apenas quando o nome do user mudar
+  useEffect(() => {
+    if (user?.name) {
       setEditName(user.name);
     }
-  }, [user]);
+  }, [user?.name]);
 
   const themes: { name: HeroTheme, color: string, label: string }[] = [
     { name: 'sombra-noturna', color: '#1e40af', label: 'Sombra' },
@@ -70,9 +77,10 @@ const Profile: React.FC = () => {
 
   const handleSaveName = async () => {
     if (!user || !editName.trim()) return;
-    await fakeApi.updateUserProfile(user.id, { name: editName });
+    // Optimistic update
     updateUser({ name: editName });
     setIsEditingName(false);
+    await fakeApi.updateUserProfile(user.id, { name: editName });
   };
 
   const handleCancelEdit = () => {

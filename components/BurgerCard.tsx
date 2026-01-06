@@ -28,7 +28,9 @@ const BurgerCard: React.FC<BurgerCardProps> = ({ burger, onClick }) => {
             src={burger.images[0]} 
             alt={burger.name}
             className={`w-full h-full object-cover group-hover:scale-110 transition-transform duration-500 ${loaded ? 'opacity-100' : 'opacity-0'}`}
-            onLoad={() => setLoaded(true)}
+            onLoad={() => {
+              if (!loaded) setLoaded(true);
+            }}
           />
           {!loaded && (
             <div className="absolute inset-0 bg-slate-200 dark:bg-slate-700 animate-pulse" />

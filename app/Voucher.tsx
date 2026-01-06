@@ -21,8 +21,9 @@ const Voucher: React.FC = () => {
   const capitalizedMonth = monthName.charAt(0).toUpperCase() + monthName.slice(1);
   const currentYear = currentDate.getFullYear();
 
+  // Fix: Use user.id instead of user object to prevent infinite loop
   useEffect(() => {
-    if (user) {
+    if (user?.id) {
       const monthKey = new Date().toISOString().slice(0, 7);
       Promise.all([
         fakeApi.getSubscriptionStatus(user.id),
@@ -33,7 +34,7 @@ const Voucher: React.FC = () => {
         setLoading(false);
       });
     }
-  }, [user]);
+  }, [user?.id]);
 
   if (loading) return (
     <div className="flex flex-col items-center justify-center min-h-[60vh] text-slate-400 gap-4">
@@ -62,7 +63,7 @@ const Voucher: React.FC = () => {
         </div>
       </div>
 
-      {/* Main Voucher Card - Reduzido Significativamente */}
+      {/* Main Voucher Card - Compacto */}
       <motion.div 
         initial={{ opacity: 0, scale: 0.98 }}
         animate={{ opacity: 1, scale: 1 }}
@@ -161,7 +162,7 @@ const Voucher: React.FC = () => {
                          </div>
                          <div>
                             <p className="text-xs font-bold text-slate-700 dark:text-slate-300">Resgate de Setembro</p>
-                            <p className="text-[10px] text-slate-400 dark:text-slate-500">Expirado</p>
+                            <p className="text-xs text-slate-400 dark:text-slate-500">Expirado</p>
                          </div>
                       </div>
                    </div>
