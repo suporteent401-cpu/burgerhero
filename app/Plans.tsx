@@ -22,6 +22,14 @@ const Plans: React.FC = () => {
         </button>
 
         <div className="text-center mb-16">
+          <motion.img
+            src="https://ik.imagekit.io/lflb43qwh/Heros/images.jpg"
+            alt="BurgerHero Logo"
+            className="w-24 h-24 rounded-full mx-auto mb-8 border-4 border-white shadow-lg"
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.5 }}
+          />
           <motion.h2 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
