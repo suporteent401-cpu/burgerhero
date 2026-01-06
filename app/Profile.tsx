@@ -1,11 +1,11 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Card, CardBody, CardHeader } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { useAuthStore } from '../store/authStore';
 import { useThemeStore } from '../store/themeStore';
 import { useCardStore, CARD_TEMPLATES } from '../store/cardStore';
-import { LogOut, Palette, Moon, Sun, Monitor, User as UserIcon, CreditCard, CheckCircle2 } from 'lucide-react';
-import { HeroTheme } from '../types';
+import { LogOut, Palette, Moon, Sun, Monitor, CreditCard, CheckCircle2 } from 'lucide-react';
+import { HeroTheme, Subscription } from '../types';
 import { fakeApi } from '../lib/fakeApi';
 import HeroCard from '../components/HeroCard';
 
@@ -13,6 +13,13 @@ const Profile: React.FC = () => {
   const { user, logout, updateUser } = useAuthStore();
   const { heroTheme, setHeroTheme, mode, setMode } = useThemeStore();
   const { selectedTemplateId, setTemplateId, getSelectedTemplate } = useCardStore();
+  const [sub, setSub] = useState<Subscription | null>(null);
+
+  useEffect(() => {
+    if (user) {
+      fakeApi.getSubscriptionStatus(user.id).then(setSub);
+    }
+  }, [user]);
 
   const themes: { name: HeroTheme, color: string, label: string }[] = [
     { name: 'sombra-noturna', color: '#1e40af', label: 'Sombra' },
@@ -41,22 +48,19 @@ const Profile: React.FC = () => {
         <p className="text-slate-400 font-medium text-sm">{user?.email}</p>
       </div>
 
-      {/* NOVA SEÇÃO: CARTÃO DO HERÓI */}
+      {/* SEÇÃO: CARTÃO DO HERÓI */}
       <Card>
         <CardHeader>
           <div className="flex items-center gap-2 font-black text-xs uppercase tracking-widest text-slate-400">
             <CreditCard size={14} /> Cartão do Herói
           </div>
         </CardHeader>
-        <CardBody className="p-6 space-y-6">
-          <div className="flex flex-col items-center">
-             <p className="text-sm font-bold text-slate-500 mb-4 self-start">Prévia Atual:</p>
-             <HeroCard user={user} imageUrl={getSelectedTemplate().imageUrl} />
-          </div>
-
+        <CardBody className="p-6 space-y-8">
+          
+          {/* Grid de Seleção */}
           <div>
             <p className="text-sm font-bold text-slate-500 mb-3">Escolha seu modelo:</p>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               {CARD_TEMPLATES.map((template) => {
                 const isSelected = selectedTemplateId === template.id;
                 return (
@@ -64,36 +68,42 @@ const Profile: React.FC = () => {
                     key={template.id}
                     onClick={() => setTemplateId(template.id)}
                     className={`
-                      relative group rounded-xl overflow-hidden transition-all duration-200
+                      relative rounded-xl overflow-hidden transition-all duration-200 aspect-[1.586/1]
                       ${isSelected ? 'ring-4 ring-hero-primary shadow-lg scale-[1.02]' : 'ring-1 ring-slate-200 hover:ring-slate-300'}
                     `}
                   >
-                    <div className="aspect-[1.586/1]">
-                      <img 
-                        src={template.imageUrl} 
-                        alt={template.name} 
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
+                    <img 
+                      src={template.imageUrl} 
+                      alt="Template" 
+                      className="w-full h-full object-cover"
+                    />
                     {isSelected && (
                       <div className="absolute inset-0 bg-hero-primary/20 flex items-center justify-center">
                         <div className="bg-white rounded-full p-1 shadow-sm">
-                          <CheckCircle2 size={20} className="text-hero-primary fill-white" />
+                          <CheckCircle2 size={16} className="text-hero-primary fill-white" />
                         </div>
                       </div>
                     )}
-                    <div className="absolute bottom-0 inset-x-0 bg-black/60 p-1.5 text-center">
-                      <p className="text-[10px] font-bold text-white uppercase truncate">{template.name}</p>
-                    </div>
                   </button>
                 )
               })}
             </div>
           </div>
+
+          {/* Prévia */}
+          <div className="flex flex-col items-center border-t border-slate-50 pt-6">
+             <p className="text-sm font-bold text-slate-500 mb-4 self-start">Prévia Atual:</p>
+             <HeroCard 
+               user={user} 
+               imageUrl={getSelectedTemplate().imageUrl} 
+               memberSince={sub?.currentPeriodStart}
+             />
+          </div>
+
         </CardBody>
       </Card>
 
-      {/* TEMA HEROICO (MANTIDO) */}
+      {/* TEMA HEROICO */}
       <Card>
         <CardHeader>
           <div className="flex items-center gap-2 font-black text-xs uppercase tracking-widest text-slate-400">
@@ -119,7 +129,7 @@ const Profile: React.FC = () => {
         </CardBody>
       </Card>
 
-      {/* APARÊNCIA (MANTIDO) */}
+      {/* APARÊNCIA */}
       <Card>
         <CardHeader>
           <div className="flex items-center gap-2 font-black text-xs uppercase tracking-widest text-slate-400">

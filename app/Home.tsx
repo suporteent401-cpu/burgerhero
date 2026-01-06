@@ -10,7 +10,7 @@ import HeroCard from '../components/HeroCard';
 
 const Home: React.FC = () => {
   const { user } = useAuthStore();
-  const { getSelectedTemplate } = useCardStore(); // Store de cartão
+  const { getSelectedTemplate } = useCardStore();
   const [sub, setSub] = useState<Subscription | null>(null);
   const [benefit, setBenefit] = useState<MonthlyBenefit | null>(null);
 
@@ -46,19 +46,13 @@ const Home: React.FC = () => {
         </Link>
       </div>
 
-      {/* Hero Card Section (Agora usando a URL do template selecionado e dados dentro do card) */}
+      {/* Hero Card Section */}
       <div className="py-2">
         <HeroCard 
           user={user} 
           imageUrl={cardTemplate.imageUrl} 
+          memberSince={sub?.currentPeriodStart}
         />
-        {/* Mostrando dados extras que foram retirados de DENTRO do cartão */}
-        <div className="mt-3 flex justify-between items-center px-2">
-          <p className="text-[10px] font-black uppercase text-slate-400 tracking-wider">
-            Membro desde: {sub ? new Date(sub.currentPeriodStart).toLocaleDateString() : '---'}
-          </p>
-          {/* Badge extra se necessário */}
-        </div>
       </div>
 
       {/* Status Info Grid */}
