@@ -64,7 +64,7 @@ const AdminDashboard: React.FC = () => {
       </div>
 
       {/* KPIs */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+      <div className="grid grid-cols-2 gap-4">
         {loading ? (
           Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)
         ) : (
