@@ -1,13 +1,13 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Card, CardBody, CardHeader } from './components/ui/Card';
-import { Button } from './components/ui/Button';
-import { useAuthStore } from './store/authStore';
-import { useThemeStore } from './store/themeStore';
-import { useCardStore, CARD_TEMPLATES, FONT_OPTIONS, COLOR_OPTIONS } from './store/cardStore';
+import { Card, CardBody, CardHeader } from '../components/ui/Card';
+import { Button } from '../components/ui/Button';
+import { useAuthStore } from '../store/authStore';
+import { useThemeStore } from '../store/themeStore';
+import { useCardStore, CARD_TEMPLATES, FONT_OPTIONS, COLOR_OPTIONS } from '../store/cardStore';
 import { LogOut, Palette, Moon, Sun, Monitor, CreditCard, CheckCircle2, Type, Camera, Pencil, Check, X } from 'lucide-react';
-import { HeroTheme, Subscription } from './types';
-import { fakeApi } from './lib/fakeApi';
-import HeroCard from './components/HeroCard';
+import { HeroTheme, Subscription } from '../types';
+import { fakeApi } from '../lib/fakeApi';
+import HeroCard from '../components/HeroCard';
 
 const Profile: React.FC = () => {
   const user = useAuthStore(state => state.user);
