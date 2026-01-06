@@ -4,28 +4,17 @@ import { User } from '../types';
 interface HeroCardProps {
   user: User | null;
   imageUrl: string;
-  memberSince?: string; // Data formatada ou string bruta
+  memberSince?: string; // Mantido para compatibilidade de interface, mas não usado visualmente
   className?: string;
 }
 
-const HeroCard: React.FC<HeroCardProps> = ({ user, imageUrl, memberSince, className = '' }) => {
-  // Formatação da data para "Membro desde: Mês de Ano"
-  const formatDate = (dateString?: string) => {
-    if (!dateString) return 'Membro Recente';
-    try {
-      const date = new Date(dateString);
-      return `Membro desde: ${date.toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' }).replace('.', '')}`;
-    } catch {
-      return 'Membro Recente';
-    }
-  };
-
+const HeroCard: React.FC<HeroCardProps> = ({ user, imageUrl, className = '' }) => {
   return (
     <div className={`w-full max-w-[420px] mx-auto ${className}`}>
-      {/* Container Principal: Proporção de cartão de crédito, cantos arredondados, sem overflow */}
-      <div className="relative aspect-[1.586/1] w-full rounded-2xl shadow-xl overflow-hidden bg-slate-900 isolate">
+      {/* Container Principal: Aspecto Cartão de Crédito, Borda Sutil, Sombra Física */}
+      <div className="relative aspect-[1.586/1] w-full rounded-2xl shadow-xl overflow-hidden ring-1 ring-black/10 isolate bg-slate-900">
         
-        {/* 1. Imagem de Fundo (Ocupa tudo, sem efeitos) */}
+        {/* 1. Imagem de Fundo (Edge-to-Edge 100%) */}
         <img
           src={imageUrl}
           alt="Cartão Hero"
@@ -33,35 +22,20 @@ const HeroCard: React.FC<HeroCardProps> = ({ user, imageUrl, memberSince, classN
           style={{ filter: 'none' }}
         />
 
-        {/* 2. Logo BurgerHero (Canto Superior Direito) */}
-        <div className="absolute top-4 right-4 z-10">
+        {/* 2. Logo BurgerHero (Canto Superior Direito - Mantido para branding) */}
+        <div className="absolute top-5 right-5 z-10">
           <img 
             src="https://ik.imagekit.io/lflb43qwh/Heros/images.jpg" 
             alt="Logo" 
-            className="w-10 h-10 rounded-full border-2 border-white shadow-sm"
+            className="w-10 h-10 rounded-full border-2 border-white/30 shadow-sm"
           />
         </div>
 
-        {/* 3. Bloco de Informações (Canto Inferior Esquerdo com fundo local) */}
-        <div className="absolute bottom-4 left-4 max-w-[85%] z-10">
-          <div className="bg-black/60 backdrop-blur-sm rounded-xl p-3 text-white border border-white/10 shadow-lg">
-            {/* Nome do Usuário */}
-            <p className="text-lg font-black tracking-tight leading-tight mb-1 truncate">
-              {user?.name || 'Visitante'}
-            </p>
-            
-            <div className="flex flex-col gap-0.5">
-              {/* ID do Herói */}
-              <p className="text-xs font-mono font-bold text-slate-300 tracking-wider">
-                ID: {user?.customerCode || 'HE-----'}
-              </p>
-              
-              {/* Data de Assinatura */}
-              <p className="text-[10px] font-medium text-slate-400 uppercase tracking-wide">
-                {formatDate(memberSince)}
-              </p>
-            </div>
-          </div>
+        {/* 3. Apenas Nome do Usuário (Direto na imagem, sem fundo, font-normal) */}
+        <div className="absolute bottom-6 left-6 z-10 pr-4">
+          <p className="text-xl md:text-2xl font-normal text-white tracking-wide drop-shadow-md truncate">
+            {user?.name || 'Visitante'}
+          </p>
         </div>
 
       </div>
