@@ -54,7 +54,7 @@ const QRCodePage: React.FC = () => {
              <img 
                src={template.imageUrl} 
                alt="Card Background" 
-               className="absolute inset-0 w-full h-full object-cover"
+               className="absolute inset-0 w-full h-full object-cover scale-[1.35]"
              />
              {/* Overlay Escuro para Contraste */}
              <div className="absolute inset-0 bg-black/30"></div>
