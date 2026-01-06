@@ -1,13 +1,13 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Card, CardBody, CardHeader } from '../components/ui/Card';
-import { Button } from '../components/ui/Button';
-import { useAuthStore } from '../store/authStore';
-import { useThemeStore } from '../store/themeStore';
-import { useCardStore, CARD_TEMPLATES, FONT_OPTIONS, COLOR_OPTIONS } from '../store/cardStore';
+import { Card, CardBody, CardHeader } from './components/ui/Card';
+import { Button } from './components/ui/Button';
+import { useAuthStore } from './store/authStore';
+import { useThemeStore } from './store/themeStore';
+import { useCardStore, CARD_TEMPLATES, FONT_OPTIONS, COLOR_OPTIONS } from './store/cardStore';
 import { LogOut, Palette, Moon, Sun, Monitor, CreditCard, CheckCircle2, Type, Camera, Pencil, Check, X } from 'lucide-react';
-import { HeroTheme, Subscription } from '../types';
-import { fakeApi } from '../lib/fakeApi';
-import HeroCard from '../components/HeroCard';
+import { HeroTheme, Subscription } from './types';
+import { fakeApi } from './lib/fakeApi';
+import HeroCard from './components/HeroCard';
 
 const Profile: React.FC = () => {
   const user = useAuthStore(state => state.user);
@@ -46,10 +46,10 @@ const Profile: React.FC = () => {
 
   // Sync editName when user name changes externally or on load, but only if not editing
   useEffect(() => {
-    if (!isEditingName && user?.name) {
+    if (!isEditingName && user?.name && user.name !== editName) {
       setEditName(user.name);
     }
-  }, [user?.name, isEditingName]);
+  }, [user?.name, isEditingName, editName]);
 
   const themes: { name: HeroTheme, color: string, label: string }[] = [
     { name: 'sombra-noturna', color: '#1e40af', label: 'Sombra' },

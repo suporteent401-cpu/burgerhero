@@ -15,6 +15,7 @@ import Checkout from './app/Checkout';
 import Home from './app/Home';
 import QRCodePage from './app/QRCodePage';
 import Voucher from './app/Voucher';
+import Burgers from './app/Burgers';
 import Profile from './app/Profile';
 import AdminDashboard from './app/AdminDashboard';
 import AdminUsers from './app/AdminUsers';
@@ -24,7 +25,8 @@ import Debug from './app/Debug';
 
 // Role Protection Component
 const ProtectedRoute = ({ children, allowedRoles }: { children?: React.ReactNode, allowedRoles?: string[] }) => {
-  const { isAuthed, user } = useAuthStore();
+  const isAuthed = useAuthStore(state => state.isAuthed);
+  const user = useAuthStore(state => state.user);
   
   if (!isAuthed) return <Navigate to="/auth" replace />;
   if (allowedRoles && user && !allowedRoles.includes(user.role)) {
@@ -37,7 +39,8 @@ const ProtectedRoute = ({ children, allowedRoles }: { children?: React.ReactNode
 };
 
 const App: React.FC = () => {
-  const { applyTheme } = useThemeStore();
+  // Use selector to only subscribe to applyTheme
+  const applyTheme = useThemeStore(state => state.applyTheme);
 
   useEffect(() => {
     applyTheme();
@@ -58,7 +61,7 @@ const App: React.FC = () => {
           <Route index element={<Home />} />
           <Route path="qrcode" element={<QRCodePage />} />
           <Route path="voucher" element={<Voucher />} />
-          <Route path="burgers" element={<div className="p-10 text-center font-bold text-slate-400">Em breve novos burgers épicos!</div>} />
+          <Route path="burgers" element={<Burgers />} />
           <Route path="profile" element={<Profile />} />
         </Route>
 
