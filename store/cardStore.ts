@@ -7,13 +7,13 @@ export interface CardTemplate {
 }
 
 export const CARD_TEMPLATES: CardTemplate[] = [
-  { id: 'hero-1', imageUrl: 'https://ik.imagekit.io/lflb43qwh/Heros/1.png' },
-  { id: 'hero-2', imageUrl: 'https://ik.imagekit.io/lflb43qwh/Heros/2.png' },
-  { id: 'hero-3', imageUrl: 'https://ik.imagekit.io/lflb43qwh/Heros/3.png' },
-  { id: 'hero-4', imageUrl: 'https://ik.imagekit.io/lflb43qwh/Heros/4.png' },
-  { id: 'hero-5', imageUrl: 'https://ik.imagekit.io/lflb43qwh/Heros/5.png' },
-  { id: 'hero-6', imageUrl: 'https://ik.imagekit.io/lflb43qwh/Heros/6.png' },
-  { id: 'hero-7', imageUrl: 'https://ik.imagekit.io/lflb43qwh/Heros/7.png' },
+  { id: 'hero-1', imageUrl: 'https://ik.imagekit.io/lflb43qwh/Heros/1.png?v=2' },
+  { id: 'hero-2', imageUrl: 'https://ik.imagekit.io/lflb43qwh/Heros/2.png?v=2' },
+  { id: 'hero-3', imageUrl: 'https://ik.imagekit.io/lflb43qwh/Heros/3.png?v=2' },
+  { id: 'hero-4', imageUrl: 'https://ik.imagekit.io/lflb43qwh/Heros/4.png?v=2' },
+  { id: 'hero-5', imageUrl: 'https://ik.imagekit.io/lflb43qwh/Heros/5.png?v=2' },
+  { id: 'hero-6', imageUrl: 'https://ik.imagekit.io/lflb43qwh/Heros/6.png?v=2' },
+  { id: 'hero-7', imageUrl: 'https://ik.imagekit.io/lflb43qwh/Heros/7.png?v=2' },
 ];
 
 export const FONT_OPTIONS = [
