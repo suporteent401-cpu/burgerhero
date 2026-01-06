@@ -4,7 +4,8 @@ import { LayoutDashboard, Users, CreditCard, Tag, LogOut, ChevronDown } from 'lu
 import { useAuthStore } from '../store/authStore';
 
 const AdminLayout: React.FC = () => {
-  const { user, logout } = useAuthStore(s => ({ user: s.user, logout: s.logout }));
+  const user = useAuthStore(s => s.user);
+  const logout = useAuthStore(s => s.logout);
   const navigate = useNavigate();
   const location = useLocation();
 

@@ -9,7 +9,7 @@ import { Link } from 'react-router-dom';
 import HeroCard from '../components/HeroCard';
 
 const Home: React.FC = () => {
-  const { user } = useAuthStore();
+  const user = useAuthStore(state => state.user);
   const { getSelectedTemplate, selectedFont, selectedColor } = useCardStore();
   const [sub, setSub] = useState<Subscription | null>(null);
   const [benefit, setBenefit] = useState<MonthlyBenefit | null>(null);
