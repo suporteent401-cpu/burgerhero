@@ -7,6 +7,7 @@ import { Card, CardBody } from '../components/ui/Card';
 import { Mail, Lock, User as UserIcon, Calendar, Phone, CreditCard } from 'lucide-react';
 import { fakeApi } from '../lib/fakeApi';
 import { useAuthStore } from '../store/authStore';
+import { motion } from 'framer-motion';
 
 const Auth: React.FC = () => {
   const [isLogin, setIsLogin] = useState(true);
@@ -50,24 +51,29 @@ const Auth: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col justify-center items-center px-4 py-12">
-      <div className="w-full max-w-md">
+    <div className="min-h-screen hero-gradient flex flex-col justify-center items-center px-4 py-12">
+      <motion.div 
+        className="w-full max-w-md"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+      >
         <div className="text-center mb-10">
           <img 
             src="https://ik.imagekit.io/lflb43qwh/Heros/images.jpg" 
             alt="BurgerHero Logo" 
-            className="w-24 h-24 rounded-full mx-auto mb-6 border-4 border-white shadow-lg" 
+            className="w-24 h-24 rounded-full mx-auto mb-6 border-4 border-white/20 shadow-lg" 
           />
-          <h1 className="text-3xl font-black mb-2 tracking-tight">
+          <h1 className="text-3xl font-black mb-2 tracking-tight text-white">
             Burger<span className="text-hero-primary">Hero</span>
           </h1>
-          <p className="text-slate-500 font-medium">
+          <p className="text-slate-400 font-medium">
             {isLogin ? 'Bem-vindo de volta, Herói!' : 'Crie sua identidade secreta'}
           </p>
         </div>
 
         <Card>
-          <CardBody className="space-y-6">
+          <CardBody className="p-8 space-y-6">
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
               {isLogin ? (
                 <>
@@ -136,7 +142,8 @@ const Auth: React.FC = () => {
 
               <Button 
                 type="submit" 
-                className="w-full rounded-full py-2" 
+                className="w-full rounded-full py-3" 
+                size="md"
                 isLoading={loading}
               >
                 {!isLogin && step === 1 ? 'Próximo Passo' : (isLogin ? 'Entrar' : 'Finalizar Cadastro')}
@@ -156,7 +163,7 @@ const Auth: React.FC = () => {
             </button>
           </CardBody>
         </Card>
-      </div>
+      </motion.div>
     </div>
   );
 };
