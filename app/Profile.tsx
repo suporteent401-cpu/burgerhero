@@ -3,13 +3,16 @@ import { Card, CardBody, CardHeader } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { useAuthStore } from '../store/authStore';
 import { useThemeStore } from '../store/themeStore';
-import { LogOut, Palette, Moon, Sun, Monitor, User as UserIcon } from 'lucide-react';
+import { useCardStore, CARD_TEMPLATES } from '../store/cardStore';
+import { LogOut, Palette, Moon, Sun, Monitor, User as UserIcon, CreditCard, CheckCircle2 } from 'lucide-react';
 import { HeroTheme } from '../types';
 import { fakeApi } from '../lib/fakeApi';
+import HeroCard from '../components/HeroCard';
 
 const Profile: React.FC = () => {
   const { user, logout, updateUser } = useAuthStore();
   const { heroTheme, setHeroTheme, mode, setMode } = useThemeStore();
+  const { selectedTemplateId, setTemplateId, getSelectedTemplate } = useCardStore();
 
   const themes: { name: HeroTheme, color: string, label: string }[] = [
     { name: 'sombra-noturna', color: '#1e40af', label: 'Sombra' },
@@ -29,22 +32,72 @@ const Profile: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-10">
       <div className="flex flex-col items-center">
         <div className="w-24 h-24 rounded-3xl border-4 border-white shadow-xl bg-slate-200 overflow-hidden mb-4 relative">
           <img src={user?.avatarUrl || 'https://picsum.photos/seed/hero/200'} alt="Profile" className="w-full h-full object-cover" />
-          <button className="absolute bottom-1 right-1 bg-hero-primary p-1.5 rounded-lg text-white shadow-lg">
-            <UserIcon size={12} fill="currentColor" />
-          </button>
         </div>
         <h2 className="text-xl font-black">{user?.name}</h2>
         <p className="text-slate-400 font-medium text-sm">{user?.email}</p>
       </div>
 
+      {/* NOVA SEÇÃO: CARTÃO DO HERÓI */}
       <Card>
         <CardHeader>
           <div className="flex items-center gap-2 font-black text-xs uppercase tracking-widest text-slate-400">
-            <Palette size={14} /> Tema Heroico
+            <CreditCard size={14} /> Cartão do Herói
+          </div>
+        </CardHeader>
+        <CardBody className="p-6 space-y-6">
+          <div className="flex flex-col items-center">
+             <p className="text-sm font-bold text-slate-500 mb-4 self-start">Prévia Atual:</p>
+             <HeroCard user={user} imageUrl={getSelectedTemplate().imageUrl} />
+          </div>
+
+          <div>
+            <p className="text-sm font-bold text-slate-500 mb-3">Escolha seu modelo:</p>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+              {CARD_TEMPLATES.map((template) => {
+                const isSelected = selectedTemplateId === template.id;
+                return (
+                  <button
+                    key={template.id}
+                    onClick={() => setTemplateId(template.id)}
+                    className={`
+                      relative group rounded-xl overflow-hidden transition-all duration-200
+                      ${isSelected ? 'ring-4 ring-hero-primary shadow-lg scale-[1.02]' : 'ring-1 ring-slate-200 hover:ring-slate-300'}
+                    `}
+                  >
+                    <div className="aspect-[1.586/1]">
+                      <img 
+                        src={template.imageUrl} 
+                        alt={template.name} 
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                    {isSelected && (
+                      <div className="absolute inset-0 bg-hero-primary/20 flex items-center justify-center">
+                        <div className="bg-white rounded-full p-1 shadow-sm">
+                          <CheckCircle2 size={20} className="text-hero-primary fill-white" />
+                        </div>
+                      </div>
+                    )}
+                    <div className="absolute bottom-0 inset-x-0 bg-black/60 p-1.5 text-center">
+                      <p className="text-[10px] font-bold text-white uppercase truncate">{template.name}</p>
+                    </div>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        </CardBody>
+      </Card>
+
+      {/* TEMA HEROICO (MANTIDO) */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2 font-black text-xs uppercase tracking-widest text-slate-400">
+            <Palette size={14} /> Tema do App
           </div>
         </CardHeader>
         <CardBody className="p-6">
@@ -66,6 +119,7 @@ const Profile: React.FC = () => {
         </CardBody>
       </Card>
 
+      {/* APARÊNCIA (MANTIDO) */}
       <Card>
         <CardHeader>
           <div className="flex items-center gap-2 font-black text-xs uppercase tracking-widest text-slate-400">

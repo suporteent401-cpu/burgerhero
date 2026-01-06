@@ -1,64 +1,64 @@
 import React from 'react';
-import { User, HeroTheme } from '../types';
+import { User } from '../types';
 
 interface HeroCardProps {
   user: User | null;
-  memberSince?: string;
+  imageUrl: string; // URL direta da imagem (vinda do store)
   className?: string;
 }
 
-const heroCardImages: Record<HeroTheme, string> = {
-  'sombra-noturna': 'https://ik.imagekit.io/lflb43qwh/Heros/1.png',
-  'guardiao-escarlate': 'https://ik.imagekit.io/lflb43qwh/Heros/2.png',
-  'tita-dourado': 'https://ik.imagekit.io/lflb43qwh/Heros/4.png',
-  'tempestade-azul': 'https://ik.imagekit.io/lflb43qwh/Heros/1.png', // Placeholder
-  'sentinela-verde': 'https://ik.imagekit.io/lflb43qwh/Heros/4.png', // Placeholder
-  'aurora-rosa': 'https://ik.imagekit.io/lflb43qwh/Heros/2.png', // Placeholder
-};
-
-const HeroCard: React.FC<HeroCardProps> = ({ user, memberSince, className = '' }) => {
-  const theme = user?.heroTheme || 'sombra-noturna';
-  const imageUrl = heroCardImages[theme];
-
-  const getFormattedDate = (dateString?: string) => {
-    if (!dateString) return 'Recente';
-    const date = new Date(dateString);
-    const formatted = date.toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' });
-    return formatted.replace('.', '').charAt(0).toUpperCase() + formatted.slice(1);
-  };
-
+const HeroCard: React.FC<HeroCardProps> = ({ user, imageUrl, className = '' }) => {
   return (
     <div className={`w-full max-w-[360px] mx-auto ${className}`}>
       {/* 
-        CARTÃO FÍSICO 
-        - Sem animações (hover/scale removidos)
-        - Sem overlay/gradiente
-        - Imagem original intacta via <img>
-        - Aspect ratio fixo de cartão
-        - object-contain para não cortar
+        CONTAINER DO CARTÃO FÍSICO
+        - aspect-[1.586/1]: Proporção padrão de cartão de crédito
+        - relative: para posicionar textos absolutos
+        - rounded-2xl: bordas arredondadas físicas
+        - shadow-xl: sombra para dar profundidade
+        - overflow-hidden: garantir que a imagem não vaze as bordas
+        - isolation-isolate: garante que blend-modes externos não afetem este componente
       */}
-      <div className="relative aspect-[1.586/1] rounded-2xl overflow-hidden shadow-xl bg-transparent">
+      <div className="relative aspect-[1.586/1] w-full rounded-2xl shadow-xl overflow-hidden bg-slate-900 isolate">
+        
+        {/* IMAGEM DO CARTÃO (Background Art) */}
+        {/* object-cover garante que preencha tudo sem distorcer. Se a arte for crítica nas bordas, usar contain, mas cover é melhor para 'cartão fisico' */}
         <img
           src={imageUrl}
-          alt={`Cartão tema ${theme}`}
-          className="w-full h-full object-contain select-none pointer-events-none"
+          alt="Cartão do Herói"
+          className="absolute inset-0 w-full h-full object-cover select-none pointer-events-none z-0"
+          style={{ filter: 'none' }} // Força remoção de filtros herdados
         />
-      </div>
 
-      {/* DADOS ABAIXO DO CARTÃO (Para não sujar a arte) */}
-      <div className="mt-4 px-1 flex justify-between items-end">
-        <div>
-          <p className="text-[10px] uppercase tracking-widest text-slate-400 font-bold mb-0.5">Identidade</p>
-          <p className="text-sm font-black text-slate-800">{user?.name || 'Visitante'}</p>
-          <p className="text-xs font-mono text-slate-500 font-bold mt-0.5">{user?.customerCode || 'HE-----'}</p>
+        {/* OVERLAY DE LEITURA (Gradiente suave apenas na parte inferior para o texto aparecer) */}
+        <div className="absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/80 to-transparent z-10 pointer-events-none" />
+
+        {/* CONTEÚDO DE TEXTO (Dentro do cartão) */}
+        <div className="absolute bottom-4 left-5 right-5 z-20 text-white">
+          
+          {/* Nome do Cliente */}
+          <p className="text-lg font-black tracking-tight leading-tight drop-shadow-md">
+            {user?.name || 'Visitante'}
+          </p>
+
+          {/* ID e Label */}
+          <div className="flex items-center gap-2 mt-0.5 opacity-90">
+            <span className="text-[10px] uppercase font-bold tracking-widest border border-white/30 px-1.5 rounded bg-black/20 backdrop-blur-sm">
+              ID
+            </span>
+            <p className="text-sm font-mono font-bold tracking-wider drop-shadow-sm">
+              {user?.customerCode || 'HE-----'}
+            </p>
+          </div>
         </div>
         
-        <div className="text-right">
-          <p className="text-[10px] uppercase tracking-widest text-slate-400 font-bold mb-0.5">Membro Desde</p>
-          <p className="text-xs font-bold text-slate-700">
-            {getFormattedDate(memberSince)}
-          </p>
+        {/* Detalhe Decorativo (Chip simulado ou Logo pequena no topo) */}
+        <div className="absolute top-4 right-5 z-20">
+           <div className="w-8 h-8 rounded-full border-2 border-white/30 bg-white/10 backdrop-blur-md flex items-center justify-center">
+             <div className="w-4 h-4 bg-white/80 rounded-full shadow-[0_0_10px_rgba(255,255,255,0.8)]"></div>
+           </div>
         </div>
+
       </div>
     </div>
   );

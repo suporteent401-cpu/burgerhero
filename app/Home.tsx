@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Card, CardBody } from '../components/ui/Card';
 import { useAuthStore } from '../store/authStore';
+import { useCardStore } from '../store/cardStore';
 import { fakeApi } from '../lib/fakeApi';
 import { Subscription, MonthlyBenefit } from '../types';
 import { Clock, Ticket, Utensils, ChevronRight, QrCode } from 'lucide-react';
@@ -9,8 +10,11 @@ import HeroCard from '../components/HeroCard';
 
 const Home: React.FC = () => {
   const { user } = useAuthStore();
+  const { getSelectedTemplate } = useCardStore(); // Store de cartão
   const [sub, setSub] = useState<Subscription | null>(null);
   const [benefit, setBenefit] = useState<MonthlyBenefit | null>(null);
+
+  const cardTemplate = getSelectedTemplate();
 
   useEffect(() => {
     if (user) {
@@ -42,9 +46,19 @@ const Home: React.FC = () => {
         </Link>
       </div>
 
-      {/* Hero Card Section */}
+      {/* Hero Card Section (Agora usando a URL do template selecionado e dados dentro do card) */}
       <div className="py-2">
-        <HeroCard user={user} memberSince={sub?.currentPeriodStart} />
+        <HeroCard 
+          user={user} 
+          imageUrl={cardTemplate.imageUrl} 
+        />
+        {/* Mostrando dados extras que foram retirados de DENTRO do cartão */}
+        <div className="mt-3 flex justify-between items-center px-2">
+          <p className="text-[10px] font-black uppercase text-slate-400 tracking-wider">
+            Membro desde: {sub ? new Date(sub.currentPeriodStart).toLocaleDateString() : '---'}
+          </p>
+          {/* Badge extra se necessário */}
+        </div>
       </div>
 
       {/* Status Info Grid */}
