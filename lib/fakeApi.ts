@@ -259,5 +259,14 @@ export const fakeApi = {
       users[idx].avatarUrl = avatarUrl;
       saveToStorage(USERS_KEY, users);
     }
+  },
+
+  updateUserProfile: async (userId: string, data: Partial<User>): Promise<void> => {
+    const users = getFromStorage<User>(USERS_KEY);
+    const idx = users.findIndex(u => u.id === userId);
+    if (idx >= 0) {
+      users[idx] = { ...users[idx], ...data };
+      saveToStorage(USERS_KEY, users);
+    }
   }
 };

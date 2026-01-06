@@ -4,7 +4,7 @@ import { Button } from '../components/ui/Button';
 import { useAuthStore } from '../store/authStore';
 import { useThemeStore } from '../store/themeStore';
 import { useCardStore, CARD_TEMPLATES, FONT_OPTIONS, COLOR_OPTIONS } from '../store/cardStore';
-import { LogOut, Palette, Moon, Sun, Monitor, CreditCard, CheckCircle2, Type, Camera, Upload } from 'lucide-react';
+import { LogOut, Palette, Moon, Sun, Monitor, CreditCard, CheckCircle2, Type, Camera, Pencil, Check, X } from 'lucide-react';
 import { HeroTheme, Subscription } from '../types';
 import { fakeApi } from '../lib/fakeApi';
 import HeroCard from '../components/HeroCard';
@@ -13,6 +13,10 @@ const Profile: React.FC = () => {
   const { user, logout, updateUser } = useAuthStore();
   const { heroTheme, setHeroTheme, mode, setMode } = useThemeStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // Name Edit State
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [editName, setEditName] = useState('');
   
   // Card Store hooks
   const { 
@@ -30,6 +34,7 @@ const Profile: React.FC = () => {
   useEffect(() => {
     if (user) {
       fakeApi.getSubscriptionStatus(user.id).then(setSub);
+      setEditName(user.name);
     }
   }, [user]);
 
@@ -63,18 +68,32 @@ const Profile: React.FC = () => {
     }
   };
 
+  const handleSaveName = async () => {
+    if (!user || !editName.trim()) return;
+    await fakeApi.updateUserProfile(user.id, { name: editName });
+    updateUser({ name: editName });
+    setIsEditingName(false);
+  };
+
+  const handleCancelEdit = () => {
+    setIsEditingName(false);
+    setEditName(user?.name || '');
+  };
+
   return (
     <div className="space-y-6 pb-10">
       
-      {/* CABEÇALHO DO PERFIL COM UPLOAD */}
+      {/* CABEÇALHO DO PERFIL COM UPLOAD E EDIÇÃO DE NOME */}
       <div className="flex flex-col items-center">
-        <div className="relative">
+        <div className="relative group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
           <div className="w-28 h-28 rounded-full border-4 border-white dark:border-slate-800 shadow-xl bg-slate-200 overflow-hidden relative">
             <img src={user?.avatarUrl || 'https://picsum.photos/seed/hero/200'} alt="Profile" className="w-full h-full object-cover" />
           </div>
+          <div className="absolute inset-0 bg-black/30 rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+             <Camera size={24} className="text-white" />
+          </div>
           <button 
-            onClick={() => fileInputRef.current?.click()}
-            className="absolute bottom-0 right-0 bg-hero-primary text-white p-2 rounded-full shadow-lg hover:scale-110 transition-transform"
+            className="absolute bottom-0 right-0 bg-hero-primary text-white p-2 rounded-full shadow-lg hover:scale-110 transition-transform pointer-events-none"
           >
             <Camera size={16} />
           </button>
@@ -86,8 +105,38 @@ const Profile: React.FC = () => {
             onChange={handleFileChange}
           />
         </div>
-        <h2 className="text-xl font-black mt-3 dark:text-white">{user?.name}</h2>
-        <p className="text-slate-400 font-medium text-sm">{user?.email}</p>
+        
+        {/* Edição de Nome */}
+        <div className="mt-4 flex flex-col items-center w-full">
+          {isEditingName ? (
+             <div className="flex items-center justify-center gap-2 w-full max-w-[280px]">
+                <input
+                  className="bg-transparent border-b-2 border-hero-primary text-xl font-black text-center text-slate-800 dark:text-white focus:outline-none w-full px-2 py-1"
+                  value={editName}
+                  onChange={e => setEditName(e.target.value)}
+                  autoFocus
+                  onKeyDown={e => e.key === 'Enter' && handleSaveName()}
+                />
+                <div className="flex gap-1 shrink-0">
+                  <button onClick={handleSaveName} className="p-1.5 bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded-full hover:bg-green-200 dark:hover:bg-green-900/50 transition-colors">
+                    <Check size={16}/>
+                  </button>
+                  <button onClick={handleCancelEdit} className="p-1.5 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-full hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors">
+                    <X size={16}/>
+                  </button>
+                </div>
+             </div>
+          ) : (
+            <div 
+              className="flex items-center gap-2 group cursor-pointer p-1 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors pr-3 pl-3"
+              onClick={() => setIsEditingName(true)}
+            >
+              <h2 className="text-xl font-black dark:text-white">{user?.name}</h2>
+              <Pencil size={14} className="text-slate-400 group-hover:text-hero-primary transition-colors" />
+            </div>
+          )}
+          <p className="text-slate-400 font-medium text-sm mt-1">{user?.email}</p>
+        </div>
       </div>
 
       {/* SEÇÃO: CARTÃO DO HERÓI */}
