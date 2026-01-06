@@ -8,7 +8,7 @@ const Landing: React.FC = () => {
   return (
     <div className="min-h-screen bg-white">
       {/* Hero Section */}
-      <section className="relative h-[85vh] flex flex-col justify-center items-center text-center px-4 hero-gradient text-white overflow-hidden">
+      <section className="relative min-h-[85vh] flex flex-col justify-center items-center text-center px-4 py-20 hero-gradient text-white overflow-hidden">
         <motion.div 
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
