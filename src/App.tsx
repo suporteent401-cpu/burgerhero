@@ -25,7 +25,8 @@ import Debug from './app/Debug';
 
 // Role Protection Component
 const ProtectedRoute = ({ children, allowedRoles }: { children?: React.ReactNode, allowedRoles?: string[] }) => {
-  const { isAuthed, user } = useAuthStore();
+  const isAuthed = useAuthStore(state => state.isAuthed);
+  const user = useAuthStore(state => state.user);
   
   if (!isAuthed) return <Navigate to="/auth" replace />;
   if (allowedRoles && user && !allowedRoles.includes(user.role)) {
@@ -38,7 +39,8 @@ const ProtectedRoute = ({ children, allowedRoles }: { children?: React.ReactNode
 };
 
 const App: React.FC = () => {
-  const { applyTheme } = useThemeStore();
+  // Use selector to only subscribe to applyTheme
+  const applyTheme = useThemeStore(state => state.applyTheme);
 
   useEffect(() => {
     applyTheme();

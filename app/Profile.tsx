@@ -38,9 +38,9 @@ const Profile: React.FC = () => {
     }
   }, [user?.id]);
 
-  // Fix: Atualiza editName apenas quando o nome do user mudar
+  // Fix: Atualiza editName apenas quando o nome do user mudar e for diferente
   useEffect(() => {
-    if (user?.name) {
+    if (user?.name && user.name !== editName) {
       setEditName(user.name);
     }
   }, [user?.name]);
