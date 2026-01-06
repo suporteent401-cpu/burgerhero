@@ -37,7 +37,7 @@ const Landing: React.FC = () => {
               <Button size="lg" className="w-auto">Assinar Agora</Button>
             </Link>
             <Link to="/auth">
-              <Button size="lg" className="w-auto bg-white text-slate-900 hover:bg-slate-200">Já sou assinante</Button>
+              <Button variant="danger" size="lg" className="w-auto">Já sou assinante</Button>
             </Link>
           </div>
         </motion.div>
