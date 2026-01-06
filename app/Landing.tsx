@@ -1,13 +1,13 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '../components/ui/Button';
-import { ShieldCheck, Zap, Star, Instagram, Facebook, Globe, Utensils } from 'lucide-react';
+import { ShieldCheck, Zap, Star, Instagram, Facebook, Globe, Burger } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Card, CardBody } from '../components/ui/Card';
 
 const Landing: React.FC = () => {
   const benefits = [
-    { icon: Utensils, title: 'Burger Mensal', desc: 'Todo mês um novo hambúrguer épico disponível para você resgatar na loja.' },
+    { icon: Burger, title: 'Burger Mensal', desc: 'Todo mês um novo hambúrguer épico disponível para você resgatar na loja.' },
     { icon: Zap, title: 'Atendimento Flash', desc: 'Fila exclusiva para heróis em todas as nossas unidades parceiras.' },
     { icon: ShieldCheck, title: 'Proteção de Preço', desc: 'Assinantes nunca sofrem com reajustes sazonais de menu.' },
   ];
