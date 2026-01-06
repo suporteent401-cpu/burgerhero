@@ -3,6 +3,7 @@ import { Burger } from '../lib/burgersCatalog';
 import { Modal } from './ui/Modal';
 import { Button } from './ui/Button';
 import { Heart, Share2, Info } from 'lucide-react';
+import { useFavorites } from '../hooks/useFavorites';
 
 interface BurgerDetailsModalProps {
   burger: Burger | null;
@@ -12,8 +13,15 @@ interface BurgerDetailsModalProps {
 
 const BurgerDetailsModal: React.FC<BurgerDetailsModalProps> = ({ burger, isOpen, onClose }) => {
   const [selectedImage, setSelectedImage] = useState(0);
+  const { isFavorite, toggleFavorite } = useFavorites();
 
   if (!burger) return null;
+
+  const isFav = isFavorite(burger.id);
+
+  const handleFavorite = () => {
+    toggleFavorite(burger.id);
+  };
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Detalhes do Herói">
@@ -81,8 +89,12 @@ const BurgerDetailsModal: React.FC<BurgerDetailsModalProps> = ({ burger, isOpen,
           <Button onClick={onClose} className="rounded-xl">
             Fechar
           </Button>
-          <Button variant="secondary" className="rounded-xl px-4" onClick={() => alert('Adicionado aos favoritos!')}>
-            <Heart size={20} />
+          <Button 
+            variant="secondary" 
+            className={`rounded-xl px-4 ${isFav ? 'bg-red-50 text-red-500 border-red-200 dark:bg-red-900/20 dark:border-red-900' : ''}`} 
+            onClick={handleFavorite}
+          >
+            <Heart size={20} className={isFav ? 'fill-current' : ''} />
           </Button>
           <Button variant="secondary" className="rounded-xl px-4">
             <Share2 size={20} />

@@ -1,34 +1,61 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Burger } from '../lib/burgersCatalog';
-import { Plus, Flame } from 'lucide-react';
+import { Plus, Flame, Sparkles, Heart } from 'lucide-react';
 import { Card, CardBody } from './ui/Card';
 
 interface BurgerCardProps {
   burger: Burger;
+  isFavorite: boolean;
+  onToggleFavorite: (e: React.MouseEvent) => void;
   onClick: () => void;
 }
 
-const BurgerCard: React.FC<BurgerCardProps> = ({ burger, onClick }) => {
-  return (
-    <div onClick={onClick} className="group cursor-pointer h-full">
-      <Card className="h-full overflow-hidden border border-slate-100 dark:border-slate-800 hover:shadow-xl hover:border-hero-primary/30 transition-all duration-300 relative">
-        
-        {/* Badge Popular */}
-        {burger.isPopular && (
-          <div className="absolute top-3 right-3 z-10 bg-amber-500 text-white text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-full shadow-lg flex items-center gap-1">
-            <Flame size={10} fill="currentColor" /> Popular
-          </div>
-        )}
+const BurgerCard: React.FC<BurgerCardProps> = ({ burger, isFavorite, onToggleFavorite, onClick }) => {
+  const [loaded, setLoaded] = useState(false);
 
-        {/* Imagem */}
+  return (
+    <div onClick={onClick} className="group cursor-pointer h-full relative">
+      <Card className="h-full overflow-hidden border border-slate-100 dark:border-slate-800 hover:shadow-xl hover:border-hero-primary/30 transition-all duration-300 relative bg-white dark:bg-slate-900">
+        
+        {/* Badges Container */}
+        <div className="absolute top-3 left-3 z-10 flex flex-col gap-2">
+          {burger.isBestSeller && (
+            <div className="bg-amber-500 text-white text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-full shadow-lg flex items-center gap-1 w-fit">
+              <Flame size={10} fill="currentColor" /> Top
+            </div>
+          )}
+          {burger.isNew && (
+            <div className="bg-hero-primary text-white text-[10px] font-black uppercase tracking-widest px-2 py-1 rounded-full shadow-lg flex items-center gap-1 w-fit">
+              <Sparkles size={10} fill="currentColor" /> Novo
+            </div>
+          )}
+        </div>
+
+        {/* Favorite Button (Top Right) */}
+        <button 
+          onClick={onToggleFavorite}
+          className="absolute top-3 right-3 z-20 p-2 rounded-full bg-white/90 dark:bg-slate-900/90 backdrop-blur-sm shadow-md hover:scale-110 transition-transform active:scale-95"
+        >
+          <Heart 
+            size={18} 
+            className={`transition-colors ${isFavorite ? 'text-red-500 fill-red-500' : 'text-slate-400 hover:text-red-400'}`} 
+          />
+        </button>
+
+        {/* Imagem com Skeleton Loading */}
         <div className="aspect-[16/10] overflow-hidden bg-slate-100 dark:bg-slate-800 relative">
           <img 
             src={burger.images[0]} 
             alt={burger.name}
-            className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
-            loading="lazy"
+            className={`w-full h-full object-cover group-hover:scale-110 transition-transform duration-500 ${loaded ? 'opacity-100' : 'opacity-0'}`}
+            onLoad={() => {
+              if (!loaded) setLoaded(true);
+            }}
           />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+          {!loaded && (
+            <div className="absolute inset-0 bg-slate-200 dark:bg-slate-700 animate-pulse" />
+          )}
+          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
         </div>
 
         {/* Conteúdo */}
@@ -49,9 +76,9 @@ const BurgerCard: React.FC<BurgerCardProps> = ({ burger, onClick }) => {
             <span className="text-xl font-black text-slate-800 dark:text-white">
               R$ {burger.price.toFixed(2).replace('.', ',')}
             </span>
-            <button className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 text-hero-primary flex items-center justify-center group-hover:bg-hero-primary group-hover:text-white transition-colors">
+            <div className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 text-hero-primary flex items-center justify-center group-hover:bg-hero-primary group-hover:text-white transition-colors">
               <Plus size={18} />
-            </button>
+            </div>
           </div>
         </CardBody>
       </Card>
