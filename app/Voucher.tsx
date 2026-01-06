@@ -56,7 +56,7 @@ const Voucher: React.FC = () => {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-black text-slate-800 dark:text-white">Drops Mensal</h2>
-          <p className="text-slate-500 font-medium text-sm flex items-center gap-1">
+          <p className="text-slate-500 dark:text-slate-400 font-medium text-sm flex items-center gap-1">
             <Calendar size={14} /> {capitalizedMonth} de {currentYear}
           </p>
         </div>
@@ -144,7 +144,7 @@ const Voucher: React.FC = () => {
 
       {/* History Timeline */}
       <div className="space-y-4">
-        <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest pl-2">Histórico de Conquistas</h3>
+        <h3 className="text-sm font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest pl-2">Histórico de Conquistas</h3>
         
         <Card className="border-none shadow-none bg-transparent">
           <CardBody className="p-0 space-y-4">
@@ -156,12 +156,12 @@ const Voucher: React.FC = () => {
                    </div>
                    <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-100 dark:border-slate-800 flex items-center justify-between opacity-60">
                       <div className="flex items-center gap-4">
-                         <div className="w-10 h-10 bg-slate-100 dark:bg-slate-800 rounded-xl flex items-center justify-center text-slate-400">
+                         <div className="w-10 h-10 bg-slate-100 dark:bg-slate-800 rounded-xl flex items-center justify-center text-slate-400 dark:text-slate-500">
                             <Utensils size={18} />
                          </div>
                          <div>
                             <p className="text-sm font-bold text-slate-700 dark:text-slate-300">Resgate de Setembro</p>
-                            <p className="text-xs text-slate-400">Expirado</p>
+                            <p className="text-xs text-slate-400 dark:text-slate-500">Expirado</p>
                          </div>
                       </div>
                    </div>
@@ -174,8 +174,8 @@ const Voucher: React.FC = () => {
                    <div className="w-2 h-2 rounded-full bg-hero-primary animate-pulse"></div>
                 </div>
                 <div className="p-4 rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-800 flex flex-col items-center justify-center text-center py-8 gap-2">
-                   <p className="text-sm font-bold text-slate-500">Próximo drop em breve</p>
-                   <p className="text-xs text-slate-400 max-w-[200px]">Aguarde o início do próximo mês para liberar novos benefícios.</p>
+                   <p className="text-sm font-bold text-slate-500 dark:text-slate-300">Próximo drop em breve</p>
+                   <p className="text-xs text-slate-400 dark:text-slate-500 max-w-[200px]">Aguarde o início do próximo mês para liberar novos benefícios.</p>
                 </div>
              </div>
           </CardBody>
