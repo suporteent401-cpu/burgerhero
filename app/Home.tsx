@@ -7,6 +7,7 @@ import { Subscription, MonthlyBenefit } from '../types';
 import { Clock, Ticket, Utensils, ChevronRight, QrCode } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import HeroCard from '../components/HeroCard';
+import NearbyRestaurants from '../components/NearbyRestaurants';
 
 const Home: React.FC = () => {
   const user = useAuthStore(state => state.user);
@@ -57,6 +58,9 @@ const Home: React.FC = () => {
           textColor={selectedColor}
         />
       </div>
+
+      {/* Nearby Restaurants Section */}
+      <NearbyRestaurants />
 
       {/* Status Info Grid */}
       <div className="grid grid-cols-2 gap-4">
