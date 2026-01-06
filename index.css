@@ -1,0 +1,32 @@
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --primary-color: #7c3aed; /* Default sombra-noturna */
+}
+
+.theme-sombra-noturna { --primary-color: #a855f7; }
+.theme-guardiao-escarlate { --primary-color: #ef4444; }
+.theme-tita-dourado { --primary-color: #f59e0b; }
+.theme-tempestade-azul { --primary-color: #3b82f6; }
+.theme-sentinela-verde { --primary-color: #10b981; }
+.theme-aurora-rosa { --primary-color: #ec4899; }
+
+.bg-hero-primary { background-color: var(--primary-color); }
+.text-hero-primary { color: var(--primary-color); }
+.border-hero-primary { border-color: var(--primary-color); }
+
+html, body, #root {
+  height: 100%;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 10px;
+}

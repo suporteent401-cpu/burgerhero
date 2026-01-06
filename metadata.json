@@ -1,0 +1,8 @@
+
+{
+  "name": "BurgerHero",
+  "description": "Um webapp premium de assinatura de hambúrgueres com temática de super-heróis, permitindo resgates mensais exclusivos e gestão completa para administradores e colaboradores.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}

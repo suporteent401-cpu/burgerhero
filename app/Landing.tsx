@@ -1,0 +1,86 @@
+
+import React from 'react';
+import { Link } from 'react-router-dom';
+import { Button } from '../components/ui/Button';
+import { ShieldCheck, Utensils, Zap, Star } from 'lucide-react';
+import { motion } from 'framer-motion';
+
+const Landing: React.FC = () => {
+  return (
+    <div className="min-h-screen bg-white">
+      {/* Hero Section */}
+      <section className="relative h-[85vh] flex flex-col justify-center items-center text-center px-4 hero-gradient text-white overflow-hidden">
+        <motion.div 
+          initial={{ opacity: 0, y: 30 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.8 }}
+          className="relative z-10"
+        >
+          <div className="inline-flex items-center gap-2 bg-hero-primary/20 border border-hero-primary/30 px-4 py-1.5 rounded-full mb-6">
+            <Star size={16} className="text-hero-primary fill-hero-primary" />
+            <span className="text-xs font-bold tracking-widest uppercase">Exclusividade Heroica</span>
+          </div>
+          <h1 className="text-5xl md:text-7xl font-black tracking-tighter mb-6 leading-[1.1]">
+            Torne-se um <span className="text-hero-primary">Herói</span> <br /> 
+            e coma burgers todo mês
+          </h1>
+          <p className="text-lg md:text-xl text-slate-400 max-w-2xl mx-auto mb-10 font-medium">
+            A primeira assinatura de hambúrgueres premium do Brasil. Escolha seu plano, 
+            garanta seu voucher mensal e receba benefícios dignos de um titã.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <Link to="/plans">
+              <Button size="lg" className="w-full sm:w-auto">Assinar Agora</Button>
+            </Link>
+            <Link to="/auth">
+              <Button variant="outline" size="lg" className="w-full sm:w-auto text-white border-white/20 hover:bg-white/10">Já sou assinante</Button>
+            </Link>
+          </div>
+        </motion.div>
+        
+        {/* Background Decor */}
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-hero-primary/20 blur-[120px] rounded-full -z-0"></div>
+      </section>
+
+      {/* Benefits */}
+      <section className="py-24 px-6 max-w-6xl mx-auto">
+        <h2 className="text-3xl font-black text-center mb-16">Poderes de Assinante</h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-12">
+          {[
+            { icon: Utensils, title: 'Burger Mensal', desc: 'Todo mês um novo hambúrguer épico disponível para você resgatar na loja.' },
+            { icon: Zap, title: 'Atendimento Flash', desc: 'Fila exclusiva para heróis em todas as nossas unidades parceiras.' },
+            { icon: ShieldCheck, title: 'Proteção de Preço', desc: 'Assinantes nunca sofrem com reajustes sazonais de menu.' },
+          ].map((item, i) => (
+            <div key={i} className="flex flex-col items-center text-center">
+              <div className="w-16 h-16 bg-slate-50 text-hero-primary rounded-2xl flex items-center justify-center mb-6 shadow-sm border border-slate-100">
+                <item.icon size={32} />
+              </div>
+              <h3 className="text-xl font-bold mb-3">{item.title}</h3>
+              <p className="text-slate-500 leading-relaxed">{item.desc}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer className="bg-slate-900 text-white py-12 px-6">
+        <div className="max-w-6xl mx-auto flex flex-col md:flex-row justify-between items-center gap-8">
+          <div>
+            <h2 className="text-2xl font-black">Burger<span className="text-hero-primary">Hero</span></h2>
+            <p className="text-slate-400 mt-2 text-sm">Alimentando a força de quem faz a diferença.</p>
+          </div>
+          <div className="flex gap-8 text-sm font-bold uppercase tracking-widest text-slate-400">
+            <Link to="/auth" className="hover:text-white">Login</Link>
+            <Link to="/plans" className="hover:text-white">Planos</Link>
+            <Link to="/terms" className="hover:text-white">Termos</Link>
+          </div>
+        </div>
+        <div className="mt-12 pt-8 border-t border-white/5 text-center text-xs text-slate-500">
+          © 2024 BurgerHero S.A. Todos os direitos reservados.
+        </div>
+      </footer>
+    </div>
+  );
+};
+
+export default Landing;
