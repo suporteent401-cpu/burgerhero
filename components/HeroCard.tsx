@@ -4,7 +4,7 @@ import { User } from '../types';
 interface HeroCardProps {
   user: User | null;
   imageUrl: string;
-  memberSince?: string; // Mantido para compatibilidade de interface, mas não usado visualmente
+  memberSince?: string; 
   className?: string;
 }
 
@@ -22,7 +22,7 @@ const HeroCard: React.FC<HeroCardProps> = ({ user, imageUrl, className = '' }) =
           style={{ filter: 'none' }}
         />
 
-        {/* 2. Logo BurgerHero (Canto Superior Direito - Mantido para branding) */}
+        {/* 2. Logo BurgerHero (Canto Superior Direito) */}
         <div className="absolute top-5 right-5 z-10">
           <img 
             src="https://ik.imagekit.io/lflb43qwh/Heros/images.jpg" 
@@ -31,10 +31,13 @@ const HeroCard: React.FC<HeroCardProps> = ({ user, imageUrl, className = '' }) =
           />
         </div>
 
-        {/* 3. Apenas Nome do Usuário (Direto na imagem, sem fundo, font-normal) */}
+        {/* 3. Nome e ID (Direto na imagem, sem fundo) */}
         <div className="absolute bottom-6 left-6 z-10 pr-4">
           <p className="text-xl md:text-2xl font-normal text-white tracking-wide drop-shadow-md truncate">
             {user?.name || 'Visitante'}
+          </p>
+          <p className="text-sm font-medium text-white/90 tracking-widest drop-shadow-md mt-0.5 font-mono">
+            {user?.customerCode || 'HE-----'}
           </p>
         </div>
 
