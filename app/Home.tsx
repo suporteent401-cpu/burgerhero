@@ -35,8 +35,8 @@ const Home: React.FC = () => {
             </span>
           </p>
         </div>
-        <Link to="/app/profile" className="relative group">
-          <div className="w-12 h-12 rounded-full bg-slate-200 overflow-hidden border-2 border-white shadow-md transition-transform group-hover:scale-105">
+        <Link to="/app/profile" className="relative">
+          <div className="w-16 h-16 rounded-full bg-slate-200 overflow-hidden border-2 border-white shadow-md">
             <img src={user?.avatarUrl || `https://picsum.photos/seed/${user?.id}/100`} alt="Avatar" className="w-full h-full object-cover" />
           </div>
         </Link>
