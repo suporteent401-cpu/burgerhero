@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -26,15 +25,15 @@ export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children }
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden"
+            className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl flex flex-col max-h-[90vh]"
           >
-            <div className="flex items-center justify-between p-5 border-b border-slate-50">
+            <div className="flex-shrink-0 flex items-center justify-between p-5 border-b border-slate-50">
               <h3 className="text-lg font-bold text-slate-800">{title}</h3>
               <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
                 <X size={20} className="text-slate-500" />
               </button>
             </div>
-            <div className="p-6">
+            <div className="p-6 overflow-y-auto">
               {children}
             </div>
           </motion.div>
