@@ -22,11 +22,11 @@ const HeroCard: React.FC<HeroCardProps> = ({
       {/* Container Principal */}
       <div className="relative aspect-[1.586/1] w-full rounded-2xl shadow-xl overflow-hidden ring-1 ring-black/10 isolate bg-slate-900">
         
-        {/* Imagem de Fundo */}
+        {/* Imagem de Fundo com Zoom Aumentado */}
         <img
           src={imageUrl}
           alt="Cartão Hero"
-          className="absolute inset-0 w-full h-full object-cover z-0"
+          className="absolute inset-0 w-full h-full object-cover z-0 scale-[1.35]"
           style={{ filter: 'none' }}
         />
 
