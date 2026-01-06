@@ -13,7 +13,7 @@ const Landing: React.FC = () => {
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8 }}
-          className="relative z-10"
+          className="relative z-10 -mt-12"
         >
           <div className="inline-flex items-center gap-2 bg-hero-primary/20 border border-hero-primary/30 px-4 py-1.5 rounded-full mb-8">
             <Star size={16} className="text-hero-primary fill-hero-primary" />
