@@ -1,18 +1,26 @@
 import React, { useEffect, useState } from 'react';
-import { useForm } from 'react-hook-form';
 import { fakeApi } from '../lib/fakeApi';
 import { Plan } from '../types';
-import { Card, CardBody } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
-import { Input } from '../components/ui/Input';
-import { Modal } from '../components/ui/Modal';
-import { PlusCircle, Edit, ToggleLeft, ToggleRight, MoreHorizontal } from 'lucide-react';
+import { PlusCircle, TrendingUp, Award, AlertTriangle, BarChart } from 'lucide-react';
+import { PlanCard } from '../components/admin/PlanCard';
+import { PlanFormModal } from '../components/admin/PlanFormModal';
+import { Card, CardBody } from '../components/ui/Card';
+
+const InsightPill: React.FC<{ icon: React.ElementType, label: string, value: string }> = ({ icon: Icon, label, value }) => (
+  <div className="bg-slate-50 p-3 rounded-lg flex items-center gap-3">
+    <div className="bg-white p-2 rounded-md text-hero-primary"><Icon size={16} /></div>
+    <div>
+      <p className="text-xs font-bold text-slate-500">{label}</p>
+      <p className="text-sm font-black text-slate-800">{value}</p>
+    </div>
+  </div>
+);
 
 const AdminPlans: React.FC = () => {
   const [plans, setPlans] = useState<Plan[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingPlan, setEditingPlan] = useState<Plan | null>(null);
-  const { register, handleSubmit, reset, setValue } = useForm<Plan>();
 
   const fetchPlans = () => {
     fakeApi.adminListAllPlans().then(setPlans);
@@ -24,49 +32,35 @@ const AdminPlans: React.FC = () => {
 
   const openModal = (plan: Plan | null = null) => {
     setEditingPlan(plan);
-    if (plan) {
-      // Convert benefits array to string for the form
-      const planDataForForm = {
-        ...plan,
-        benefits: Array.isArray(plan.benefits) ? plan.benefits.join(', ') : '',
-      };
-      reset(planDataForForm);
-    } else {
-      reset({
-        name: '',
-        priceCents: 0,
-        description: '',
-        benefits: [],
-        imageUrl: '',
-        active: true,
-      });
-    }
     setIsModalOpen(true);
   };
 
   const closeModal = () => {
     setIsModalOpen(false);
     setEditingPlan(null);
-    reset();
   };
 
-  const onSubmit = async (data: any) => {
-    const priceCents = parseInt(String(data.priceCents), 10);
-    const benefits = typeof data.benefits === 'string' ? data.benefits.split(',').map(b => b.trim()) : [];
-
-    const payload = { ...data, priceCents, benefits };
-
+  const onSubmit = async (data: Plan) => {
     if (editingPlan) {
-      await fakeApi.adminUpdatePlan(editingPlan.id, payload);
+      await fakeApi.adminUpdatePlan(editingPlan.id, data);
     } else {
-      await fakeApi.adminCreatePlan(payload);
+      await fakeApi.adminCreatePlan(data);
     }
     fetchPlans();
     closeModal();
   };
   
-  const togglePlanStatus = async (plan: Plan) => {
-    await fakeApi.adminUpdatePlan(plan.id, { active: !plan.active });
+  const handleToggleStatus = async (plan: Plan) => {
+    if (window.confirm(`Tem certeza que deseja ${plan.active ? 'desativar' : 'ativar'} o plano "${plan.name}"?`)) {
+      await fakeApi.adminUpdatePlan(plan.id, { active: !plan.active });
+      fetchPlans();
+    }
+  };
+
+  const handleDuplicate = async (plan: Plan) => {
+    const newPlanData = { ...plan, name: `${plan.name} (Cópia)`, active: false };
+    delete (newPlanData as any).id;
+    await fakeApi.adminCreatePlan(newPlanData);
     fetchPlans();
   };
 
@@ -82,60 +76,35 @@ const AdminPlans: React.FC = () => {
         </Button>
       </div>
 
+      {/* Insights Section */}
       <Card>
-        <CardBody className="p-0 overflow-x-auto">
-          <table className="w-full text-left">
-            <thead className="bg-slate-50 border-b border-slate-100">
-              <tr>
-                <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Plano</th>
-                <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Preço</th>
-                <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Status</th>
-                <th className="px-6 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Ações</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {plans.map(plan => (
-                <tr key={plan.id} className="hover:bg-hero-primary/5 transition-colors">
-                  <td className="px-6 py-4">
-                    <div className="font-bold text-slate-800">{plan.name}</div>
-                    <div className="text-xs text-slate-500 max-w-xs truncate">{plan.description}</div>
-                  </td>
-                  <td className="px-6 py-4 font-bold text-slate-700">R$ {(plan.priceCents / 100).toFixed(2).replace('.',',')}</td>
-                  <td className="px-6 py-4">
-                    <button onClick={() => togglePlanStatus(plan)} className={`flex items-center gap-2 px-2.5 py-1 text-xs font-bold rounded-full ${plan.active ? 'bg-green-100 text-green-800' : 'bg-slate-100 text-slate-600'}`}>
-                      <div className={`w-2 h-2 rounded-full ${plan.active ? 'bg-green-500' : 'bg-slate-400'}`}></div>
-                      {plan.active ? 'Ativo' : 'Inativo'}
-                    </button>
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    <Button variant="ghost" size="icon" onClick={() => openModal(plan)}>
-                      <MoreHorizontal size={18} className="text-slate-400" />
-                    </Button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <CardBody className="p-4 grid grid-cols-2 md:grid-cols-4 gap-4">
+          <InsightPill icon={TrendingUp} label="Mais Vendido" value="Plano Vingador" />
+          <InsightPill icon={Award} label="Maior Resgate" value="Plano Vingador" />
+          <InsightPill icon={AlertTriangle} label="Maior Churn" value="Plano Justiceiro" />
+          <InsightPill icon={BarChart} label="Ticket Médio" value="R$ 39,90" />
         </CardBody>
       </Card>
 
-      <Modal isOpen={isModalOpen} onClose={closeModal} title={editingPlan ? 'Editar Plano' : 'Novo Plano'}>
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          <Input label="Nome do Plano" {...register('name', { required: true })} />
-          <Input label="Preço (em centavos)" type="number" {...register('priceCents', { required: true, valueAsNumber: true })} />
-          <Input label="Descrição" {...register('description', { required: true })} />
-          <Input label="Benefícios (separados por vírgula)" {...register('benefits')} />
-          <Input label="URL da Imagem" {...register('imageUrl', { required: true })} />
-          <div className="flex items-center gap-2 pt-2">
-            <input type="checkbox" id="active" className="h-4 w-4 rounded" {...register('active')} />
-            <label htmlFor="active" className="font-medium text-sm text-slate-700">Plano Ativo</label>
-          </div>
-          <div className="flex justify-end gap-2 pt-4 border-t border-slate-100 mt-4">
-            <Button type="button" variant="ghost" onClick={closeModal}>Cancelar</Button>
-            <Button type="submit">{editingPlan ? 'Salvar Alterações' : 'Criar Plano'}</Button>
-          </div>
-        </form>
-      </Modal>
+      {/* Plans Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {plans.map(plan => (
+          <PlanCard 
+            key={plan.id} 
+            plan={plan}
+            onEdit={openModal}
+            onDuplicate={handleDuplicate}
+            onToggleStatus={handleToggleStatus}
+          />
+        ))}
+      </div>
+
+      <PlanFormModal 
+        isOpen={isModalOpen}
+        onClose={closeModal}
+        onSubmit={onSubmit}
+        editingPlan={editingPlan}
+      />
     </div>
   );
 };

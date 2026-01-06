@@ -1,4 +1,3 @@
-
 export type Role = 'CLIENT' | 'ADMIN' | 'STAFF';
 
 export interface User {
@@ -15,13 +14,15 @@ export interface User {
 }
 
 export interface Plan {
-  id: string;
+  id:string;
   name: string;
   priceCents: number;
   description: string;
   benefits: string[];
   imageUrl: string;
   active: boolean;
+  subscriberCount?: number; // Mock
+  popularity?: number; // Mock (0-100)
 }
 
 export interface Subscription {
