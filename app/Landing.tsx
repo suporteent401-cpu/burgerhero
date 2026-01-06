@@ -1,13 +1,13 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '../components/ui/Button';
-import { ShieldCheck, Utensils, Zap, Star, Instagram, Facebook, Globe } from 'lucide-react';
+import { ShieldCheck, Zap, Star, Instagram, Facebook, Globe, Burger } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Card, CardBody } from '../components/ui/Card';
 
 const Landing: React.FC = () => {
   const benefits = [
-    { icon: Utensils, title: 'Burger Mensal', desc: 'Todo mês um novo hambúrguer épico disponível para você resgatar na loja.' },
+    { icon: Burger, title: 'Burger Mensal', desc: 'Todo mês um novo hambúrguer épico disponível para você resgatar na loja.' },
     { icon: Zap, title: 'Atendimento Flash', desc: 'Fila exclusiva para heróis em todas as nossas unidades parceiras.' },
     { icon: ShieldCheck, title: 'Proteção de Preço', desc: 'Assinantes nunca sofrem com reajustes sazonais de menu.' },
   ];
@@ -92,11 +92,11 @@ const Landing: React.FC = () => {
             {benefits.map((item, i) => (
               <motion.div key={i} variants={itemVariants}>
                 <Card className="h-full text-center hover:-translate-y-2 transition-transform duration-300 bg-slate-800/50 border border-slate-700 backdrop-blur-sm">
-                  <CardBody className="p-10">
-                    <div className="w-16 h-16 bg-hero-primary/10 text-hero-primary rounded-2xl flex items-center justify-center mb-6 mx-auto">
-                      <item.icon size={32} />
+                  <CardBody className="p-8">
+                    <div className="w-14 h-14 bg-hero-primary/10 text-hero-primary rounded-2xl flex items-center justify-center mb-5 mx-auto">
+                      <item.icon size={28} />
                     </div>
-                    <h3 className="text-xl font-bold mb-3 text-white">{item.title}</h3>
+                    <h3 className="text-lg font-bold mb-3 text-white">{item.title}</h3>
                     <p className="text-slate-400 leading-relaxed">{item.desc}</p>
                   </CardBody>
                 </Card>
