@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '../components/ui/Button';
@@ -16,7 +15,12 @@ const Landing: React.FC = () => {
           transition={{ duration: 0.8 }}
           className="relative z-10"
         >
-          <div className="inline-flex items-center gap-2 bg-hero-primary/20 border border-hero-primary/30 px-4 py-1.5 rounded-full mb-6">
+          <img 
+            src="https://ik.imagekit.io/lflb43qwh/Heros/images.jpg" 
+            alt="BurgerHero Logo" 
+            className="w-32 h-32 rounded-full mx-auto mb-8 border-4 border-white/10 shadow-lg" 
+          />
+          <div className="inline-flex items-center gap-2 bg-hero-primary/20 border border-hero-primary/30 px-4 py-1.5 rounded-full mb-8">
             <Star size={16} className="text-hero-primary fill-hero-primary" />
             <span className="text-xs font-bold tracking-widest uppercase">Exclusividade Heroica</span>
           </div>
@@ -30,10 +34,10 @@ const Landing: React.FC = () => {
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Link to="/plans">
-              <Button size="lg" className="w-full sm:w-auto">Assinar Agora</Button>
+              <Button size="lg" className="w-auto">Assinar Agora</Button>
             </Link>
             <Link to="/auth">
-              <Button variant="outline" size="lg" className="w-full sm:w-auto text-white border-white/20 hover:bg-white/10">Já sou assinante</Button>
+              <Button variant="outline" size="lg" className="w-auto text-white border-white/20 hover:bg-white/10">Já sou assinante</Button>
             </Link>
           </div>
         </motion.div>
