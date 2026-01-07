@@ -118,7 +118,8 @@ const Auth: React.FC = () => {
         navigate('/plans');
       }
     } catch (err: any) {
-      setError(err.message || 'Ocorreu um erro.');
+      console.error("AUTH_ERROR", err);
+      setError(`Erro: ${err.message || 'Ocorreu um erro.'}`);
     } finally {
       setLoading(false);
     }
