@@ -33,6 +33,7 @@ const Profile: React.FC = () => {
   
   // Name Edit State
   const [isEditingName, setIsEditingName] = useState(false);
+  const [isSavingName, setIsSavingName] = useState(false);
   const [editName, setEditName] = useState(user?.name || '');
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   
@@ -96,6 +97,7 @@ const Profile: React.FC = () => {
     }
   }, [user?.id, setAll, setHeroTheme, setMode, setTemplates]);
 
+  // Sincroniza o input de edição com o nome do usuário quando não está editando
   useEffect(() => {
     if (!isEditingName && user?.name && user.name !== editName) {
       setEditName(user.name);
@@ -149,12 +151,21 @@ const Profile: React.FC = () => {
         setUploadingAvatar(true);
         const publicUrl = await uploadAvatar(user.id, file);
         if (publicUrl) {
-          await supabase.from('client_profiles').update({ avatar_url: publicUrl }).eq('user_id', user.id);
+          // Atualiza banco
+          const { error } = await supabase
+            .from('client_profiles')
+            .update({ avatar_url: publicUrl })
+            .eq('user_id', user.id);
+
+          if (error) throw error;
+
+          // Atualiza store local
           updateUser({ avatarUrl: publicUrl });
+          alert('Foto de perfil atualizada com sucesso!');
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error('Erro no upload:', err);
-        alert('Erro ao enviar imagem.');
+        alert(`Erro ao enviar imagem: ${err.message || 'Falha no upload.'}`);
       } finally {
         setUploadingAvatar(false);
       }
@@ -163,15 +174,29 @@ const Profile: React.FC = () => {
 
   const handleSaveName = async () => {
     if (!user || !editName.trim()) return;
-    const oldName = user.name;
-    updateUser({ name: editName });
-    setIsEditingName(false);
+    
+    // Se o nome não mudou, apenas sai do modo de edição
+    if (editName.trim() === user.name) {
+      setIsEditingName(false);
+      return;
+    }
+
+    setIsSavingName(true);
     try {
-      await updateProfileName(user.id, editName);
-    } catch (err) {
+      // 1. Persiste no Banco
+      await updateProfileName(user.id, editName.trim());
+      
+      // 2. Atualiza Store Local (apenas após sucesso no banco)
+      updateUser({ name: editName.trim() });
+      
+      setIsEditingName(false);
+      alert('Nome salvo com sucesso!');
+    } catch (err: any) {
       console.error('Erro ao salvar nome:', err);
-      updateUser({ name: oldName });
-      alert('Erro ao salvar nome.');
+      // Mostra mensagem real do erro
+      alert(`Erro ao salvar: ${err.message || err.error_description || 'Erro desconhecido'}`);
+    } finally {
+      setIsSavingName(false);
     }
   };
 
@@ -246,15 +271,28 @@ const Profile: React.FC = () => {
           {isEditingName ? (
              <div className="flex items-center justify-center gap-2 w-full max-w-[280px]">
                 <input
-                  className="bg-transparent border-b-2 border-hero-primary text-xl font-black text-center text-slate-800 dark:text-white focus:outline-none w-full px-2 py-1"
+                  className="bg-transparent border-b-2 border-hero-primary text-xl font-black text-center text-slate-800 dark:text-white focus:outline-none w-full px-2 py-1 disabled:opacity-50"
                   value={editName}
                   onChange={e => setEditName(e.target.value)}
                   autoFocus
-                  onKeyDown={e => e.key === 'Enter' && handleSaveName()}
+                  disabled={isSavingName}
+                  onKeyDown={e => e.key === 'Enter' && !isSavingName && handleSaveName()}
                 />
                 <div className="flex gap-1 shrink-0">
-                  <button onClick={handleSaveName} className="p-1.5 bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded-full hover:bg-green-200 dark:hover:bg-green-900/50"><Check size={16}/></button>
-                  <button onClick={handleCancelEdit} className="p-1.5 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-full hover:bg-red-200 dark:hover:bg-red-900/50"><X size={16}/></button>
+                  <button 
+                    onClick={handleSaveName} 
+                    disabled={isSavingName}
+                    className="p-1.5 bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded-full hover:bg-green-200 dark:hover:bg-green-900/50 disabled:opacity-50"
+                  >
+                    {isSavingName ? <Loader2 size={16} className="animate-spin" /> : <Check size={16}/>}
+                  </button>
+                  <button 
+                    onClick={handleCancelEdit} 
+                    disabled={isSavingName}
+                    className="p-1.5 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-full hover:bg-red-200 dark:hover:bg-red-900/50 disabled:opacity-50"
+                  >
+                    <X size={16}/>
+                  </button>
                 </div>
              </div>
           ) : (
