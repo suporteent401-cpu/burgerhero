@@ -2,48 +2,25 @@ import React, { useMemo, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { Button } from '../components/ui/Button';
 import { useAuthStore } from '../store/authStore';
-import { useCardStore } from '../store/cardStore';
 import { Maximize2, Copy, Check, Sun, Smartphone, AlertCircle, Loader2 } from 'lucide-react';
 import { Modal } from '../components/ui/Modal';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 
-const QRCodePage: React.FC = () => {
-  const { user, isLoading } = useAuthStore((state) => ({
-    user: state.user,
-    isLoading: state.isLoading,
-  }));
+const FALLBACK_BG = 'https://ik.imagekit.io/lflb43qwh/Heros/images.jpg';
 
-  // ✅ NÃO use getSelectedTemplate() aqui para evitar loop.
-  // Pegamos só estado puro do store:
-  const selectedTemplateId = useCardStore((s) => s.selectedTemplateId);
-  const availableTemplates = useCardStore((s) => s.availableTemplates);
+const QRCodePage: React.FC = () => {
+  const user = useAuthStore((s) => s.user);
+  const isLoading = useAuthStore((s) => s.isLoading);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [copied, setCopied] = useState(false);
 
   const customerCode = user?.customerCode;
 
-  // ✅ Template calculado de forma pura (sem setState/store update)
-  const template = useMemo(() => {
-    if (!availableTemplates || availableTemplates.length === 0) return null;
-
-    // Se tiver selecionado, usa ele. Se não, cai no primeiro.
-    const found = selectedTemplateId
-      ? availableTemplates.find((t) => t.id === selectedTemplateId)
-      : null;
-
-    return found ?? availableTemplates[0] ?? null;
-  }, [availableTemplates, selectedTemplateId]);
-
-  // ✅ URL estável do QR (evita ficar recalculando e também evita issues com window.location.href)
   const qrUrl = useMemo(() => {
     if (!customerCode) return '';
-
-    // Como você usa HashRouter, o caminho público fica dentro do hash
-    // Ex: https://dominio.com/#/public/client/ABC123
-    const origin = window.location.origin;
-    return `${origin}/#/public/client/${customerCode}`;
+    return `${window.location.origin}/#/public/client/${customerCode}`;
   }, [customerCode]);
 
   const handleCopy = async () => {
@@ -53,12 +30,11 @@ const QRCodePage: React.FC = () => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (e) {
-      console.error('Falha ao copiar:', e);
+      console.error(e);
       alert('Não foi possível copiar. Tente novamente.');
     }
   };
 
-  // 1) Loader enquanto autenticação inicial roda
   if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center py-20">
@@ -68,7 +44,6 @@ const QRCodePage: React.FC = () => {
     );
   }
 
-  // 2) Sem customerCode → erro guiado
   if (!customerCode) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-center text-slate-500">
@@ -81,16 +56,6 @@ const QRCodePage: React.FC = () => {
         <Link to="/app/profile">
           <Button variant="secondary">Verificar Perfil</Button>
         </Link>
-      </div>
-    );
-  }
-
-  // 3) Se não carregou templates ainda, evita quebrar no template.imageUrl
-  if (!template) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 text-center">
-        <Loader2 className="w-10 h-10 text-hero-primary animate-spin" />
-        <p className="mt-4 text-sm font-medium text-slate-500">Carregando modelo do cartão...</p>
       </div>
     );
   }
@@ -112,11 +77,7 @@ const QRCodePage: React.FC = () => {
 
         <div className="bg-white dark:bg-slate-900 rounded-3xl overflow-hidden shadow-2xl border border-slate-100 dark:border-slate-800">
           <div className="h-32 relative overflow-hidden">
-            <img
-              src={template.imageUrl}
-              alt="Card Background"
-              className="absolute inset-0 w-full h-full object-cover scale-[1.35]"
-            />
+            <img src={FALLBACK_BG} alt="Card Background" className="absolute inset-0 w-full h-full object-cover scale-[1.35]" />
             <div className="absolute inset-0 bg-black/30"></div>
 
             <div className="absolute top-4 left-0 right-0 flex justify-center z-10">
@@ -136,9 +97,7 @@ const QRCodePage: React.FC = () => {
               />
             </div>
 
-            <h3 className="text-xl font-black text-slate-800 dark:text-white text-center leading-tight mb-1">
-              {user?.name}
-            </h3>
+            <h3 className="text-xl font-black text-slate-800 dark:text-white text-center leading-tight mb-1">{user?.name}</h3>
             <p className="text-sm font-medium text-slate-400 mb-6">{user?.email}</p>
 
             <div
@@ -158,9 +117,7 @@ const QRCodePage: React.FC = () => {
             </div>
 
             <div className="w-full">
-              <p className="text-center text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2">
-                ID do Cliente
-              </p>
+              <p className="text-center text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2">ID do Cliente</p>
 
               <div
                 onClick={handleCopy}
@@ -181,19 +138,13 @@ const QRCodePage: React.FC = () => {
                 </div>
               </div>
 
-              <p className="text-center text-[10px] text-slate-400 mt-2 h-4">
-                {copied ? 'Código copiado!' : 'Toque para copiar'}
-              </p>
+              <p className="text-center text-[10px] text-slate-400 mt-2 h-4">{copied ? 'Código copiado!' : 'Toque para copiar'}</p>
             </div>
           </div>
         </div>
 
         <div className="mt-4">
-          <Button
-            variant="secondary"
-            className="w-full dark:bg-slate-800 dark:text-white"
-            onClick={() => setIsModalOpen(true)}
-          >
+          <Button variant="secondary" className="w-full dark:bg-slate-800 dark:text-white" onClick={() => setIsModalOpen(true)}>
             <Maximize2 size={18} className="mr-2" /> Expandir QR Code
           </Button>
         </div>
