@@ -25,12 +25,15 @@ import AdminDashboard from './app/AdminDashboard';
 import AdminUsers from './app/AdminUsers';
 import AdminUserDetails from './app/AdminUserDetails';
 import AdminPlans from './app/AdminPlans';
+import AdminTemplates from './app/AdminTemplates';
 import AdminCoupons from './app/AdminCoupons';
 import StaffHome from './app/StaffHome';
 import StaffValidate from './app/StaffValidate';
+import StaffClientProfile from './app/StaffClientProfile';
 import Debug from './app/Debug';
+import PublicClientProfile from './app/PublicClientProfile';
 
-// 🔒 Proteção por papel (ROLE é minúsculo: 'client' | 'staff' | 'admin')
+// 🔒 Proteção por papel (Role é minúsculo: 'client' | 'staff' | 'admin')
 const ProtectedRoute = ({
   children,
   allowedRoles,
@@ -38,13 +41,27 @@ const ProtectedRoute = ({
   children?: React.ReactNode;
   allowedRoles?: Role[];
 }) => {
-  const { isAuthed, user } = useAuthStore();
+  const { isAuthed, user, isLoading } = useAuthStore();
 
-  if (!isAuthed || !user) return <Navigate to="/auth" replace />;
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="w-8 h-8 border-4 border-hero-primary border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    );
+  }
 
-  if (allowedRoles && !allowedRoles.includes(user.role)) {
-    if (user.role === 'admin') return <Navigate to="/admin" replace />;
-    if (user.role === 'staff') return <Navigate to="/staff" replace />;
+  if (!isAuthed || !user) {
+    return <Navigate to="/auth" replace />;
+  }
+
+  // FIX: Normalização local para garantir que dados antigos em cache (MAIÚSCULO) não quebrem o app
+  const currentRole = (user.role || '').toLowerCase() as Role;
+
+  if (allowedRoles && !allowedRoles.includes(currentRole)) {
+    // Redirecionamento inteligente baseado na role corrigida
+    if (currentRole === 'admin') return <Navigate to="/admin" replace />;
+    if (currentRole === 'staff') return <Navigate to="/staff" replace />;
     return <Navigate to="/app" replace />;
   }
 
@@ -52,7 +69,7 @@ const ProtectedRoute = ({
 };
 
 const App: React.FC = () => {
-  const applyTheme = useThemeStore(state => state.applyTheme);
+  const applyTheme = useThemeStore((state) => state.applyTheme);
 
   useEffect(() => {
     applyTheme();
@@ -67,6 +84,8 @@ const App: React.FC = () => {
             <Route path="/" element={<Landing />} />
             <Route path="/auth" element={<Auth />} />
             <Route path="/plans" element={<Plans />} />
+            <Route path="/public/client/:customerCode" element={<PublicClientProfile />} />
+
             <Route
               path="/checkout"
               element={
@@ -75,6 +94,7 @@ const App: React.FC = () => {
                 </ProtectedRoute>
               }
             />
+
             <Route path="/debug" element={<Debug />} />
 
             {/* Cliente */}
@@ -106,6 +126,7 @@ const App: React.FC = () => {
               <Route path="users" element={<AdminUsers />} />
               <Route path="users/:id" element={<AdminUserDetails />} />
               <Route path="plans" element={<AdminPlans />} />
+              <Route path="templates" element={<AdminTemplates />} />
               <Route path="coupons" element={<AdminCoupons />} />
             </Route>
 
@@ -120,6 +141,7 @@ const App: React.FC = () => {
             >
               <Route index element={<StaffHome />} />
               <Route path="validate" element={<StaffValidate />} />
+              <Route path="client/:customerCode" element={<StaffClientProfile />} />
             </Route>
 
             {/* Fallback */}

@@ -65,7 +65,10 @@ export const getFullUserProfile = async (authUser: SupabaseUser): Promise<FullUs
   const appUserData = appUserResponse.data;
   if (!appUserData) return null;
 
-  const role = appUserData.role as Role;
+  // FIX: Normalização forçada para lowercase para evitar conflitos de rota
+  const rawRole = appUserData.role || 'client';
+  const role = rawRole.toLowerCase() as Role;
+  
   const clientProfileData = clientProfileResponse.data;
   const settingsData = settingsResponse.data;
 
