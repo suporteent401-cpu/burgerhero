@@ -147,7 +147,6 @@ const Profile: React.FC = () => {
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      // Cria preview local
       const previewUrl = URL.createObjectURL(file);
       setPreviewAvatar(previewUrl);
       setSelectedAvatarFile(file);
@@ -162,7 +161,6 @@ const Profile: React.FC = () => {
       const publicUrl = await uploadAvatar(user.id, selectedAvatarFile);
       
       if (publicUrl) {
-        // Atualiza banco com a URL
         const { error } = await supabase
           .from('client_profiles')
           .update({ avatar_url: publicUrl })
@@ -170,10 +168,9 @@ const Profile: React.FC = () => {
 
         if (error) throw error;
 
-        // Atualiza UI
         updateUser({ avatarUrl: publicUrl });
         alert('Foto atualizada com sucesso!');
-        handleCancelAvatar(); // Limpa preview e arquivo
+        handleCancelAvatar();
       }
     } catch (err: any) {
       console.error('Erro no upload:', err);
@@ -258,61 +255,47 @@ const Profile: React.FC = () => {
       
       {/* CABEÇALHO */}
       <div className="flex flex-col items-center">
-        <div className="relative group">
-          <div 
-            className="w-28 h-28 rounded-full border-4 border-white dark:border-slate-800 shadow-xl bg-slate-200 overflow-hidden relative cursor-pointer"
-            onClick={() => !uploadingAvatar && !previewAvatar && fileInputRef.current?.click()}
-          >
+        <div className="relative group cursor-pointer" onClick={() => !uploadingAvatar && fileInputRef.current?.click()}>
+          <div className="w-28 h-28 rounded-full border-4 border-white dark:border-slate-800 shadow-xl bg-slate-200 overflow-hidden relative">
             {uploadingAvatar ? (
               <div className="w-full h-full flex items-center justify-center bg-black/50">
                 <Loader2 className="animate-spin text-white" />
               </div>
             ) : (
-              <img 
-                src={previewAvatar || user?.avatarUrl || 'https://picsum.photos/seed/hero/200'} 
-                alt="Profile" 
-                className={`w-full h-full object-cover transition-opacity ${uploadingAvatar ? 'opacity-50' : 'opacity-100'}`} 
-              />
-            )}
-            
-            {/* Overlay de Hover (só se não tiver preview pendente) */}
-            {!previewAvatar && !uploadingAvatar && (
-              <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                 <Camera size={24} className="text-white" />
-              </div>
+              <img src={previewAvatar || user?.avatarUrl || 'https://picsum.photos/seed/hero/200'} alt="Profile" className="w-full h-full object-cover" />
             )}
           </div>
-
-          {/* Botões de Ação para Avatar (Preview State) */}
-          {previewAvatar && !uploadingAvatar ? (
+          {/* Overlay de Hover */}
+          {!previewAvatar && !uploadingAvatar && (
+            <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                <Camera size={24} className="text-white" />
+            </div>
+          )}
+          {/* Botão Flutuante (sempre visível) */}
+          {!previewAvatar && !uploadingAvatar && (
+            <button className="absolute bottom-0 right-0 bg-hero-primary text-white p-2 rounded-full shadow-lg hover:scale-110 transition-transform pointer-events-none">
+              <Camera size={16} />
+            </button>
+          )}
+          {/* Ações de Confirmação (Preview) */}
+          {previewAvatar && !uploadingAvatar && (
              <div className="absolute -bottom-10 left-1/2 -translate-x-1/2 flex gap-2 z-10 w-max bg-white dark:bg-slate-900 p-1.5 rounded-full shadow-lg border border-slate-100 dark:border-slate-800 animate-in fade-in slide-in-from-top-2">
                 <button 
-                  onClick={handleConfirmAvatar}
+                  onClick={(e) => { e.stopPropagation(); handleConfirmAvatar(); }}
                   className="bg-green-500 hover:bg-green-600 text-white p-2 rounded-full transition-colors"
                   title="Confirmar Foto"
                 >
                   <Check size={16} />
                 </button>
                 <button 
-                  onClick={handleCancelAvatar}
+                  onClick={(e) => { e.stopPropagation(); handleCancelAvatar(); }}
                   className="bg-red-500 hover:bg-red-600 text-white p-2 rounded-full transition-colors"
                   title="Cancelar"
                 >
                   <X size={16} />
                 </button>
              </div>
-          ) : (
-             // Ícone Padrão de Câmera
-             !uploadingAvatar && (
-              <button 
-                onClick={() => fileInputRef.current?.click()}
-                className="absolute bottom-0 right-0 bg-hero-primary text-white p-2 rounded-full shadow-lg hover:scale-110 transition-transform"
-              >
-                <Camera size={16} />
-              </button>
-             )
           )}
-          
           <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileChange} disabled={uploadingAvatar} />
         </div>
         
@@ -362,7 +345,7 @@ const Profile: React.FC = () => {
           <div className="bg-slate-50 dark:bg-slate-800/50 px-4 py-1.5 rounded-full border border-slate-100 dark:border-slate-800 flex items-center gap-2">
             <Fingerprint size={14} className="text-hero-primary" />
             <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">
-              ID: <span className="text-slate-800 dark:text-slate-200 select-all">{user?.customerCode || '—'}</span>
+              Código Hero: <span className="text-slate-800 dark:text-slate-200 select-all font-mono text-sm">{user?.customerCode || '—'}</span>
             </p>
           </div>
         </div>
