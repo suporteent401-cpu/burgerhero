@@ -1,9 +1,11 @@
 import React from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { Home, QrCode, Ticket, UtensilsCrossed, User } from 'lucide-react';
+import { useThemeStore } from '../store/themeStore';
 
 const ClientLayout: React.FC = () => {
   const location = useLocation();
+  const heroTheme = useThemeStore(state => state.heroTheme);
   
   const navItems = [
     { label: 'Home', icon: Home, path: '/app' },
@@ -13,12 +15,18 @@ const ClientLayout: React.FC = () => {
     { label: 'Perfil', icon: User, path: '/app/profile' },
   ];
 
+  // A cor da marca para "Hero" é vermelha.
+  // No entanto, em fundos avermelhados (como os temas 'guardiao-escarlate' ou 'aurora-rosa'),
+  // o texto vermelho seria difícil de ler. Nesses casos, usaremos texto branco para garantir o contraste.
+  const isReddishTheme = heroTheme === 'guardiao-escarlate' || heroTheme === 'aurora-rosa';
+  const heroTextColor = isReddishTheme ? 'text-white' : 'text-red-500';
+
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 pb-20 transition-colors duration-300">
       <header className="sticky top-0 z-30 bg-hero-primary text-white px-4 py-3 shadow-md">
         <div className="flex items-center justify-between max-w-lg mx-auto">
-          <h1 className="text-xl font-extrabold tracking-tight text-white/90">
-            Burger<span className="text-white">Hero</span>
+          <h1 className="text-xl font-extrabold tracking-tight">
+            <span className="text-white/90">Burger</span><span className={heroTextColor}>Hero</span>
           </h1>
           <img src="https://ik.imagekit.io/lflb43qwh/Heros/images.jpg" alt="BurgerHero Logo" className="h-10 w-10 rounded-full border-2 border-white/50" />
         </div>
