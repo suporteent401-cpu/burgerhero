@@ -57,10 +57,15 @@ export const getFullUserProfile = async (authUser: SupabaseUser): Promise<AppUse
     .from('app_users')
     .select('role')
     .eq('id', authUser.id)
-    .single();
+    .maybeSingle();
 
-  if (appUserError || !appUser) {
-    console.error('Erro ao buscar dados de app_users:', appUserError?.message);
+  if (appUserError) {
+    console.error('Erro ao buscar dados de app_users:', appUserError.message);
+    return null;
+  }
+
+  if (!appUser) {
+    console.error(`app_users não encontrado para userId ${authUser.id}`);
     return null;
   }
 
