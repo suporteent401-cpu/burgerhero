@@ -5,21 +5,22 @@ import { Input } from '../components/ui/Input';
 import { Button } from '../components/ui/Button';
 import { Card, CardBody } from '../components/ui/Card';
 import { Mail, Lock, User as UserIcon, Calendar, Phone, CreditCard } from 'lucide-react';
-import { fakeApi } from '../lib/fakeApi';
 import { useAuthStore } from '../store/authStore';
 import { motion } from 'framer-motion';
 import { supabase } from '../lib/supabaseClient';
-import { getFullUserProfile } from '../services/users.service';
+import { getFullUserProfile, registerNewUser } from '../services/users.service';
 
 const Auth: React.FC = () => {
   const [isLogin, setIsLogin] = useState(true);
   const [step, setStep] = useState(1);
+  const [step1Data, setStep1Data] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const navigate = useNavigate();
   const login = useAuthStore(state => state.login);
   
   const { register, handleSubmit, watch, formState: { errors } } = useForm();
+  const password = watch('password');
 
   const onSubmit = async (data: any) => {
     setError('');
@@ -31,16 +32,10 @@ const Auth: React.FC = () => {
           password: data.password,
         });
 
-        if (authError) {
-          throw new Error(authError.message === 'Invalid login credentials' ? 'Credenciais inválidas.' : authError.message);
-        }
-
-        if (!authData.user) {
-          throw new Error('Usuário não encontrado após o login.');
-        }
+        if (authError) throw new Error(authError.message === 'Invalid login credentials' ? 'Credenciais inválidas.' : authError.message);
+        if (!authData.user) throw new Error('Usuário não encontrado após o login.');
 
         const fullProfile = await getFullUserProfile(authData.user);
-
         if (!fullProfile) {
           await supabase.auth.signOut();
           throw new Error('Perfil de usuário não configurado. Contate o suporte.');
@@ -50,12 +45,21 @@ const Auth: React.FC = () => {
         redirectByRole(fullProfile.role);
       } else {
         if (step === 1) {
+          setStep1Data(data);
           setStep(2);
           setLoading(false);
           return;
         }
-        const user = await fakeApi.authRegister(data);
-        login(user);
+        
+        const fullUserData = { ...step1Data, ...data };
+        const { data: authData } = await registerNewUser(fullUserData);
+
+        if (!authData.user) throw new Error('Cadastro realizado, mas não foi possível fazer login. Tente logar manualmente.');
+
+        const fullProfile = await getFullUserProfile(authData.user);
+        if (!fullProfile) throw new Error('Perfil criado com sucesso, mas houve um problema ao carregar seus dados. Tente logar manualmente.');
+
+        login(fullProfile);
         navigate('/plans');
       }
     } catch (err: any) {
@@ -98,58 +102,25 @@ const Auth: React.FC = () => {
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
               {isLogin ? (
                 <>
-                  <Input 
-                    label="E-mail" 
-                    placeholder="heroi@email.com" 
-                    icon={<Mail size={18}/>}
-                    {...register('email', { required: true })}
-                  />
-                  <Input 
-                    label="Senha" 
-                    type="password" 
-                    placeholder="••••••••" 
-                    icon={<Lock size={18}/>}
-                    {...register('password', { required: true })}
-                  />
+                  <Input label="E-mail" placeholder="heroi@email.com" icon={<Mail size={18}/>} {...register('email', { required: true })} />
+                  <Input label="Senha" type="password" placeholder="••••••••" icon={<Lock size={18}/>} {...register('password', { required: true })} />
                 </>
               ) : (
                 <>
                   {step === 1 ? (
                     <>
-                      <Input 
-                        label="Nome Completo" 
-                        placeholder="Bruce Wayne" 
-                        icon={<UserIcon size={18}/>}
-                        {...register('name', { required: true })}
-                      />
-                      <Input 
-                        label="CPF" 
-                        placeholder="000.000.000-00" 
-                        icon={<CreditCard size={18}/>}
-                        {...register('cpf', { required: true })}
-                      />
+                      <Input label="Nome Completo" placeholder="Bruce Wayne" icon={<UserIcon size={18}/>} {...register('name', { required: true })} />
+                      <Input label="CPF" placeholder="000.000.000-00" icon={<CreditCard size={18}/>} {...register('cpf', { required: true })} />
                     </>
                   ) : (
                     <>
-                      <Input 
-                        label="WhatsApp" 
-                        placeholder="(11) 99999-9999" 
-                        icon={<Phone size={18}/>}
-                        {...register('whatsapp', { required: true })}
-                      />
-                      <Input 
-                        label="E-mail" 
-                        type="email"
-                        placeholder="heroi@email.com" 
-                        icon={<Mail size={18}/>}
-                        {...register('email', { required: true })}
-                      />
-                      <Input 
-                        label="Nascimento" 
-                        type="date"
-                        icon={<Calendar size={18}/>}
-                        {...register('birthDate', { required: true })}
-                      />
+                      <Input label="WhatsApp" placeholder="(11) 99999-9999" icon={<Phone size={18}/>} {...register('whatsapp', { required: true })} />
+                      <Input label="E-mail" type="email" placeholder="heroi@email.com" icon={<Mail size={18}/>} {...register('email', { required: true })} />
+                      <Input label="Nascimento" type="date" icon={<Calendar size={18}/>} {...register('birthDate', { required: true })} />
+                      <Input label="Senha" type="password" placeholder="Mínimo 6 caracteres" icon={<Lock size={18}/>} {...register('password', { required: true, minLength: 6 })} />
+                      {errors.password && <p className="text-red-500 text-xs -mt-2 ml-1">A senha deve ter no mínimo 6 caracteres.</p>}
+                      <Input label="Confirmar Senha" type="password" placeholder="Repita a senha" icon={<Lock size={18}/>} {...register('confirmPassword', { required: true, validate: value => value === password || "As senhas não coincidem" })} />
+                      {errors.confirmPassword && <p className="text-red-500 text-xs -mt-2 ml-1">{(errors.confirmPassword as any).message}</p>}
                       <div className="flex items-start gap-2 pt-2">
                         <input type="checkbox" className="mt-1" {...register('terms', { required: true })} />
                         <label className="text-xs text-slate-500">Aceito os termos e condições de uso da BurgerHero.</label>
@@ -159,14 +130,9 @@ const Auth: React.FC = () => {
                 </>
               )}
 
-              {error && <p className="text-red-500 text-sm font-semibold">{error}</p>}
+              {error && <p className="text-red-500 text-sm font-semibold text-center">{error}</p>}
 
-              <Button 
-                type="submit" 
-                className="w-full rounded-full py-3" 
-                size="md"
-                isLoading={loading}
-              >
+              <Button type="submit" className="w-full rounded-full py-3" size="md" isLoading={loading}>
                 {!isLogin && step === 1 ? 'Próximo Passo' : (isLogin ? 'Entrar' : 'Finalizar Cadastro')}
               </Button>
             </form>
@@ -176,10 +142,7 @@ const Auth: React.FC = () => {
               <div className="relative flex justify-center text-xs uppercase"><span className="bg-white px-2 text-slate-400 font-bold">Ou</span></div>
             </div>
 
-            <button 
-              onClick={() => { setIsLogin(!isLogin); setStep(1); setError(''); }}
-              className="w-full text-center text-sm font-bold text-slate-600 hover:text-hero-primary transition-colors"
-            >
+            <button onClick={() => { setIsLogin(!isLogin); setStep(1); setError(''); }} className="w-full text-center text-sm font-bold text-slate-600 hover:text-hero-primary transition-colors">
               {isLogin ? 'Não tem conta? Cadastre-se' : 'Já tem conta? Faça Login'}
             </button>
           </CardBody>

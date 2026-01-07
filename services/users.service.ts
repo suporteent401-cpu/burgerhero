@@ -13,7 +13,6 @@ export const getUserProfileById = async (userId: string) => {
     .single();
 
   if (error) {
-    // Não é um erro crítico se nenhum perfil for encontrado (pode ser staff/admin).
     if (error.code !== 'PGRST116') {
       console.error('Erro ao buscar perfil do cliente:', error);
     }
@@ -34,7 +33,7 @@ export const getFullUserProfile = async (authUser: SupabaseUser): Promise<AppUse
 
   if (appUserError || !appUser) {
     console.error('Erro ao buscar dados de app_users:', appUserError?.message);
-    return null; // Retorna null se o role não for encontrado, pois é crítico.
+    return null;
   }
 
   const { data: clientProfile, error: clientProfileError } = await supabase
@@ -43,12 +42,10 @@ export const getFullUserProfile = async (authUser: SupabaseUser): Promise<AppUse
     .eq('user_id', authUser.id)
     .single();
 
-  // Não trata o erro se o perfil não for encontrado (PGRST116), pois pode ser um staff/admin.
   if (clientProfileError && clientProfileError.code !== 'PGRST116') {
     console.error('Erro ao buscar perfil do cliente:', clientProfileError.message);
   }
 
-  // Monta o objeto final do usuário para o Zustand store
   const fullProfile: AppUser = {
     id: authUser.id,
     email: authUser.email || '',
@@ -57,11 +54,72 @@ export const getFullUserProfile = async (authUser: SupabaseUser): Promise<AppUse
     customerCode: clientProfile?.hero_code || 'N/A',
     avatarUrl: clientProfile?.avatar_url || null,
     cpf: clientProfile?.cpf || '',
-    // Campos que não estão no DB, mas estão no tipo User
     whatsapp: '',
     birthDate: '',
-    heroTheme: 'sombra-noturna', // TODO: Isso deveria vir do DB (hero_card_settings)
+    heroTheme: 'sombra-noturna',
   };
 
   return fullProfile;
+};
+
+const normalizeCpf = (cpf: string) => cpf.replace(/[^\d]/g, '');
+
+const checkCpfExists = async (cpf: string): Promise<boolean> => {
+  const { data, error } = await supabase
+    .from('client_profiles')
+    .select('cpf')
+    .eq('cpf', normalizeCpf(cpf))
+    .limit(1)
+    .single();
+
+  if (error && error.code !== 'PGRST116') {
+    console.error('Erro ao verificar CPF:', error);
+    throw error;
+  }
+  return !!data;
+};
+
+const generateUniqueHeroCode = async (): Promise<string> => {
+  let heroCode = '';
+  let isUnique = false;
+  while (!isUnique) {
+    heroCode = `HE${Math.floor(10000 + Math.random() * 90000)}`;
+    const { data } = await supabase.from('client_profiles').select('hero_code').eq('hero_code', heroCode).single();
+    if (!data) isUnique = true;
+  }
+  return heroCode;
+};
+
+export const registerNewUser = async (userData: any) => {
+  const cpfExists = await checkCpfExists(userData.cpf);
+  if (cpfExists) throw new Error('CPF já cadastrado.');
+
+  const { data: authData, error: signUpError } = await supabase.auth.signUp({
+    email: userData.email,
+    password: userData.password,
+  });
+
+  if (signUpError) throw signUpError;
+  if (!authData.user) throw new Error('Não foi possível criar o usuário.');
+  
+  const userId = authData.user.id;
+  const heroCode = await generateUniqueHeroCode();
+
+  const [appUserResult, clientProfileResult, cardSettingsResult] = await Promise.all([
+    supabase.from('app_users').insert({ id: userId, role: 'client', is_active: true }),
+    supabase.from('client_profiles').insert({
+      user_id: userId,
+      display_name: userData.name,
+      email: userData.email,
+      cpf: userData.cpf,
+      hero_code: heroCode,
+    }),
+    supabase.from('hero_card_settings').insert({ user_id: userId }),
+  ]);
+
+  if (appUserResult.error) throw new Error(`Erro (app): ${appUserResult.error.message}`);
+  if (clientProfileResult.error) throw new Error(`Erro (profile): ${clientProfileResult.error.message}`);
+  if (cardSettingsResult.error) throw new Error(`Erro (settings): ${cardSettingsResult.error.message}`);
+
+  return authData;
 };
