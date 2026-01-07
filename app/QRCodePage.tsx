@@ -3,9 +3,10 @@ import { QRCodeSVG } from 'qrcode.react';
 import { Button } from '../components/ui/Button';
 import { useAuthStore } from '../store/authStore';
 import { useCardStore } from '../store/cardStore';
-import { Maximize2, Copy, Check, Sun, Smartphone, Loader2 } from 'lucide-react';
+import { Maximize2, Copy, Check, Sun, Smartphone, AlertCircle } from 'lucide-react';
 import { Modal } from '../components/ui/Modal';
 import { motion } from 'framer-motion';
+import { Link } from 'react-router-dom';
 
 const QRCodePage: React.FC = () => {
   const user = useAuthStore(state => state.user);
@@ -15,14 +16,11 @@ const QRCodePage: React.FC = () => {
 
   const template = getSelectedTemplate();
 
-  // Garante que temos um código antes de gerar a URL
   const customerCode = user?.customerCode;
   
-  // Monta URL pública baseada na rota atual (HashRouter usa #)
-  // Ex: https://meusite.com/#/public/client/BH-12345
-  const origin = window.location.origin + window.location.pathname;
+  // Monta URL pública de forma robusta, lidando com diferentes base paths.
   const qrUrl = customerCode 
-    ? `${origin}#/public/client/${customerCode}`
+    ? new URL(`#/public/client/${customerCode}`, window.location.href).href
     : '';
 
   const handleCopy = () => {
@@ -35,9 +33,16 @@ const QRCodePage: React.FC = () => {
 
   if (!customerCode) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 text-slate-400">
-        <Loader2 className="w-10 h-10 animate-spin mb-4 text-hero-primary" />
-        <p className="text-sm font-bold">Gerando sua identidade...</p>
+      <div className="flex flex-col items-center justify-center py-20 text-center text-slate-500">
+        <AlertCircle className="w-12 h-12 text-amber-500 mb-4" />
+        <h3 className="font-black text-lg text-slate-700 dark:text-slate-200">Identidade de Herói Incompleta</h3>
+        <p className="text-sm max-w-xs mt-1 mb-6">
+          Seu código de cliente ainda não foi gerado. Isso pode acontecer no primeiro acesso. 
+          Por favor, visite seu perfil para garantir que todos os dados estão corretos.
+        </p>
+        <Link to="/app/profile">
+          <Button variant="secondary">Verificar Perfil</Button>
+        </Link>
       </div>
     );
   }
