@@ -54,6 +54,7 @@ interface CardState {
   setFont: (font: string) => void;
   setColor: (color: string) => void;
   setFontSize: (size: number) => void;
+  setAll: (data: Partial<{ templateId: string, font: string, color: string, fontSize: number }>) => void;
   getSelectedTemplate: () => CardTemplate;
 }
 
@@ -68,6 +69,12 @@ export const useCardStore = create<CardState>()(
       setFont: (font) => set({ selectedFont: font }),
       setColor: (color) => set({ selectedColor: color }),
       setFontSize: (size) => set({ selectedFontSize: size }),
+      setAll: (data) => set((state) => ({
+        selectedTemplateId: data.templateId ?? state.selectedTemplateId,
+        selectedFont: data.font ?? state.selectedFont,
+        selectedColor: data.color ?? state.selectedColor,
+        selectedFontSize: data.fontSize ?? state.selectedFontSize,
+      })),
       getSelectedTemplate: () => {
         const { selectedTemplateId } = get();
         return CARD_TEMPLATES.find(t => t.id === selectedTemplateId) || CARD_TEMPLATES[0];

@@ -4,12 +4,18 @@ import { Button } from '../components/ui/Button';
 import { useAuthStore } from '../store/authStore';
 import { useThemeStore } from '../store/themeStore';
 import { useCardStore, CARD_TEMPLATES, FONT_OPTIONS, COLOR_OPTIONS } from '../store/cardStore';
-import { LogOut, Palette, Moon, Sun, Monitor, CreditCard, CheckCircle2, Type, Camera, Pencil, Check, X, TextQuote, Download, Fingerprint } from 'lucide-react';
+import { LogOut, Palette, Moon, Sun, Monitor, CreditCard, CheckCircle2, Type, Camera, Pencil, Check, X, TextQuote, Download, Fingerprint, Loader2 } from 'lucide-react';
 import { HeroTheme, Subscription } from '../types';
 import { fakeApi } from '../lib/fakeApi';
+import { supabase } from '../lib/supabaseClient';
+import { 
+  updateProfileName, 
+  uploadAvatar, 
+  updateCardSettings, 
+  getCardSettings 
+} from '../services/users.service';
 import HeroCard from '../components/HeroCard';
 import { toPng } from 'html-to-image';
-import { supabase } from '../lib/supabaseClient';
 import { subscriptionMockService } from '../services/subscriptionMock.service';
 
 const Profile: React.FC = () => {
@@ -27,6 +33,7 @@ const Profile: React.FC = () => {
   // Name Edit State
   const [isEditingName, setIsEditingName] = useState(false);
   const [editName, setEditName] = useState(user?.name || '');
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
   
   // Card Store hooks
   const { 
@@ -38,14 +45,16 @@ const Profile: React.FC = () => {
     selectedColor,
     setColor,
     selectedFontSize,
-    setFontSize
+    setFontSize,
+    setAll
   } = useCardStore();
 
   const [sub, setSub] = useState<Subscription | null>(null);
 
+  // Carrega configurações do banco ao montar
   useEffect(() => {
     if (user?.id) {
-      // Prioriza o mock para consistência com o checkout
+      // Carrega Assinatura (Mock + Real)
       const mockSub = subscriptionMockService.getActiveSubscription(user.id);
       if (mockSub && mockSub.status === 'active') {
         setSub({
@@ -56,8 +65,29 @@ const Profile: React.FC = () => {
       } else {
         fakeApi.getSubscriptionStatus(user.id).then(setSub);
       }
+
+      // Carrega Settings do Cartão do Supabase
+      getCardSettings(user.id).then(settings => {
+        if (settings) {
+          // Atualiza Store do Cartão
+          setAll({
+            templateId: settings.card_template_id,
+            font: settings.font_style,
+            color: settings.font_color,
+            fontSize: settings.font_size_px
+          });
+          
+          // Atualiza Store de Tema/Modo
+          if (settings.hero_theme && settings.hero_theme !== heroTheme) {
+            setHeroTheme(settings.hero_theme as HeroTheme);
+          }
+          if (settings.theme_mode && settings.theme_mode !== mode) {
+            setMode(settings.theme_mode);
+          }
+        }
+      });
     }
-  }, [user?.id]);
+  }, [user?.id, setAll, setHeroTheme, setMode]);
 
   useEffect(() => {
     if (!isEditingName && user?.name && user.name !== editName) {
@@ -65,45 +95,83 @@ const Profile: React.FC = () => {
     }
   }, [user?.name, isEditingName, editName]);
 
-  const themes: { name: HeroTheme, color: string, label: string }[] = [
-    { name: 'sombra-noturna', color: '#1e40af', label: 'Sombra' },
-    { name: 'guardiao-escarlate', color: '#ef4444', label: 'Escarlate' },
-    { name: 'tita-dourado', color: '#f59e0b', label: 'Dourado' },
-    { name: 'tempestade-azul', color: '#3b82f6', label: 'Tempestade' },
-    { name: 'sentinela-verde', color: '#10b981', label: 'Sentinela' },
-    { name: 'aurora-rosa', color: '#ec4899', label: 'Aurora' },
-    { name: 'vermelho-heroi', color: '#FF0004', label: 'Herói' },
-    { name: 'verde-neon', color: '#08FF01', label: 'Neon' },
-    { name: 'laranja-vulcanico', color: '#FF4F02', label: 'Vulcão' },
-    { name: 'azul-eletrico', color: '#0300FF', label: 'Elétrico' },
-  ];
-
-  const handleThemeChange = async (theme: HeroTheme) => {
-    setHeroTheme(theme);
-    if (user) {
-      await fakeApi.updateUserTheme(user.id, theme);
-      updateUser({ heroTheme: theme });
+  // Função auxiliar para salvar configurações no banco com debounce (simulado)
+  const saveSettingsToDb = async (newSettings: any) => {
+    if (!user) return;
+    try {
+      await updateCardSettings(user.id, newSettings);
+    } catch (err) {
+      console.error('Erro ao salvar configurações:', err);
     }
   };
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleThemeChange = (theme: HeroTheme) => {
+    setHeroTheme(theme);
+    updateUser({ heroTheme: theme }); // Atualiza local user
+    saveSettingsToDb({ heroTheme: theme });
+  };
+
+  const handleModeChange = (newMode: 'light' | 'dark') => {
+    setMode(newMode);
+    saveSettingsToDb({ mode: newMode });
+  };
+
+  const handleTemplateChange = (id: string) => {
+    setTemplateId(id);
+    saveSettingsToDb({ templateId: id });
+  };
+
+  const handleFontChange = (font: string) => {
+    setFont(font);
+    saveSettingsToDb({ fontFamily: font });
+  };
+
+  const handleColorChange = (color: string) => {
+    setColor(color);
+    saveSettingsToDb({ fontColor: color });
+  };
+
+  const handleFontSizeChange = (size: number) => {
+    setFontSize(size);
+    // Debounce manual simples poderia ser adicionado aqui, mas vamos salvar direto por enquanto
+    saveSettingsToDb({ fontSize: size });
+  };
+
+  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file && user) {
-      const reader = new FileReader();
-      reader.onloadend = async () => {
-        const base64 = reader.result as string;
-        await fakeApi.updateUserAvatar(user.id, base64);
-        updateUser({ avatarUrl: base64 });
-      };
-      reader.readAsDataURL(file);
+      try {
+        setUploadingAvatar(true);
+        const publicUrl = await uploadAvatar(user.id, file);
+        if (publicUrl) {
+          // Atualiza store local e banco de perfis
+          await supabase.from('client_profiles').update({ avatar_url: publicUrl }).eq('user_id', user.id);
+          updateUser({ avatarUrl: publicUrl });
+        }
+      } catch (err) {
+        console.error('Erro no upload:', err);
+        alert('Erro ao enviar imagem.');
+      } finally {
+        setUploadingAvatar(false);
+      }
     }
   };
 
   const handleSaveName = async () => {
     if (!user || !editName.trim()) return;
+    
+    // Optimistic Update
+    const oldName = user.name;
     updateUser({ name: editName });
     setIsEditingName(false);
-    await fakeApi.updateUserProfile(user.id, { name: editName });
+    
+    try {
+      await updateProfileName(user.id, editName);
+    } catch (err) {
+      console.error('Erro ao salvar nome:', err);
+      updateUser({ name: oldName }); // Rollback
+      alert('Erro ao salvar nome.');
+    }
   };
 
   const handleCancelEdit = () => {
@@ -128,19 +196,36 @@ const Profile: React.FC = () => {
 
   const handleLogout = async () => {
     const { error } = await supabase.auth.signOut();
-    if (error) {
-      console.error('Erro ao fazer logout:', error);
-    }
+    if (error) console.error('Erro ao fazer logout:', error);
   };
+
+  const themes: { name: HeroTheme, color: string, label: string }[] = [
+    { name: 'sombra-noturna', color: '#1e40af', label: 'Sombra' },
+    { name: 'guardiao-escarlate', color: '#ef4444', label: 'Escarlate' },
+    { name: 'tita-dourado', color: '#f59e0b', label: 'Dourado' },
+    { name: 'tempestade-azul', color: '#3b82f6', label: 'Tempestade' },
+    { name: 'sentinela-verde', color: '#10b981', label: 'Sentinela' },
+    { name: 'aurora-rosa', color: '#ec4899', label: 'Aurora' },
+    { name: 'vermelho-heroi', color: '#FF0004', label: 'Herói' },
+    { name: 'verde-neon', color: '#08FF01', label: 'Neon' },
+    { name: 'laranja-vulcanico', color: '#FF4F02', label: 'Vulcão' },
+    { name: 'azul-eletrico', color: '#0300FF', label: 'Elétrico' },
+  ];
 
   return (
     <div className="space-y-6 pb-10">
       
       {/* CABEÇALHO DO PERFIL */}
       <div className="flex flex-col items-center">
-        <div className="relative group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
+        <div className="relative group cursor-pointer" onClick={() => !uploadingAvatar && fileInputRef.current?.click()}>
           <div className="w-28 h-28 rounded-full border-4 border-white dark:border-slate-800 shadow-xl bg-slate-200 overflow-hidden relative">
-            <img src={user?.avatarUrl || 'https://picsum.photos/seed/hero/200'} alt="Profile" className="w-full h-full object-cover" />
+            {uploadingAvatar ? (
+              <div className="w-full h-full flex items-center justify-center bg-black/50">
+                <Loader2 className="animate-spin text-white" />
+              </div>
+            ) : (
+              <img src={user?.avatarUrl || 'https://picsum.photos/seed/hero/200'} alt="Profile" className="w-full h-full object-cover" />
+            )}
           </div>
           <div className="absolute inset-0 bg-black/30 rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
              <Camera size={24} className="text-white" />
@@ -156,6 +241,7 @@ const Profile: React.FC = () => {
             className="hidden" 
             accept="image/*" 
             onChange={handleFileChange}
+            disabled={uploadingAvatar}
           />
         </div>
         
@@ -190,7 +276,6 @@ const Profile: React.FC = () => {
           )}
           <p className="text-slate-400 font-medium text-sm mt-1 mb-3">{user?.email}</p>
           
-          {/* Exibição do ID do Cliente */}
           <div className="bg-slate-50 dark:bg-slate-800/50 px-4 py-1.5 rounded-full border border-slate-100 dark:border-slate-800 flex items-center gap-2">
             <Fingerprint size={14} className="text-hero-primary" />
             <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">
@@ -218,7 +303,7 @@ const Profile: React.FC = () => {
                 return (
                   <button
                     key={template.id}
-                    onClick={() => setTemplateId(template.id)}
+                    onClick={() => handleTemplateChange(template.id)}
                     className={`
                       relative rounded-xl overflow-hidden transition-all duration-200 aspect-[1.586/1]
                       ${isSelected ? 'ring-4 ring-hero-primary shadow-lg scale-[1.02]' : 'ring-1 ring-slate-200 dark:ring-slate-700 hover:ring-slate-300'}
@@ -254,7 +339,7 @@ const Profile: React.FC = () => {
                 {FONT_OPTIONS.map((font) => (
                   <button
                     key={font.name}
-                    onClick={() => setFont(font.value)}
+                    onClick={() => handleFontChange(font.value)}
                     style={{ fontFamily: font.value }}
                     className={`
                       px-3 py-2 rounded-lg text-sm border transition-all
@@ -276,7 +361,7 @@ const Profile: React.FC = () => {
                 {COLOR_OPTIONS.map((color) => (
                   <button
                     key={color.name}
-                    onClick={() => setColor(color.value)}
+                    onClick={() => handleColorChange(color.value)}
                     className={`
                       w-10 h-10 rounded-full border-2 shadow-sm transition-all flex items-center justify-center relative group
                       ${selectedColor === color.value ? 'scale-110 ring-2 ring-offset-2 ring-hero-primary dark:ring-offset-slate-900' : 'hover:scale-105'}
@@ -309,7 +394,7 @@ const Profile: React.FC = () => {
                   max="32"
                   step="1"
                   value={selectedFontSize}
-                  onChange={(e) => setFontSize(Number(e.target.value))}
+                  onChange={(e) => handleFontSizeChange(Number(e.target.value))}
                   className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-hero-primary"
                 />
                 <span className="text-3xl font-bold">A</span>
@@ -373,13 +458,13 @@ const Profile: React.FC = () => {
           </CardHeader>
           <CardBody className="p-4 flex flex-col gap-2">
               <button 
-                onClick={() => setMode('light')}
+                onClick={() => handleModeChange('light')}
                 className={`flex items-center gap-3 p-3 rounded-xl border-2 transition-all ${mode === 'light' ? 'border-hero-primary text-hero-primary bg-hero-primary/5' : 'border-slate-50 dark:border-slate-800 text-slate-400'}`}
               >
                 <Sun size={18} /> <span className="text-xs font-bold uppercase">Claro</span>
               </button>
               <button 
-                onClick={() => setMode('dark')}
+                onClick={() => handleModeChange('dark')}
                 className={`flex items-center gap-3 p-3 rounded-xl border-2 transition-all ${mode === 'dark' ? 'border-hero-primary text-hero-primary bg-hero-primary/5' : 'border-slate-50 dark:border-slate-800 text-slate-400'}`}
               >
                 <Moon size={18} /> <span className="text-xs font-bold uppercase">Escuro</span>

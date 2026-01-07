@@ -38,54 +38,38 @@ export const getUserProfileById = async (userId: string) => {
 };
 
 export const getFullUserProfile = async (authUser: SupabaseUser): Promise<AppUser | null> => {
-  // OTIMIZAÇÃO: Busca em paralelo para reduzir tempo de login pela metade
-  const [appUserResponse, clientProfileResponse] = await Promise.all([
-    supabase
-      .from('app_users')
-      .select('role, is_active')
-      .eq('id', authUser.id)
-      .maybeSingle(),
-      
-    supabase
-      .from('client_profiles')
-      .select('display_name, hero_code, avatar_url, cpf, customer_id_public')
-      .eq('user_id', authUser.id)
-      .maybeSingle()
+  const [appUserResponse, clientProfileResponse, settingsResponse] = await Promise.all([
+    supabase.from('app_users').select('role, is_active').eq('id', authUser.id).maybeSingle(),
+    supabase.from('client_profiles').select('*').eq('user_id', authUser.id).maybeSingle(),
+    supabase.from('hero_card_settings').select('hero_theme').eq('user_id', authUser.id).maybeSingle()
   ]);
 
-  // Checagem de erros
   if (appUserResponse.error) {
     console.error('CRÍTICO: erro ao buscar app_users:', appUserResponse.error);
     return null;
   }
   
   const appUserData = appUserResponse.data;
-  if (!appUserData) {
-    console.warn('Aviso: Registro em "app_users" não encontrado para o usuário.');
-    return null;
-  }
+  if (!appUserData) return null;
 
   const role = appUserData.role as Role;
   const clientProfileData = clientProfileResponse.data;
+  const settingsData = settingsResponse.data;
+
+  // Usa o tema salvo em settings, ou do perfil (se tivesse), ou default
+  const savedTheme = settingsData?.hero_theme as any || 'sombra-noturna';
 
   const fullProfile: AppUser = {
     id: authUser.id,
     email: authUser.email || '',
     role,
-
-    name:
-      clientProfileData?.display_name ||
-      (authUser.user_metadata as any)?.full_name ||
-      authUser.email?.split('@')[0] ||
-      'Herói',
-
+    name: clientProfileData?.display_name || (authUser.user_metadata as any)?.full_name || 'Herói',
     customerCode: clientProfileData?.customer_id_public || clientProfileData?.hero_code || '',
-    
     avatarUrl: clientProfileData?.avatar_url || (authUser.user_metadata as any)?.avatar_url || null,
     cpf: clientProfileData?.cpf || '',
-    whatsapp: '',
-    birthDate: '',
-    heroTheme: 'sombra-noturna',
+    whatsapp: '', // Futuro: adicionar no client_profiles
+    birthDate: '', // Futuro
+    heroTheme: savedTheme,
   };
 
   return fullProfile;
@@ -98,39 +82,87 @@ export const signUpAndCreateProfile = async (userData: any) => {
   });
 
   if (signUpError) {
-    if (signUpError.message.includes('User already registered')) {
-      throw new Error('E-mail já cadastrado. Faça login.');
-    }
+    if (signUpError.message.includes('User already registered')) throw new Error('E-mail já cadastrado. Faça login.');
     throw signUpError;
   }
 
-  if (!authData.user) {
-    throw new Error('Não foi possível criar o usuário. Tente novamente.');
-  }
+  if (!authData.user) throw new Error('Não foi possível criar o usuário. Tente novamente.');
 
   const { error: signInError } = await supabase.auth.signInWithPassword({
     email: userData.email,
     password: userData.password,
   });
 
-  if (signInError) {
-    console.warn('Falha no login automático após cadastro:', signInError);
-    return authData;
-  }
+  if (signInError) console.warn('Falha no login automático:', signInError);
 
-  const { data: rpcData, error: rpcError } = await supabase.rpc('ensure_user_profile', {
+  await supabase.rpc('ensure_user_profile', {
     p_display_name: userData.name,
     p_email: userData.email,
     p_cpf: userData.cpf,
     p_birthdate: userData.birthDate || null,
   });
 
-  if (rpcError) {
-    console.error('Erro na RPC ensure_user_profile:', rpcError);
-  }
-
   return authData;
 };
+
+// --- NOVOS MÉTODOS ---
+
+export const uploadAvatar = async (userId: string, file: File): Promise<string | null> => {
+  const fileExt = file.name.split('.').pop();
+  const fileName = `${userId}/${Date.now()}.${fileExt}`;
+
+  const { error: uploadError } = await supabase.storage
+    .from('avatars')
+    .upload(fileName, file, { upsert: true });
+
+  if (uploadError) {
+    console.error('Erro no upload:', uploadError);
+    throw uploadError;
+  }
+
+  const { data } = supabase.storage.from('avatars').getPublicUrl(fileName);
+  return data.publicUrl;
+};
+
+export const updateProfileName = async (userId: string, name: string) => {
+  const { error } = await supabase
+    .from('client_profiles')
+    .update({ display_name: name })
+    .eq('user_id', userId);
+
+  if (error) throw error;
+};
+
+export const updateCardSettings = async (userId: string, settings: any) => {
+  // Mapeia os campos do store para o DB
+  const dbPayload: any = {};
+  if (settings.templateId) dbPayload.card_template_id = settings.templateId;
+  if (settings.fontFamily) dbPayload.font_style = settings.fontFamily;
+  if (settings.fontColor) dbPayload.font_color = settings.fontColor;
+  if (settings.fontSize) dbPayload.font_size_px = settings.fontSize;
+  if (settings.heroTheme) dbPayload.hero_theme = settings.heroTheme;
+  if (settings.mode) dbPayload.theme_mode = settings.mode;
+
+  const { error } = await supabase
+    .from('hero_card_settings')
+    .update(dbPayload)
+    .eq('user_id', userId);
+
+  if (error) throw error;
+};
+
+export const getCardSettings = async (userId: string) => {
+  const { data, error } = await supabase
+    .from('hero_card_settings')
+    .select('*')
+    .eq('user_id', userId)
+    .single();
+  
+  if (error) return null;
+  return data;
+};
+
+// --- Tipos e Interfaces ---
 
 export interface PublicProfile {
   display_name: string;
@@ -141,19 +173,11 @@ export interface PublicProfile {
 }
 
 export const getPublicProfileByCode = async (code: string): Promise<PublicProfile | null> => {
-  const { data, error } = await supabase.rpc('get_public_profile_by_code', {
-    p_code: code
-  });
-
+  const { data, error } = await supabase.rpc('get_public_profile_by_code', { p_code: code });
   if (error) {
     console.error('Erro ao buscar perfil público:', error);
     return null;
   }
-
-  // RPC retorna array de linhas, queremos a primeira (única)
-  if (Array.isArray(data) && data.length > 0) {
-    return data[0] as PublicProfile;
-  }
-  
+  if (Array.isArray(data) && data.length > 0) return data[0] as PublicProfile;
   return null;
 };
