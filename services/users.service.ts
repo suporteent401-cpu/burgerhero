@@ -1,4 +1,3 @@
-// /services/users.service.ts
 import { supabase } from '../lib/supabaseClient';
 import { User as AppUser, Role } from '../types';
 import { User as SupabaseUser } from '@supabase/supabase-js';
@@ -72,8 +71,7 @@ export const getFullUserProfile = async (authUser: SupabaseUser): Promise<AppUse
   const clientProfileData = clientProfileResponse.data;
 
   // Monta o perfil final. 
-  // O customer_id_public agora é garantido pelo Trigger do banco de dados.
-  // Se ainda vier nulo (muito raro), usamos fallback.
+  // Removido o fallback 'BH-GERANDO' para evitar exibição de dado falso.
   const fullProfile: AppUser = {
     id: authUser.id,
     email: authUser.email || '',
@@ -85,12 +83,14 @@ export const getFullUserProfile = async (authUser: SupabaseUser): Promise<AppUse
       authUser.email?.split('@')[0] ||
       'Herói',
 
-    customerCode: clientProfileData?.customer_id_public || clientProfileData?.hero_code || 'BH-GERANDO',
+    // Prioriza o ID Público gerado pelo banco. Se não existir, tenta hero_code legado ou vazio.
+    customerCode: clientProfileData?.customer_id_public || clientProfileData?.hero_code || '',
+    
     avatarUrl: clientProfileData?.avatar_url || (authUser.user_metadata as any)?.avatar_url || null,
     cpf: clientProfileData?.cpf || '',
     whatsapp: '',
     birthDate: '',
-    heroTheme: 'sombra-noturna', // Poderia vir do banco se houver coluna para isso
+    heroTheme: 'sombra-noturna',
   };
 
   return fullProfile;
