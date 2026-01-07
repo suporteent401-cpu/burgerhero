@@ -3,36 +3,49 @@ import { useNavigate } from 'react-router-dom';
 import { Card, CardBody } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { useAuthStore } from '../store/authStore';
-import { fakeApi } from '../lib/fakeApi';
-import { MonthlyBenefit, Subscription } from '../types';
-import { QrCode, Lock, CheckCircle2, Calendar, Utensils, ChevronRight } from 'lucide-react';
+import { Subscription } from '../types';
+import { QrCode, Lock, CheckCircle2, Calendar, Utensils } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { getCurrentVoucher, getVoucherHistory } from '../services/voucher.service';
+import { getSubscriptionStatus } from '../services/clientHome.service';
 
 const Voucher: React.FC = () => {
   const user = useAuthStore(state => state.user);
   const navigate = useNavigate();
+  
   const [sub, setSub] = useState<Subscription | null>(null);
-  const [benefit, setBenefit] = useState<MonthlyBenefit | null>(null);
+  const [currentVoucher, setCurrentVoucher] = useState<any | null>(null);
+  const [history, setHistory] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Get current month name
   const currentDate = new Date();
   const monthName = currentDate.toLocaleString('pt-BR', { month: 'long' });
   const capitalizedMonth = monthName.charAt(0).toUpperCase() + monthName.slice(1);
   const currentYear = currentDate.getFullYear();
 
-  // Fix: Use user.id instead of user object to prevent infinite loop
   useEffect(() => {
     if (user?.id) {
-      const monthKey = new Date().toISOString().slice(0, 7);
-      Promise.all([
-        fakeApi.getSubscriptionStatus(user.id),
-        fakeApi.getMonthlyBenefit(user.id, monthKey)
-      ]).then(([s, b]) => {
-        setSub(s);
-        setBenefit(b);
-        setLoading(false);
-      });
+      const fetchData = async () => {
+        try {
+          const [voucherData, subData, historyData] = await Promise.all([
+            getCurrentVoucher(user.id),
+            getSubscriptionStatus(user.id),
+            getVoucherHistory(user.id)
+          ]);
+          
+          setCurrentVoucher(voucherData);
+          setSub(subData);
+          
+          // Filtra o histórico para não incluir o voucher do mês atual
+          const pastVouchers = historyData.filter(v => v.id !== voucherData?.id);
+          setHistory(pastVouchers.slice(0, 2)); // Limita a 2 itens no histórico por enquanto
+        } catch (error) {
+          console.error("Erro ao buscar dados do voucher, usando fallback silencioso.", error);
+        } finally {
+          setLoading(false);
+        }
+      };
+      fetchData();
     }
   }, [user?.id]);
 
@@ -44,11 +57,12 @@ const Voucher: React.FC = () => {
   );
 
   const isActive = sub?.status === 'ACTIVE';
-  const isRedeemed = benefit?.burgerRedeemed;
-  const isEligible = isActive && !isRedeemed;
+  const isRedeemed = currentVoucher?.status === 'redeemed';
+  const isEligible = isActive && currentVoucher?.status === 'available';
 
-  // Visual assets based on state
-  const burgerImage = "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80"; // High quality burger
+  const burgerImage = currentVoucher?.monthly_drop?.burger?.image_url || "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80";
+  const burgerName = currentVoucher?.monthly_drop?.burger?.name;
+  const burgerDescription = currentVoucher?.monthly_drop?.burger?.description;
 
   return (
     <div className="space-y-6 pb-10">
@@ -63,14 +77,13 @@ const Voucher: React.FC = () => {
         </div>
       </div>
 
-      {/* Main Voucher Card - Compacto */}
+      {/* Main Voucher Card */}
       <motion.div 
         initial={{ opacity: 0, scale: 0.98 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 0.5 }}
         className="relative w-full h-[280px] rounded-2xl overflow-hidden shadow-xl group"
       >
-        {/* Background Image with Zoom Effect */}
         <div className="absolute inset-0 bg-slate-900">
            <img 
              src={burgerImage} 
@@ -80,13 +93,12 @@ const Voucher: React.FC = () => {
            <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent"></div>
         </div>
 
-        {/* Status Badge */}
         <div className="absolute top-3 right-3">
           {isRedeemed ? (
             <div className="bg-slate-900/80 backdrop-blur-md text-white px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest border border-white/20 flex items-center gap-1.5">
               <CheckCircle2 size={12} className="text-green-500" /> Resgatado
             </div>
-          ) : isActive ? (
+          ) : isEligible ? (
             <div className="bg-hero-primary text-white px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest shadow-lg shadow-hero-primary/40 animate-pulse">
               Disponível
             </div>
@@ -97,21 +109,20 @@ const Voucher: React.FC = () => {
           )}
         </div>
 
-        {/* Content Overlay */}
         <div className="absolute bottom-0 left-0 right-0 p-5 flex flex-col gap-2">
           <div>
             <span className="text-hero-primary font-black text-[10px] uppercase tracking-[0.2em] mb-1 block">
               Burger do Mês
             </span>
             <h3 className="text-2xl font-black text-white leading-tight mb-1">
-              {isRedeemed ? 'Missão Cumprida' : 'Double Smash Hero'}
+              {isRedeemed ? 'Missão Cumprida' : (burgerName || 'Drop Indisponível')}
             </h3>
             <p className="text-slate-300 text-xs max-w-sm line-clamp-2 leading-relaxed">
               {isRedeemed 
-                ? `Você saboreou este drop épico em ${new Date(benefit!.redeemedAt!).toLocaleDateString()}.`
-                : isActive 
-                  ? 'Duas carnes smash de 80g, queijo cheddar inglês, cebola caramelizada e maionese secreta.'
-                  : 'Sua assinatura está inativa. Reative agora para desbloquear.'
+                ? `Você saboreou este drop épico em ${new Date(currentVoucher!.redeemed_at!).toLocaleDateString()}.`
+                : isEligible && burgerDescription
+                  ? burgerDescription
+                  : 'Sua assinatura está inativa ou o drop ainda não foi liberado.'
               }
             </p>
           </div>
@@ -149,9 +160,8 @@ const Voucher: React.FC = () => {
         
         <Card className="border-none shadow-none bg-transparent">
           <CardBody className="p-0 space-y-4">
-             {/* Simulated History Items */}
-             {[1].map((_, i) => (
-                <div key={i} className="relative pl-8 before:absolute before:left-[11px] before:top-8 before:bottom-[-16px] before:w-[2px] before:bg-slate-200 dark:before:bg-slate-800 last:before:hidden">
+             {history.map((voucher, i) => (
+                <div key={voucher.id} className="relative pl-8 before:absolute before:left-[11px] before:top-8 before:bottom-[-16px] before:w-[2px] before:bg-slate-200 dark:before:bg-slate-800 last:before:hidden">
                    <div className="absolute left-0 top-1 w-6 h-6 rounded-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center z-10">
                       <div className="w-1.5 h-1.5 rounded-full bg-slate-400"></div>
                    </div>
@@ -161,15 +171,16 @@ const Voucher: React.FC = () => {
                             <Utensils size={14} />
                          </div>
                          <div>
-                            <p className="text-xs font-bold text-slate-700 dark:text-slate-300">Resgate de Setembro</p>
-                            <p className="text-xs text-slate-400 dark:text-slate-500">Expirado</p>
+                            <p className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                              Resgate de {new Date(voucher.created_at).toLocaleString('pt-BR', { month: 'long' })}
+                            </p>
+                            <p className="text-xs text-slate-400 dark:text-slate-500 capitalize">{voucher.status}</p>
                          </div>
                       </div>
                    </div>
                 </div>
              ))}
 
-             {/* Empty State / Future */}
              <div className="relative pl-8">
                 <div className="absolute left-0 top-1 w-6 h-6 rounded-full bg-hero-primary/20 flex items-center justify-center z-10">
                    <div className="w-1.5 h-1.5 rounded-full bg-hero-primary animate-pulse"></div>
