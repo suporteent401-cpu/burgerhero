@@ -4,7 +4,7 @@ import { Button } from '../components/ui/Button';
 import { useAuthStore } from '../store/authStore';
 import { useThemeStore } from '../store/themeStore';
 import { useCardStore, CARD_TEMPLATES, FONT_OPTIONS, COLOR_OPTIONS } from '../store/cardStore';
-import { LogOut, Palette, Moon, Sun, Monitor, CreditCard, CheckCircle2, Type, Camera, Pencil, Check, X } from 'lucide-react';
+import { LogOut, Palette, Moon, Sun, Monitor, CreditCard, CheckCircle2, Type, Camera, Pencil, Check, X, TextQuote } from 'lucide-react';
 import { HeroTheme, Subscription } from '../types';
 import { fakeApi } from '../lib/fakeApi';
 import HeroCard from '../components/HeroCard';
@@ -33,7 +33,9 @@ const Profile: React.FC = () => {
     selectedFont,
     setFont,
     selectedColor,
-    setColor
+    setColor,
+    selectedFontSize,
+    setFontSize
   } = useCardStore();
 
   const [sub, setSub] = useState<Subscription | null>(null);
@@ -247,11 +249,31 @@ const Profile: React.FC = () => {
                       <CheckCircle2 
                         size={18} 
                         className="drop-shadow-md"
-                        style={{ color: ['#FFFFFF', '#FCD34D', '#C0C0C0', '#00FFFF', '#39FF14'].includes(color.value) ? '#000' : '#FFF' }}
+                        style={{ color: ['#FFFFFF', '#FCD34D', '#C0C0C0', '#00FFFF', '#39FF14', '#08FF01'].includes(color.value) ? '#000' : '#FFF' }}
                       />
                     )}
                   </button>
                 ))}
+              </div>
+            </div>
+
+            {/* Font Size Slider */}
+            <div>
+              <p className="text-sm font-bold text-slate-500 dark:text-slate-400 mb-3 flex items-center gap-2">
+                <TextQuote size={16} /> Tamanho da Fonte: <span className="font-black text-hero-primary">{selectedFontSize}px</span>
+              </p>
+              <div className="flex items-center gap-4">
+                <span className="text-lg font-bold">A</span>
+                <input
+                  type="range"
+                  min="16"
+                  max="32"
+                  step="1"
+                  value={selectedFontSize}
+                  onChange={(e) => setFontSize(Number(e.target.value))}
+                  className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-hero-primary"
+                />
+                <span className="text-3xl font-bold">A</span>
               </div>
             </div>
           </div>
@@ -265,6 +287,7 @@ const Profile: React.FC = () => {
                memberSince={sub?.currentPeriodStart}
                fontFamily={selectedFont}
                textColor={selectedColor}
+               fontSize={selectedFontSize}
              />
           </div>
 

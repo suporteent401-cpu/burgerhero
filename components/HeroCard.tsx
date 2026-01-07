@@ -8,6 +8,7 @@ interface HeroCardProps {
   className?: string;
   fontFamily?: string;
   textColor?: string;
+  fontSize?: number;
 }
 
 const HeroCard: React.FC<HeroCardProps> = ({ 
@@ -15,7 +16,8 @@ const HeroCard: React.FC<HeroCardProps> = ({
   imageUrl, 
   className = '',
   fontFamily = 'Inter, sans-serif',
-  textColor = '#FFFFFF'
+  textColor = '#FFFFFF',
+  fontSize = 22
 }) => {
   return (
     <div className={`w-full max-w-[420px] mx-auto ${className}`}>
@@ -45,14 +47,23 @@ const HeroCard: React.FC<HeroCardProps> = ({
           style={{ color: textColor }}
         >
           <p 
-            className="text-xl md:text-2xl tracking-wide drop-shadow-md truncate"
-            style={{ fontFamily: fontFamily, fontWeight: 400 }}
+            className="tracking-wide drop-shadow-md truncate"
+            style={{ 
+              fontFamily: fontFamily, 
+              fontWeight: 400,
+              fontSize: `${fontSize}px`,
+              lineHeight: 1.2
+            }}
           >
             {user?.name || 'Visitante'}
           </p>
           <p 
-            className="text-sm tracking-widest drop-shadow-md mt-0.5 opacity-90"
-            style={{ fontFamily: fontFamily, fontWeight: 500 }}
+            className="tracking-widest drop-shadow-md mt-0.5 opacity-90"
+            style={{ 
+              fontFamily: fontFamily, 
+              fontWeight: 500,
+              fontSize: `${fontSize * 0.6}px`
+            }}
           >
             {user?.customerCode || 'HE-----'}
           </p>

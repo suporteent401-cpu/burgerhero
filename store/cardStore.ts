@@ -39,15 +39,21 @@ export const COLOR_OPTIONS = [
   { name: 'Magenta', value: '#FF00FF', type: 'vibrant' },
   { name: 'Verde Lima', value: '#39FF14', type: 'vibrant' },
   { name: 'Laranja', value: '#FF4500', type: 'vibrant' },
+  { name: 'Vermelho Herói', value: '#FF0004', type: 'vibrant' },
+  { name: 'Verde Neon', value: '#08FF01', type: 'vibrant' },
+  { name: 'Laranja Vulcânico', value: '#FF4F02', type: 'vibrant' },
+  { name: 'Azul Elétrico', value: '#0300FF', type: 'vibrant' },
 ];
 
 interface CardState {
   selectedTemplateId: string;
   selectedFont: string;
   selectedColor: string;
+  selectedFontSize: number;
   setTemplateId: (id: string) => void;
   setFont: (font: string) => void;
   setColor: (color: string) => void;
+  setFontSize: (size: number) => void;
   getSelectedTemplate: () => CardTemplate;
 }
 
@@ -57,14 +63,16 @@ export const useCardStore = create<CardState>()(
       selectedTemplateId: 'hero-1',
       selectedFont: 'Inter, sans-serif',
       selectedColor: '#FFFFFF',
+      selectedFontSize: 22,
       setTemplateId: (id) => set({ selectedTemplateId: id }),
       setFont: (font) => set({ selectedFont: font }),
       setColor: (color) => set({ selectedColor: color }),
+      setFontSize: (size) => set({ selectedFontSize: size }),
       getSelectedTemplate: () => {
         const { selectedTemplateId } = get();
         return CARD_TEMPLATES.find(t => t.id === selectedTemplateId) || CARD_TEMPLATES[0];
       }
     }),
-    { name: 'burger-hero-card-prefs-v4' }
+    { name: 'burger-hero-card-prefs-v5' }
   )
 );
