@@ -19,11 +19,9 @@ const Checkout: React.FC = () => {
   const [errorMsg, setErrorMsg] = useState<string>("");
 
   useEffect(() => {
-    // 1. Busca o plano pendente do serviço Mock
     const pendingPlan = subscriptionMockService.getPendingPlan();
     
     if (!pendingPlan) {
-      // Se não houver plano selecionado, volta para a vitrine
       navigate('/plans', { replace: true });
       return;
     }
@@ -38,16 +36,16 @@ const Checkout: React.FC = () => {
     setLoading(true);
 
     try {
-      // Simula delay de rede
-      await new Promise(r => setTimeout(r, 1000));
+      // Simula processamento
+      await new Promise(r => setTimeout(r, 800));
 
-      // 2. Ativa a assinatura Mock no storage local
+      // 1. Ativa a assinatura Mock (persiste no localStorage)
       subscriptionMockService.setActiveSubscription(user.id, plan);
       
-      // 3. Limpa o plano pendente pois já foi processado
+      // 2. Limpa o plano pendente
       subscriptionMockService.clearPendingPlan();
       
-      // 4. Redireciona para o app do cliente
+      // 3. Redireciona para a home
       navigate("/app", { replace: true });
     } catch (err: any) {
       console.error(err);
@@ -91,7 +89,7 @@ const Checkout: React.FC = () => {
 
             <div className="mt-4 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
               <CheckCircle2 size={14} className="text-emerald-500" />
-              Por enquanto, este checkout aprova automaticamente (modo mock).
+              Checkout em modo de demonstração (MOCK).
             </div>
           </CardBody>
         </Card>
@@ -134,11 +132,6 @@ const Checkout: React.FC = () => {
               </div>
               <div className={`w-2 h-2 rounded-full ${method === "pix" ? "bg-hero-primary" : "bg-slate-300"}`} />
             </button>
-
-            <div className="pt-2 text-xs text-slate-400 flex items-center gap-2">
-              <span className="inline-block w-2 h-2 rounded-full bg-emerald-500" />
-              Suas informações estarão criptografadas (quando plugar gateway real).
-            </div>
           </CardBody>
         </Card>
 
@@ -156,10 +149,6 @@ const Checkout: React.FC = () => {
         >
           {loading ? "Ativando..." : `Finalizar Assinatura - ${formatBRL(plan.priceCents / 100)}`}
         </Button>
-
-        <div className="text-center text-xs text-slate-400">
-          Próximo passo: integrar gateway (webhook) para ativação real.
-        </div>
       </div>
     </div>
   );

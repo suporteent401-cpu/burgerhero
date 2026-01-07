@@ -10,6 +10,7 @@ import { fakeApi } from '../lib/fakeApi';
 import HeroCard from '../components/HeroCard';
 import { toPng } from 'html-to-image';
 import { supabase } from '../lib/supabaseClient';
+import { subscriptionMockService } from '../services/subscriptionMock.service';
 
 const Profile: React.FC = () => {
   const user = useAuthStore(state => state.user);
@@ -44,7 +45,17 @@ const Profile: React.FC = () => {
 
   useEffect(() => {
     if (user?.id) {
-      fakeApi.getSubscriptionStatus(user.id).then(setSub);
+      // Prioriza o mock para consistência com o checkout
+      const mockSub = subscriptionMockService.getActiveSubscription(user.id);
+      if (mockSub && mockSub.status === 'active') {
+        setSub({
+          status: 'active',
+          currentPeriodStart: mockSub.startedAt,
+          currentPeriodEnd: mockSub.nextBillingDate
+        });
+      } else {
+        fakeApi.getSubscriptionStatus(user.id).then(setSub);
+      }
     }
   }, [user?.id]);
 
@@ -120,13 +131,12 @@ const Profile: React.FC = () => {
     if (error) {
       console.error('Erro ao fazer logout:', error);
     }
-    // O listener onAuthStateChange cuidará de limpar o store e redirecionar.
   };
 
   return (
     <div className="space-y-6 pb-10">
       
-      {/* CABEÇALHO DO PERFIL COM UPLOAD E EDIÇÃO DE NOME */}
+      {/* CABEÇALHO DO PERFIL */}
       <div className="flex flex-col items-center">
         <div className="relative group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
           <div className="w-28 h-28 rounded-full border-4 border-white dark:border-slate-800 shadow-xl bg-slate-200 overflow-hidden relative">
@@ -191,7 +201,7 @@ const Profile: React.FC = () => {
         </CardHeader>
         <CardBody className="p-6 space-y-8">
           
-          {/* 1. Escolha do Template (Grid de 3) */}
+          {/* 1. Escolha do Template */}
           <div>
             <p className="text-sm font-bold text-slate-500 dark:text-slate-400 mb-3">Modelo:</p>
             <div className="grid grid-cols-3 gap-3">
@@ -224,7 +234,7 @@ const Profile: React.FC = () => {
             </div>
           </div>
 
-          {/* 2. Personalização de Texto (Fonte e Cor) */}
+          {/* 2. Personalização de Texto */}
           <div className="grid grid-cols-1 gap-6">
             
             {/* Fontes */}
@@ -251,7 +261,7 @@ const Profile: React.FC = () => {
               </div>
             </div>
 
-            {/* Cores (Separadas por tipo) */}
+            {/* Cores */}
             <div>
               <p className="text-sm font-bold text-slate-500 dark:text-slate-400 mb-3">Cor da Fonte:</p>
               <div className="flex flex-wrap gap-3">
@@ -266,11 +276,6 @@ const Profile: React.FC = () => {
                     style={{ backgroundColor: color.value, borderColor: color.value === '#FFFFFF' ? '#e2e8f0' : 'transparent' }}
                     title={color.name}
                   >
-                    {/* Tooltip simples */}
-                    <span className="absolute -top-8 left-1/2 -translate-x-1/2 bg-black text-white text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
-                      {color.name}
-                    </span>
-                    
                     {selectedColor === color.value && (
                       <CheckCircle2 
                         size={18} 

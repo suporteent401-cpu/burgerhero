@@ -3,6 +3,7 @@ import { Card, CardBody } from '../components/ui/Card';
 import { useAuthStore } from '../store/authStore';
 import { useCardStore } from '../store/cardStore';
 import { getSubscriptionStatus, getMonthlyBenefit } from '../services/clientHome.service';
+import { subscriptionMockService } from '../services/subscriptionMock.service';
 import { Subscription, MonthlyBenefit } from '../types';
 import { Clock, Ticket, Utensils, ChevronRight, QrCode } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -12,6 +13,8 @@ import NearbyRestaurants from '../components/NearbyRestaurants';
 const Home: React.FC = () => {
   const user = useAuthStore(state => state.user);
   const { getSelectedTemplate, selectedFont, selectedColor } = useCardStore();
+  
+  // Estado local compatível com a interface Subscription
   const [sub, setSub] = useState<Subscription | null>(null);
   const [benefit, setBenefit] = useState<MonthlyBenefit | null>(null);
 
@@ -21,22 +24,36 @@ const Home: React.FC = () => {
     if (user?.id) {
       const fetchData = async () => {
         try {
-          const subscriptionData = await getSubscriptionStatus(user.id);
-          setSub(subscriptionData);
+          // 1. Tenta buscar do Mock Service primeiro (Prioridade Local)
+          const mockSub = subscriptionMockService.getActiveSubscription(user.id);
+          
+          if (mockSub && mockSub.status === 'active') {
+            // Converte MockSubscription para Subscription (types)
+            setSub({
+              status: 'active', // Forçando lowercase para bater com types
+              currentPeriodStart: mockSub.startedAt,
+              currentPeriodEnd: mockSub.nextBillingDate
+            });
+          } else {
+            // 2. Se não tiver mock, busca do serviço original (Supabase)
+            const subscriptionData = await getSubscriptionStatus(user.id);
+            setSub(subscriptionData);
+          }
 
+          // Busca benefício mensal (mantido igual)
           const monthKey = new Date().toISOString().slice(0, 7);
           const benefitData = await getMonthlyBenefit(user.id, monthKey);
           setBenefit(benefitData);
         } catch (error) {
-          console.error("Falha ao buscar dados da Home, usando fallback silencioso.", error);
-          // A UI continuará com os valores iniciais (null) e não vai quebrar.
+          console.error("Falha ao buscar dados da Home.", error);
         }
       };
       fetchData();
     }
   }, [user?.id]);
 
-  const isActive = sub?.status === 'ACTIVE';
+  // Verifica status (aceita 'ACTIVE' do banco ou 'active' do mock)
+  const isActive = sub?.status === 'ACTIVE' || sub?.status === 'active';
 
   return (
     <div className="space-y-6">
@@ -77,7 +94,14 @@ const Home: React.FC = () => {
         <Card>
           <CardBody className="p-4">
             <p className="text-slate-400 dark:text-slate-500 text-[10px] font-black uppercase tracking-wider mb-1">Próxima Cobrança</p>
-            <p className="font-bold text-slate-800 dark:text-white text-sm">{sub ? new Date(sub.nextBillingDate).toLocaleDateString() : '--/--'}</p>
+            <p className="font-bold text-slate-800 dark:text-white text-sm">
+              {/* Usa nextBillingDate se vier do mock (via adaptação no useEffect) ou do tipo original se existir */}
+              {sub && (sub as any).nextBillingDate 
+                ? new Date((sub as any).nextBillingDate).toLocaleDateString() 
+                : sub?.currentPeriodEnd 
+                  ? new Date(sub.currentPeriodEnd).toLocaleDateString() 
+                  : '--/--'}
+            </p>
           </CardBody>
         </Card>
         <Card>
