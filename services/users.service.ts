@@ -1,6 +1,19 @@
 import { supabase } from '../lib/supabaseClient';
-import { User as AppUser, Role } from '../types';
+import { User as AppUser, Role, HeroTheme } from '../types';
 import { User as SupabaseUser } from '@supabase/supabase-js';
+
+// Estrutura de retorno unificada para o perfil completo
+export interface FullUserProfile {
+  profile: AppUser;
+  settings: {
+    cardTemplateId: string | null;
+    fontStyle: string;
+    fontColor: string;
+    fontSize: number;
+    heroTheme: HeroTheme;
+    mode: 'light' | 'dark' | 'system';
+  };
+}
 
 const normalizeCpf = (cpf: string) => (cpf ? cpf.replace(/[^\d]/g, '') : '');
 
@@ -37,11 +50,11 @@ export const getUserProfileById = async (userId: string) => {
   return data;
 };
 
-export const getFullUserProfile = async (authUser: SupabaseUser): Promise<AppUser | null> => {
+export const getFullUserProfile = async (authUser: SupabaseUser): Promise<FullUserProfile | null> => {
   const [appUserResponse, clientProfileResponse, settingsResponse] = await Promise.all([
     supabase.from('app_users').select('role, is_active').eq('id', authUser.id).maybeSingle(),
     supabase.from('client_profiles').select('*').eq('user_id', authUser.id).maybeSingle(),
-    supabase.from('hero_card_settings').select('hero_theme').eq('user_id', authUser.id).maybeSingle()
+    supabase.from('hero_card_settings').select('*').eq('user_id', authUser.id).maybeSingle()
   ]);
 
   if (appUserResponse.error) {
@@ -56,9 +69,7 @@ export const getFullUserProfile = async (authUser: SupabaseUser): Promise<AppUse
   const clientProfileData = clientProfileResponse.data;
   const settingsData = settingsResponse.data;
 
-  const savedTheme = settingsData?.hero_theme as any || 'sombra-noturna';
-
-  const fullProfile: AppUser = {
+  const profile: AppUser = {
     id: authUser.id,
     email: authUser.email || '',
     role,
@@ -68,46 +79,40 @@ export const getFullUserProfile = async (authUser: SupabaseUser): Promise<AppUse
     cpf: clientProfileData?.cpf || '',
     whatsapp: '', 
     birthDate: '', 
-    heroTheme: savedTheme,
+    heroTheme: (settingsData?.hero_theme as HeroTheme) || 'sombra-noturna',
   };
 
-  return fullProfile;
-};
+  const settings = {
+    cardTemplateId: settingsData?.card_template_id || null,
+    fontStyle: settingsData?.font_style || 'Inter, sans-serif',
+    fontColor: settingsData?.font_color || '#FFFFFF',
+    fontSize: settingsData?.font_size_px || 22,
+    heroTheme: (settingsData?.hero_theme as HeroTheme) || 'sombra-noturna',
+    mode: (settingsData?.theme_mode as 'light' | 'dark' | 'system') || 'light',
+  };
 
-// --- NOVOS MÉTODOS DE AVATAR ---
+  return { profile, settings };
+};
 
 export const uploadAndSyncAvatar = async (userId: string, file: File): Promise<string | null> => {
   const fileExt = file.name.split('.').pop();
-  // Usamos timestamp para evitar cache do navegador ao sobrescrever
   const fileName = `${userId}/${Date.now()}.${fileExt}`;
 
-  // 1. Upload para o Storage
   const { error: uploadError } = await supabase.storage
     .from('avatars')
-    .upload(fileName, file, { 
-      upsert: true,
-      contentType: file.type 
-    });
+    .upload(fileName, file, { upsert: true, contentType: file.type });
 
-  if (uploadError) {
-    console.error('Erro no upload Storage:', uploadError);
-    throw uploadError;
-  }
+  if (uploadError) throw uploadError;
 
-  // 2. Pega a URL pública
   const { data: publicUrlData } = supabase.storage.from('avatars').getPublicUrl(fileName);
   const publicUrl = publicUrlData.publicUrl;
 
-  // 3. Sincroniza com a tabela de perfis
   const { error: dbError } = await supabase
     .from('client_profiles')
     .update({ avatar_url: publicUrl })
     .eq('user_id', userId);
 
-  if (dbError) {
-    console.error('Erro ao salvar URL no perfil:', dbError);
-    throw dbError;
-  }
+  if (dbError) throw dbError;
 
   return publicUrl;
 };

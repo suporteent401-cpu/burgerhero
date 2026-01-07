@@ -11,8 +11,7 @@ import { supabase } from '../lib/supabaseClient';
 import { 
   updateProfileName, 
   uploadAndSyncAvatar, 
-  updateCardSettings, 
-  getCardSettings 
+  updateCardSettings
 } from '../services/users.service';
 import { templatesService } from '../services/templates.service';
 import HeroCard from '../components/HeroCard';
@@ -24,9 +23,9 @@ const Profile: React.FC = () => {
   const updateUser = useAuthStore(state => state.updateUser);
   
   // Global Themes
-  const heroTheme = useThemeStore(state => state.heroTheme);
+  const globalHeroTheme = useThemeStore(state => state.heroTheme);
   const setHeroTheme = useThemeStore(state => state.setHeroTheme);
-  const mode = useThemeStore(state => state.mode);
+  const globalMode = useThemeStore(state => state.mode);
   const setMode = useThemeStore(state => state.setMode);
 
   // Global Card Prefs
@@ -35,7 +34,6 @@ const Profile: React.FC = () => {
     selectedFont, 
     selectedColor, 
     selectedFontSize,
-    setAll: setCardAll, 
     setTemplates, 
     availableTemplates 
   } = useCardStore();
@@ -48,7 +46,6 @@ const Profile: React.FC = () => {
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [sub, setSub] = useState<Subscription | null>(null);
 
-  // --- DRAFT SYSTEM ---
   interface DraftSettings {
     templateId: string;
     fontFamily: string;
@@ -63,6 +60,7 @@ const Profile: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
+  // Efeito para buscar templates e inicializar o estado de rascunho (draft)
   useEffect(() => {
     if (user?.id) {
       templatesService.getActiveTemplates().then(dbTemplates => {
@@ -76,31 +74,17 @@ const Profile: React.FC = () => {
         fakeApi.getSubscriptionStatus(user.id).then(setSub);
       }
 
-      const init = async () => {
-        const storageKey = `burgerhero_card_settings_${user.id}`;
-        const savedLocal = localStorage.getItem(storageKey);
-        let settings: DraftSettings;
-
-        if (savedLocal) {
-          settings = JSON.parse(savedLocal);
-        } else {
-          const db = await getCardSettings(user.id);
-          settings = {
-            templateId: db?.card_template_id || selectedTemplateId,
-            fontFamily: db?.font_style || selectedFont,
-            fontColor: db?.font_color || selectedColor,
-            fontSize: db?.font_size_px || selectedFontSize,
-            heroTheme: (db?.hero_theme as HeroTheme) || heroTheme,
-            mode: (db?.theme_mode as any) || mode
-          };
-        }
-        setDraft(settings);
-        setLastSavedState(settings);
-        setCardAll({ templateId: settings.templateId, font: settings.fontFamily, color: settings.fontColor, fontSize: settings.fontSize });
-        setHeroTheme(settings.heroTheme);
-        setMode(settings.mode as any);
+      // Inicializa o rascunho com os dados dos stores globais
+      const initialState = {
+        templateId: selectedTemplateId || (availableTemplates[0]?.id ?? ''),
+        fontFamily: selectedFont,
+        fontColor: selectedColor,
+        fontSize: selectedFontSize,
+        heroTheme: globalHeroTheme,
+        mode: globalMode,
       };
-      init();
+      setDraft(initialState);
+      setLastSavedState(initialState);
     }
   }, [user?.id]);
 
@@ -111,7 +95,9 @@ const Profile: React.FC = () => {
 
   const updateDraft = (key: keyof DraftSettings, value: any) => {
     if (!draft) return;
-    setDraft({ ...draft, [key]: value });
+    const newDraft = { ...draft, [key]: value };
+    setDraft(newDraft);
+    // Aplica temas visualmente enquanto edita
     if (key === 'heroTheme') setHeroTheme(value);
     if (key === 'mode') setMode(value);
   };
@@ -120,10 +106,10 @@ const Profile: React.FC = () => {
     if (!user || !draft) return;
     setIsSaving(true);
     try {
-      localStorage.setItem(`burgerhero_card_settings_${user.id}`, JSON.stringify(draft));
       await updateCardSettings(user.id, draft);
       setLastSavedState(draft);
-      setCardAll({ templateId: draft.templateId, font: draft.fontFamily, color: draft.fontColor, fontSize: draft.fontSize });
+      // Sincroniza o estado global permanentemente
+      useCardStore.getState().setAll({ templateId: draft.templateId, font: draft.fontFamily, color: draft.fontColor, fontSize: draft.fontSize });
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (e) {
@@ -138,27 +124,19 @@ const Profile: React.FC = () => {
     setDraft(lastSavedState);
     setHeroTheme(lastSavedState.heroTheme);
     setMode(lastSavedState.mode);
-    setCardAll({ templateId: lastSavedState.templateId, font: lastSavedState.fontFamily, color: lastSavedState.fontColor, fontSize: lastSavedState.fontSize });
   };
 
-  // --- PHOTO UPLOAD LOGIC ---
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file && user) {
-      // 1. Preview Instantâneo (Tempo Real na UI)
       const reader = new FileReader();
-      reader.onload = (e) => {
-        updateUser({ avatarUrl: e.target?.result as string });
-      };
+      reader.onload = (e) => updateUser({ avatarUrl: e.target?.result as string });
       reader.readAsDataURL(file);
 
-      // 2. Upload e Sincronização com Banco
       setUploadingAvatar(true);
       try {
         const finalUrl = await uploadAndSyncAvatar(user.id, file);
-        if (finalUrl) {
-          updateUser({ avatarUrl: finalUrl });
-        }
+        if (finalUrl) updateUser({ avatarUrl: finalUrl });
       } catch (err) {
         console.error(err);
         alert('Erro ao processar imagem.');
@@ -192,7 +170,6 @@ const Profile: React.FC = () => {
       });
   };
 
-  // --- LOGOUT LOGIC ---
   const handleLogout = async () => {
     const { error } = await supabase.auth.signOut();
     if (error) {

@@ -1,6 +1,8 @@
 import React, { useEffect, useRef } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuthStore } from '../../store/authStore';
+import { useThemeStore } from '../../store/themeStore';
+import { useCardStore } from '../../store/cardStore';
 import { getFullUserProfile } from '../../services/users.service';
 import type { Role } from '../../types';
 
@@ -8,18 +10,9 @@ interface AuthProviderProps {
   children: React.ReactNode;
 }
 
-const inferRoleFromEmail = (email?: string | null): Role => {
-  const e = (email || '').toLowerCase().trim();
-  if (e === 'admin@hero.com') return 'admin';
-  if (e === 'staff@hero.com') return 'staff';
-  return 'client';
-};
-
 export const SupabaseAuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const login = useAuthStore((s) => s.login);
   const logout = useAuthStore((s) => s.logout);
-
-  // evita dupla execução em dev/strict mode
   const isHandlingRef = useRef(false);
 
   useEffect(() => {
@@ -33,49 +26,37 @@ export const SupabaseAuthProvider: React.FC<AuthProviderProps> = ({ children }) 
           return;
         }
 
-        // 1) tenta buscar perfil completo
-        let profile = await getFullUserProfile(session.user);
+        const fullUserData = await getFullUserProfile(session.user);
 
-        // 2) se não existir app_users ainda, cria via RPC segura (login)
-        if (!profile) {
-          const role = inferRoleFromEmail(session.user.email);
-
-          const { data: rpcData, error: rpcError } = await supabase.rpc('ensure_user_profile_login', {
-            p_display_name: session.user.email?.split('@')[0] || 'Hero',
-            p_email: session.user.email,
-            p_cpf: '',
-            p_birthdate: null,
-            p_role: role,
-          });
-
-          if (rpcError) {
-            console.error('AUTH_ERROR (RPC ensure_user_profile_login):', rpcError);
-            await supabase.auth.signOut();
-            logout();
-            return;
-          }
-
-          const result = rpcData?.[0];
-          if (!result?.ok) {
-            console.error('AUTH_ERROR (RPC result):', result);
-            await supabase.auth.signOut();
-            logout();
-            return;
-          }
-
-          // 3) busca novamente após garantir app_users
-          profile = await getFullUserProfile(session.user);
-        }
-
-        if (profile) {
+        if (fullUserData) {
+          const { profile, settings } = fullUserData;
+          
+          // 1. Atualiza o estado de autenticação
           login(profile);
+
+          // 2. Atualiza os estados de tema e cartão
+          useThemeStore.getState().setHeroTheme(settings.heroTheme);
+          useThemeStore.getState().setMode(settings.mode);
+          useCardStore.getState().setAll({
+            templateId: settings.cardTemplateId || undefined,
+            font: settings.fontStyle,
+            color: settings.fontColor,
+            fontSize: settings.fontSize,
+          });
+          
+          // Aplica o tema visualmente
+          useThemeStore.getState().applyTheme();
+
         } else {
-          console.error('AUTH_ERROR: perfil não carregou mesmo após fallback');
+          console.error('AUTH_ERROR: Perfil completo não pôde ser carregado.');
           await supabase.auth.signOut();
           logout();
         }
+      } catch (error) {
+        console.error("Erro no provedor de autenticação:", error);
+        await supabase.auth.signOut();
+        logout();
       } finally {
-        // pequena janela para não disparar duplo por render
         setTimeout(() => { isHandlingRef.current = false; }, 50);
       }
     });
