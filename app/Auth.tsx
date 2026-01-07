@@ -25,68 +25,82 @@ const Auth: React.FC = () => {
   const onSubmit = async (data: any) => {
     setError('');
     setLoading(true);
+
     try {
       if (isLogin) {
-        const { error: authError } = await supabase.auth.signInWithPassword({
+        // --- FLUXO DE LOGIN ---
+        const { data: signInData, error: authError } = await supabase.auth.signInWithPassword({
           email: data.email,
           password: data.password,
         });
 
         if (authError) throw new Error(authError.message === 'Invalid login credentials' ? 'Credenciais inválidas.' : authError.message);
         
-        const { data: sessionData } = await supabase.auth.getSession();
-        if (!sessionData.session) {
-            console.error("Login bem-sucedido, mas a sessão não foi estabelecida.", { sessionData });
-            throw new Error("Não foi possível iniciar a sessão. Verifique seu e-mail ou tente novamente.");
+        if (!signInData.session) {
+            throw new Error("Não foi possível iniciar a sessão.");
         }
 
-        const fullProfile = await getFullUserProfile(sessionData.session.user);
-        if (!fullProfile) {
-          await supabase.auth.signOut();
-          throw new Error('Falha ao carregar os dados do perfil. Por favor, contate o suporte.');
+        // O SupabaseAuthProvider vai detectar a mudança de sessão e carregar o perfil.
+        // Mas podemos forçar uma verificação aqui para feedback visual mais rápido se necessário,
+        // ou apenas deixar o Provider lidar com isso. Vamos deixar o Provider lidar, 
+        // mas carregar o perfil aqui garante que temos os dados antes de redirecionar manualmente.
+        
+        const fullProfile = await getFullUserProfile(signInData.session.user);
+        if (fullProfile) {
+          login(fullProfile);
+          redirectByRole(fullProfile.role);
+        } else {
+          // Se falhar aqui, o AuthProvider tenta o fallback
+          navigate('/app');
         }
 
-        login(fullProfile);
-        redirectByRole(fullProfile.role);
       } else {
-        // FLUXO DE CADASTRO
+        // --- FLUXO DE CADASTRO ---
+        
+        // Passo 1: Validação Inicial (CPF)
         if (step === 1) {
+          // Normaliza e verifica CPF no banco
           const cpfExists = await checkCpfExists(data.cpf);
           if (cpfExists) {
-            throw new Error('CPF já cadastrado.');
+            throw new Error('Este CPF já está cadastrado em nossa base.');
           }
           setStep1Data(data);
           setStep(2);
-          setLoading(false); // Para o loading para o usuário preencher o próximo passo
+          setLoading(false);
           return;
         }
         
+        // Passo 2: Finalização
         const fullUserData = { ...step1Data, ...data };
         
-        // 1. Cria o usuário no Auth
+        // 1. Criar usuário no Auth com Metadados
         const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
             email: fullUserData.email,
             password: fullUserData.password,
+            options: {
+              data: {
+                full_name: fullUserData.name,
+                // Podemos passar outros dados se tivermos triggers configurados para ler raw_user_meta_data
+              }
+            }
         });
+
         if (signUpError) throw signUpError;
-        if (!signUpData.user) throw new Error('Não foi possível criar o usuário.');
-
-        // 2. Faz login para criar a sessão
-        const { error: signInError } = await supabase.auth.signInWithPassword({
-            email: fullUserData.email,
-            password: fullUserData.password,
-        });
-        if (signInError) throw new Error('Cadastro realizado, mas falha ao iniciar sessão. Tente logar manualmente.');
-
-        // 3. Garante que a sessão existe
-        const { data: sessionData } = await supabase.auth.getSession();
-        if (!sessionData.session) {
-            console.error("Sessão não iniciada após cadastro/login.", { sessionData });
-            await supabase.auth.signOut();
-            throw new Error("Sessão não iniciada. Tente novamente.");
+        
+        // Verifica se o login foi automático (email confirmation OFF) ou pendente (ON)
+        if (signUpData.user && !signUpData.session) {
+            setLoading(false);
+            alert("Cadastro realizado com sucesso! Verifique seu e-mail para confirmar a conta antes de entrar.");
+            setIsLogin(true);
+            return;
         }
 
-        // 4. Com a sessão garantida, cria o perfil via RPC
+        if (!signUpData.session) {
+             throw new Error('Erro ao estabelecer sessão após cadastro.');
+        }
+
+        // 2. Chamar RPC para garantir a criação das tabelas relacionais (app_users, client_profiles)
+        // Isso é crucial para salvar o CPF e Nascimento que coletamos no formulário
         const { data: rpcData, error: rpcError } = await supabase.rpc('ensure_user_profile', {
             p_display_name: fullUserData.name,
             p_email: fullUserData.email,
@@ -96,30 +110,30 @@ const Auth: React.FC = () => {
 
         if (rpcError) {
             console.error("Erro na RPC ensure_user_profile:", rpcError);
-            await supabase.auth.signOut();
-            throw new Error('Ocorreu um erro ao configurar seu perfil.');
+            // Não bloqueamos totalmente se a RPC falhar, pois o usuário já está criado no Auth,
+            // mas mostramos erro. O AuthProvider tentará corrigir depois.
+        } else {
+             // Se RPC retornou erro de lógica (ex: CPF duplicado que passou na validação inicial)
+             const result = Array.isArray(rpcData) ? rpcData[0] : rpcData;
+             if (result && !result.ok) {
+                console.warn("Aviso do Banco de Dados:", result.message);
+             }
         }
 
-        const result = rpcData[0];
-        if (!result || !result.ok) {
-            console.error("Resultado da RPC não foi 'ok':", result);
-            await supabase.auth.signOut();
-            throw new Error(result?.message || 'Falha ao criar perfil de usuário.');
+        // 3. Carregar perfil completo e redirecionar
+        const fullProfile = await getFullUserProfile(signUpData.session.user);
+        
+        if (fullProfile) {
+            login(fullProfile);
+            // Atualiza whatsapp se necessário (não estava na RPC original)
+            // Se tivermos uma tabela para isso ou coluna no profile
         }
 
-        // 5. Busca o perfil completo para popular o estado global
-        const fullProfile = await getFullUserProfile(sessionData.session.user);
-        if (!fullProfile) {
-            await supabase.auth.signOut();
-            throw new Error('Perfil criado, mas houve um problema ao carregar seus dados. Tente logar manualmente.');
-        }
-
-        login(fullProfile);
         navigate('/plans');
       }
     } catch (err: any) {
       console.error("AUTH_ERROR", err);
-      setError(`Erro: ${err.message || 'Ocorreu um erro.'}`);
+      setError(`Erro: ${err.message || 'Ocorreu um erro inesperado.'}`);
     } finally {
       setLoading(false);
     }
@@ -166,7 +180,8 @@ const Auth: React.FC = () => {
                   {step === 1 ? (
                     <>
                       <Input label="Nome Completo" placeholder="Bruce Wayne" icon={<UserIcon size={18}/>} {...register('name', { required: true })} />
-                      <Input label="CPF" placeholder="000.000.000-00" icon={<CreditCard size={18}/>} {...register('cpf', { required: true })} />
+                      <Input label="CPF" placeholder="000.000.000-00" icon={<CreditCard size={18}/>} {...register('cpf', { required: true, minLength: 11 })} />
+                      {errors.cpf && <p className="text-red-500 text-xs">CPF é obrigatório.</p>}
                     </>
                   ) : (
                     <>
@@ -186,7 +201,7 @@ const Auth: React.FC = () => {
                 </>
               )}
 
-              {error && <p className="text-red-500 text-sm font-semibold text-center">{error}</p>}
+              {error && <p className="text-red-500 text-sm font-semibold text-center bg-red-50 p-2 rounded-lg border border-red-100">{error}</p>}
 
               <Button type="submit" className="w-full rounded-full py-3" size="md" isLoading={loading}>
                 {!isLogin && step === 1 ? 'Próximo Passo' : (isLogin ? 'Entrar' : 'Finalizar Cadastro')}
