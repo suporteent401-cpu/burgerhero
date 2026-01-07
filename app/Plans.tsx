@@ -1,42 +1,59 @@
-import React, { useEffect, useState } from 'react';
+import React, { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../components/ui/Button';
 import { CheckCircle2, ChevronLeft, ShieldCheck } from 'lucide-react';
-import { fakeApi } from '../lib/fakeApi';
 import { Plan } from '../types';
 import { motion } from 'framer-motion';
 import { useAuthStore } from '../store/authStore';
 import { subscriptionMockService } from '../services/subscriptionMock.service';
 
 const Plans: React.FC = () => {
-  const [plans, setPlans] = useState<Plan[]>([]);
   const navigate = useNavigate();
   const isAuthed = useAuthStore(state => state.isAuthed);
 
-  useEffect(() => {
-    fakeApi.listPlans().then(setPlans);
+  // ✅ Fonte temporária (sem fakeApi)
+  // Quando tiver tabela/plans no Supabase, trocamos isso por um service.
+  const plans = useMemo<Plan[]>(() => {
+    return [
+      {
+        id: 'p-1',
+        name: 'Plano Justiceiro',
+        priceCents: 2990,
+        description: '1 burger clássico por mês + 10% de desconto em extras.',
+        benefits: ['1 Burger do Mês', '10% de desconto adicional', 'Fila prioritária'],
+        imageUrl: '',
+        active: true,
+      },
+      {
+        id: 'p-2',
+        name: 'Plano Vingador',
+        priceCents: 4990,
+        description: '1 burger gourmet por mês + batata + 15% de desconto.',
+        benefits: ['1 Burger Gourmet do Mês', 'Batata Média Inclusa', '15% de desconto adicional', 'Brinde surpresa'],
+        imageUrl: '',
+        active: true,
+      },
+    ].filter(p => p.active);
   }, []);
 
   const handleSelectPlan = (plan: Plan) => {
-    // 1. Salva o plano no storage persistente mock
     subscriptionMockService.setPendingPlan({
       id: plan.id,
       name: plan.name,
       priceCents: plan.priceCents
     });
 
-    // 2. Decide o destino baseado na autenticação
-    if (isAuthed) {
-      navigate('/checkout');
-    } else {
-      navigate('/auth');
-    }
+    if (isAuthed) navigate('/checkout');
+    else navigate('/auth');
   };
 
   return (
     <div className="min-h-screen bg-slate-50 py-12 px-4">
       <div className="max-w-5xl mx-auto">
-        <button onClick={() => navigate(-1)} className="mb-8 flex items-center gap-2 text-slate-500 font-bold hover:text-hero-primary transition-colors">
+        <button
+          onClick={() => navigate(-1)}
+          className="mb-8 flex items-center gap-2 text-slate-500 font-bold hover:text-hero-primary transition-colors"
+        >
           <ChevronLeft size={20} /> Voltar
         </button>
 
@@ -49,7 +66,7 @@ const Plans: React.FC = () => {
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.5 }}
           />
-          <motion.h2 
+          <motion.h2
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6 }}
@@ -57,7 +74,7 @@ const Plans: React.FC = () => {
           >
             Escolha sua patente de Herói
           </motion.h2>
-          <motion.p 
+          <motion.p
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.1 }}
@@ -79,15 +96,17 @@ const Plans: React.FC = () => {
               <div className="p-8 bg-slate-900 text-white">
                 <h3 className="text-2xl font-black mb-2">{plan.name}</h3>
                 <p className="mb-8 h-10 text-slate-400">{plan.description}</p>
-                
+
                 <div className="mb-8">
-                  <span className="text-5xl font-black">R$ {(plan.priceCents / 100).toFixed(2).replace('.', ',')}</span>
+                  <span className="text-5xl font-black">
+                    R$ {(plan.priceCents / 100).toFixed(2).replace('.', ',')}
+                  </span>
                   <span className="ml-1 font-bold text-slate-400">/mês</span>
                 </div>
 
-                <Button 
-                  onClick={() => handleSelectPlan(plan)} 
-                  className="w-full" 
+                <Button
+                  onClick={() => handleSelectPlan(plan)}
+                  className="w-full"
                   size="lg"
                   variant="primary"
                 >
