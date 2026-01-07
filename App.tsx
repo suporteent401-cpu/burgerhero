@@ -33,7 +33,13 @@ import StaffClientProfile from './app/StaffClientProfile';
 import Debug from './app/Debug';
 import PublicClientProfile from './app/PublicClientProfile';
 
-// 🔒 Proteção por papel (Role é minúsculo: 'client' | 'staff' | 'admin')
+const normalizeRole = (input: any): Role | null => {
+  const r = String(input || '').toLowerCase();
+  if (r === 'admin' || r === 'staff' || r === 'client') return r;
+  return null;
+};
+
+// 🔒 Proteção por papel
 const ProtectedRoute = ({
   children,
   allowedRoles,
@@ -41,7 +47,7 @@ const ProtectedRoute = ({
   children?: React.ReactNode;
   allowedRoles?: Role[];
 }) => {
-  const { isAuthed, user, isLoading } = useAuthStore();
+  const { isAuthed, user, isLoading, logout } = useAuthStore();
 
   if (isLoading) {
     return (
@@ -55,13 +61,19 @@ const ProtectedRoute = ({
     return <Navigate to="/auth" replace />;
   }
 
-  // FIX: Normalização local para garantir que dados antigos em cache (MAIÚSCULO) não quebrem o app
-  const currentRole = (user.role || '').toLowerCase() as Role;
+  const role = normalizeRole(user.role);
 
-  if (allowedRoles && !allowedRoles.includes(currentRole)) {
-    // Redirecionamento inteligente baseado na role corrigida
-    if (currentRole === 'admin') return <Navigate to="/admin" replace />;
-    if (currentRole === 'staff') return <Navigate to="/staff" replace />;
+  // ✅ Se role veio inválida (cache antigo, maiúscula, vazio, etc), derruba pra login
+  // Isso impede loop infinito em /app -> /app.
+  if (!role) {
+    console.warn('[ProtectedRoute] role inválida detectada. Limpando sessão local.');
+    logout();
+    return <Navigate to="/auth" replace />;
+  }
+
+  if (allowedRoles && !allowedRoles.includes(role)) {
+    if (role === 'admin') return <Navigate to="/admin" replace />;
+    if (role === 'staff') return <Navigate to="/staff" replace />;
     return <Navigate to="/app" replace />;
   }
 
