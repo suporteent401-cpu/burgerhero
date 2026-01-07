@@ -13,6 +13,7 @@ const StaffValidate: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<{ success: boolean; message: string; user?: User } | null>(null);
   const [isScannerOpen, setIsScannerOpen] = useState(false);
+  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   const handleValidate = useCallback(async (val: string) => {
     if (!val) return;
@@ -34,11 +35,11 @@ const StaffValidate: React.FC = () => {
     if (!result?.user) return;
     try {
       await fakeApi.redeemMonthlyBurger(result.user.id);
-      alert('Resgate realizado com sucesso!');
+      setFeedback({ type: 'success', message: 'Resgate realizado com sucesso!' });
       setResult(null);
       setQuery('');
     } catch (e: any) {
-      alert(e.message);
+      setFeedback({ type: 'error', message: e.message || 'Ocorreu um erro desconhecido.' });
     }
   };
 
@@ -143,6 +144,24 @@ const StaffValidate: React.FC = () => {
               Usar digitação manual
             </Button>
           </div>
+        </div>
+      </Modal>
+
+      <Modal isOpen={feedback !== null} onClose={() => setFeedback(null)} title={feedback?.type === 'success' ? 'Operação Concluída' : 'Atenção'}>
+        <div className="flex flex-col items-center text-center p-4 space-y-4">
+          {feedback?.type === 'success' ? (
+            <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center">
+              <CheckCircle size={32} />
+            </div>
+          ) : (
+            <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center">
+              <ShieldAlert size={32} />
+            </div>
+          )}
+          <p className="text-lg font-bold text-slate-800">{feedback?.message}</p>
+          <Button onClick={() => setFeedback(null)} className="w-full !mt-6">
+            OK
+          </Button>
         </div>
       </Modal>
     </div>
