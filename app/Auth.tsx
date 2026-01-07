@@ -8,7 +8,7 @@ import { Mail, Lock, User as UserIcon, Calendar, Phone, CreditCard } from 'lucid
 import { useAuthStore } from '../store/authStore';
 import { motion } from 'framer-motion';
 import { supabase } from '../lib/supabaseClient';
-import { getFullUserProfile, signUpAndCreateProfile } from '../services/users.service';
+import { getFullUserProfile, signUpAndCreateProfile, checkCpfExists } from '../services/users.service';
 
 const Auth: React.FC = () => {
   const [isLogin, setIsLogin] = useState(true);
@@ -34,7 +34,6 @@ const Auth: React.FC = () => {
 
         if (authError) throw new Error(authError.message === 'Invalid login credentials' ? 'Credenciais inválidas.' : authError.message);
         
-        // Garante que a sessão foi estabelecida
         const { data: sessionData } = await supabase.auth.getSession();
         if (!sessionData.session) {
             console.error("Login bem-sucedido, mas a sessão não foi estabelecida.", { sessionData });
@@ -51,9 +50,12 @@ const Auth: React.FC = () => {
         redirectByRole(fullProfile.role);
       } else {
         if (step === 1) {
+          const cpfExists = await checkCpfExists(data.cpf);
+          if (cpfExists) {
+            throw new Error('CPF já cadastrado.');
+          }
           setStep1Data(data);
           setStep(2);
-          setLoading(false);
           return;
         }
         

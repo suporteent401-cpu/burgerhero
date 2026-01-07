@@ -3,6 +3,34 @@ import { User as AppUser, Role } from '../types';
 import { User as SupabaseUser } from '@supabase/supabase-js';
 
 /**
+ * Normaliza uma string de CPF, removendo caracteres não numéricos.
+ */
+const normalizeCpf = (cpf: string) => cpf ? cpf.replace(/[^\d]/g, '') : '';
+
+/**
+ * Verifica se um CPF já está cadastrado na base de dados.
+ */
+export const checkCpfExists = async (cpf: string): Promise<boolean> => {
+  const normalizedCpf = normalizeCpf(cpf);
+  if (!normalizedCpf) return false;
+
+  const { data, error } = await supabase
+    .from('client_profiles')
+    .select('cpf')
+    .eq('cpf', normalizedCpf)
+    .limit(1)
+    .single();
+
+  // PGRST116 significa que nenhuma linha foi encontrada, o que é o resultado esperado para um CPF novo.
+  if (error && error.code !== 'PGRST116') {
+    console.error('Erro ao verificar CPF:', error);
+    throw new Error('Não foi possível verificar o CPF. Tente novamente.');
+  }
+  
+  return !!data; // Retorna true se encontrou um registro, false caso contrário.
+};
+
+/**
  * Busca o perfil de um cliente pelo seu ID de usuário (auth.uid).
  */
 export const getUserProfileById = async (userId: string) => {
