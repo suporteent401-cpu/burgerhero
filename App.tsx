@@ -1,3 +1,4 @@
+// /App.tsx
 import React, { useEffect } from 'react';
 import { HashRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { useAuthStore } from './store/authStore';
@@ -29,35 +30,33 @@ import StaffHome from './app/StaffHome';
 import StaffValidate from './app/StaffValidate';
 import Debug from './app/Debug';
 
-import type { Role } from './types';
-
-const redirectByRole = (role?: Role) => {
-  if (role === 'admin') return '/admin';
-  if (role === 'staff') return '/staff';
-  return '/app';
-};
+type AllowedRole = 'client' | 'staff' | 'admin';
 
 const ProtectedRoute = ({
   children,
   allowedRoles,
 }: {
   children?: React.ReactNode;
-  allowedRoles?: Role[];
+  allowedRoles?: AllowedRole[];
 }) => {
-  const isAuthed = useAuthStore((s) => s.isAuthed);
-  const user = useAuthStore((s) => s.user);
+  const isAuthed = useAuthStore((state) => state.isAuthed);
+  const user = useAuthStore((state) => state.user);
 
   if (!isAuthed || !user) return <Navigate to="/auth" replace />;
 
   if (allowedRoles && !allowedRoles.includes(user.role)) {
-    return <Navigate to={redirectByRole(user.role)} replace />;
+    // Redirect consistente pelo role real do usuário
+    if (user.role === 'admin') return <Navigate to="/admin" replace />;
+    if (user.role === 'staff') return <Navigate to="/staff" replace />;
+    return <Navigate to="/app" replace />;
   }
 
   return <>{children || <Outlet />}</>;
 };
 
 const App: React.FC = () => {
-  const applyTheme = useThemeStore((s) => s.applyTheme);
+  const applyTheme = useThemeStore((state) => state.applyTheme);
+
   useEffect(() => {
     applyTheme();
   }, [applyTheme]);
