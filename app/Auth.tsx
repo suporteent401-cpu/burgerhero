@@ -33,13 +33,18 @@ const Auth: React.FC = () => {
         });
 
         if (authError) throw new Error(authError.message === 'Invalid login credentials' ? 'Credenciais inválidas.' : authError.message);
-        if (!authData.user) throw new Error('Usuário não encontrado após o login.');
+        
+        // Garante que a sessão foi estabelecida
+        const { data: sessionData } = await supabase.auth.getSession();
+        if (!sessionData.session) {
+            console.error("Login bem-sucedido, mas a sessão não foi estabelecida.", { sessionData });
+            throw new Error("Não foi possível iniciar a sessão. Verifique seu e-mail ou tente novamente.");
+        }
 
-        const fullProfile = await getFullUserProfile(authData.user);
+        const fullProfile = await getFullUserProfile(sessionData.session.user);
         if (!fullProfile) {
-          // Este é um estado inconsistente. Desloga o usuário e pede para contatar o suporte.
           await supabase.auth.signOut();
-          throw new Error('Falha ao carregar o perfil. Por favor, contate o suporte.');
+          throw new Error('Falha ao carregar os dados do perfil. Por favor, contate o suporte.');
         }
 
         login(fullProfile);
@@ -55,7 +60,7 @@ const Auth: React.FC = () => {
         const fullUserData = { ...step1Data, ...data };
         const { data: authData } = await signUpAndCreateProfile(fullUserData);
 
-        if (!authData.user) throw new Error('Cadastro realizado, mas não foi possível fazer login. Tente logar manually.');
+        if (!authData.user) throw new Error('Cadastro realizado, mas não foi possível fazer login. Tente logar manualmente.');
 
         const fullProfile = await getFullUserProfile(authData.user);
         if (!fullProfile) throw new Error('Perfil criado com sucesso, mas houve um problema ao carregar seus dados. Tente logar manualmente.');

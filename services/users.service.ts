@@ -90,10 +90,19 @@ export const signUpAndCreateProfile = async (userData: any) => {
 
   if (signInError) {
     console.error("Falha no login automático após cadastro:", signInError);
-    throw new Error('Cadastro realizado, mas falha ao iniciar sessão. Tente fazer login manualmente.');
+    // Isso pode acontecer se a confirmação de e-mail estiver ativa.
+    throw new Error('Cadastro realizado. Por favor, confirme seu e-mail antes de fazer login.');
   }
 
-  // 3. Chama a RPC para criar/garantir o perfil completo.
+  // 3. Garante que a sessão foi estabelecida.
+  const { data: sessionData } = await supabase.auth.getSession();
+  if (!sessionData.session) {
+    console.error("Sessão não iniciada após login. O usuário pode precisar confirmar o e-mail.", { sessionData });
+    await supabase.auth.signOut(); // Limpa qualquer estado parcial
+    throw new Error("Confirme seu e-mail para ativar a conta e depois faça login.");
+  }
+
+  // 4. Com a sessão ativa, chama a RPC para criar/garantir o perfil completo.
   const { data: rpcData, error: rpcError } = await supabase.rpc('ensure_user_profile', {
     p_display_name: userData.name,
     p_email: userData.email,
@@ -109,10 +118,11 @@ export const signUpAndCreateProfile = async (userData: any) => {
 
   const result = rpcData[0];
   if (!result || !result.ok) {
+    console.error("Resultado da RPC não foi 'ok':", result);
     await supabase.auth.signOut();
     throw new Error(result?.message || 'Falha ao criar perfil de usuário.');
   }
 
-  // 4. Retorna os dados da sessão de autenticação.
+  // 5. Retorna os dados da sessão de autenticação.
   return authData;
 };
