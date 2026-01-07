@@ -2,14 +2,14 @@ import React, { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../components/ui/Button';
 import { CheckCircle2, ChevronLeft, ShieldCheck } from 'lucide-react';
-import { Plan } from '../types';
+import type { Plan } from '../types';
 import { motion } from 'framer-motion';
 import { useAuthStore } from '../store/authStore';
 import { subscriptionMockService } from '../services/subscriptionMock.service';
 
 const Plans: React.FC = () => {
   const navigate = useNavigate();
-  const isAuthed = useAuthStore(state => state.isAuthed);
+  const isAuthed = useAuthStore((state) => state.isAuthed);
 
   // ✅ Fonte temporária (sem fakeApi)
   // Quando tiver tabela/plans no Supabase, trocamos isso por um service.
@@ -33,18 +33,25 @@ const Plans: React.FC = () => {
         imageUrl: '',
         active: true,
       },
-    ].filter(p => p.active);
+    ].filter((p) => p.active);
   }, []);
 
   const handleSelectPlan = (plan: Plan) => {
-    subscriptionMockService.setPendingPlan({
-      id: plan.id,
-      name: plan.name,
-      priceCents: plan.priceCents
-    });
+    try {
+      // 1) Salva o plano escolhido no storage persistente mock
+      subscriptionMockService.setPendingPlan({
+        id: plan.id,
+        name: plan.name,
+        priceCents: plan.priceCents,
+      });
 
-    if (isAuthed) navigate('/checkout');
-    else navigate('/auth');
+      // 2) Decide o destino baseado na autenticação
+      if (isAuthed) navigate('/checkout');
+      else navigate('/auth');
+    } catch (err) {
+      console.error('Erro ao selecionar plano:', err);
+      alert('Não foi possível selecionar o plano. Tente novamente.');
+    }
   };
 
   return (
@@ -104,12 +111,7 @@ const Plans: React.FC = () => {
                   <span className="ml-1 font-bold text-slate-400">/mês</span>
                 </div>
 
-                <Button
-                  onClick={() => handleSelectPlan(plan)}
-                  className="w-full"
-                  size="lg"
-                  variant="primary"
-                >
+                <Button onClick={() => handleSelectPlan(plan)} className="w-full" size="lg" variant="primary">
                   Assinar Agora
                 </Button>
               </div>
