@@ -35,7 +35,7 @@ const ProtectedRoute = ({
   allowedRoles,
 }: {
   children?: React.ReactNode;
-  allowedRoles?: Array<'client' | 'staff' | 'admin'>;
+  allowedRoles?: Array<'CLIENT' | 'STAFF' | 'ADMIN'>;
 }) => {
   const { isAuthed, user } = useAuthStore();
 
@@ -43,8 +43,8 @@ const ProtectedRoute = ({
   if (!user) return <Navigate to="/auth" replace />;
 
   if (allowedRoles && !allowedRoles.includes(user.role)) {
-    if (user.role === 'admin') return <Navigate to="/admin" replace />;
-    if (user.role === 'staff') return <Navigate to="/staff" replace />;
+    if (user.role === 'ADMIN') return <Navigate to="/admin" replace />;
+    if (user.role === 'STAFF') return <Navigate to="/staff" replace />;
     return <Navigate to="/app" replace />;
   }
 
@@ -74,7 +74,7 @@ const App: React.FC = () => {
             <Route
               path="/app"
               element={
-                <ProtectedRoute allowedRoles={['client']}>
+                <ProtectedRoute allowedRoles={['CLIENT']}>
                   <ClientLayout />
                 </ProtectedRoute>
               }
@@ -90,7 +90,7 @@ const App: React.FC = () => {
             <Route
               path="/admin"
               element={
-                <ProtectedRoute allowedRoles={['admin']}>
+                <ProtectedRoute allowedRoles={['ADMIN']}>
                   <AdminLayout />
                 </ProtectedRoute>
               }
@@ -106,7 +106,7 @@ const App: React.FC = () => {
             <Route
               path="/staff"
               element={
-                <ProtectedRoute allowedRoles={['staff', 'admin']}>
+                <ProtectedRoute allowedRoles={['STAFF', 'ADMIN']}>
                   <StaffLayout />
                 </ProtectedRoute>
               }
