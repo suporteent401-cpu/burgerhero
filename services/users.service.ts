@@ -136,17 +136,19 @@ export const updateProfileName = async (userId: string, name: string) => {
 export const updateCardSettings = async (userId: string, settings: any) => {
   // Mapeia os campos do store para o DB
   const dbPayload: any = {};
+  
   if (settings.templateId) dbPayload.card_template_id = settings.templateId;
   if (settings.fontFamily) dbPayload.font_style = settings.fontFamily;
   if (settings.fontColor) dbPayload.font_color = settings.fontColor;
   if (settings.fontSize) dbPayload.font_size_px = settings.fontSize;
+  
+  // Mapeamento explícito para garantir sync
   if (settings.heroTheme) dbPayload.hero_theme = settings.heroTheme;
   if (settings.mode) dbPayload.theme_mode = settings.mode;
 
   const { error } = await supabase
     .from('hero_card_settings')
-    .update(dbPayload)
-    .eq('user_id', userId);
+    .upsert({ user_id: userId, ...dbPayload }, { onConflict: 'user_id' });
 
   if (error) throw error;
 };

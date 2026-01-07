@@ -23,7 +23,7 @@ const Profile: React.FC = () => {
   const user = useAuthStore(state => state.user);
   const updateUser = useAuthStore(state => state.updateUser);
   
-  // Global Stores (Saved State)
+  // Global Stores
   const heroTheme = useThemeStore(state => state.heroTheme);
   const setHeroTheme = useThemeStore(state => state.setHeroTheme);
   const mode = useThemeStore(state => state.mode);
@@ -50,7 +50,6 @@ const Profile: React.FC = () => {
 
   // --- DRAFT SYSTEM START ---
   
-  // Estrutura do Rascunho
   interface DraftSettings {
     templateId: string;
     fontFamily: string;
@@ -61,10 +60,12 @@ const Profile: React.FC = () => {
   }
 
   const [draft, setDraft] = useState<DraftSettings | null>(null);
+  // Mantemos o "lastSavedState" para poder reverter o tema global se o usuário cancelar
+  const [lastSavedState, setLastSavedState] = useState<DraftSettings | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
-  // Carrega configurações iniciais (Local -> Store -> Default)
+  // Carrega configurações iniciais
   useEffect(() => {
     if (user?.id) {
       // 1. Carrega Templates
@@ -85,89 +86,86 @@ const Profile: React.FC = () => {
         fakeApi.getSubscriptionStatus(user.id).then(setSub);
       }
 
-      // 3. Inicializa Draft com dados salvos localmente ou do store atual
-      const storageKey = `burgerhero_card_settings_${user.id}`;
-      const savedLocal = localStorage.getItem(storageKey);
+      // 3. Inicializa Draft
+      const loadSettings = async () => {
+        let loadedSettings: DraftSettings;
 
-      if (savedLocal) {
-        try {
-          const parsed: DraftSettings = JSON.parse(savedLocal);
-          setDraft(parsed);
-          
-          // Aplica o que estava salvo localmente no store global para consistência ao recarregar
-          setAll({
-            templateId: parsed.templateId,
-            font: parsed.fontFamily,
-            color: parsed.fontColor,
-            fontSize: parsed.fontSize
-          });
-          
-          // Só aplica tema se for diferente para evitar flash
-          if (parsed.heroTheme !== heroTheme) setHeroTheme(parsed.heroTheme);
-          if (parsed.mode !== mode) setMode(parsed.mode as any);
+        // Tenta LocalStorage primeiro
+        const storageKey = `burgerhero_card_settings_${user.id}`;
+        const savedLocal = localStorage.getItem(storageKey);
 
-        } catch (e) {
-          console.error("Erro ao ler configurações locais:", e);
-          initDraftFromStore();
-        }
-      } else {
-        initDraftFromStore();
-        
-        // Tenta buscar do DB como fallback secundário se não tiver local
-        getCardSettings(user.id).then(settings => {
-          if (settings) {
-             const dbSettings: DraftSettings = {
-                templateId: settings.card_template_id || selectedTemplateId,
-                fontFamily: settings.font_style || selectedFont,
-                fontColor: settings.font_color || selectedColor,
-                fontSize: settings.font_size_px || selectedFontSize,
-                heroTheme: (settings.hero_theme as HeroTheme) || heroTheme,
-                mode: (settings.theme_mode as any) || mode
-             };
-             // Atualiza draft e store com dados do DB se não tinha local
-             setDraft(dbSettings);
-             setAll({
-                templateId: dbSettings.templateId,
-                font: dbSettings.fontFamily,
-                color: dbSettings.fontColor,
-                fontSize: dbSettings.fontSize
-             });
-             setHeroTheme(dbSettings.heroTheme);
-             setMode(dbSettings.mode as any);
+        if (savedLocal) {
+          try {
+            loadedSettings = JSON.parse(savedLocal);
+          } catch (e) {
+            loadedSettings = createDefaultDraft();
           }
+        } else {
+          // Fallback para DB
+          const dbData = await getCardSettings(user.id);
+          if (dbData) {
+            loadedSettings = {
+              templateId: dbData.card_template_id || selectedTemplateId,
+              fontFamily: dbData.font_style || selectedFont,
+              fontColor: dbData.font_color || selectedColor,
+              fontSize: dbData.font_size_px || selectedFontSize,
+              heroTheme: (dbData.hero_theme as HeroTheme) || heroTheme,
+              mode: (dbData.theme_mode as any) || mode
+            };
+          } else {
+            loadedSettings = createDefaultDraft();
+          }
+        }
+
+        // Aplica e sincroniza
+        setDraft(loadedSettings);
+        setLastSavedState(loadedSettings); // Importante para o Cancelar funcionar
+        
+        // Sincroniza stores globais com o que foi carregado
+        setAll({
+          templateId: loadedSettings.templateId,
+          font: loadedSettings.fontFamily,
+          color: loadedSettings.fontColor,
+          fontSize: loadedSettings.fontSize
         });
-      }
+        setHeroTheme(loadedSettings.heroTheme);
+        setMode(loadedSettings.mode as any);
+      };
+
+      loadSettings();
     }
-  }, [user?.id, setTemplates]); // Executa uma vez na montagem/troca de user
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]); 
 
-  const initDraftFromStore = () => {
-    setDraft({
-      templateId: selectedTemplateId,
-      fontFamily: selectedFont,
-      fontColor: selectedColor,
-      fontSize: selectedFontSize,
-      heroTheme: heroTheme,
-      mode: mode
-    });
-  };
+  const createDefaultDraft = (): DraftSettings => ({
+    templateId: selectedTemplateId,
+    fontFamily: selectedFont,
+    fontColor: selectedColor,
+    fontSize: selectedFontSize,
+    heroTheme: heroTheme,
+    mode: mode
+  });
 
-  // Verifica se há alterações não salvas comparando Draft vs Store Global
+  // Verifica se há alterações
   const hasUnsavedChanges = useMemo(() => {
-    if (!draft) return false;
-    return (
-      draft.templateId !== selectedTemplateId ||
-      draft.fontFamily !== selectedFont ||
-      draft.fontColor !== selectedColor ||
-      draft.fontSize !== selectedFontSize ||
-      draft.heroTheme !== heroTheme ||
-      draft.mode !== mode
-    );
-  }, [draft, selectedTemplateId, selectedFont, selectedColor, selectedFontSize, heroTheme, mode]);
+    if (!draft || !lastSavedState) return false;
+    return JSON.stringify(draft) !== JSON.stringify(lastSavedState);
+  }, [draft, lastSavedState]);
 
-  // Handlers de alteração do Draft
+  // Handler de alteração (com efeito Real-Time)
   const updateDraft = (key: keyof DraftSettings, value: any) => {
+    if (!draft) return;
+    
     setDraft(prev => prev ? ({ ...prev, [key]: value }) : null);
     setSaveSuccess(false);
+
+    // EFEITO REAL-TIME: Aplica imediatamente no app
+    if (key === 'heroTheme') {
+      setHeroTheme(value);
+    }
+    if (key === 'mode') {
+      setMode(value);
+    }
   };
 
   const handleSaveSettings = async () => {
@@ -179,17 +177,7 @@ const Profile: React.FC = () => {
       const storageKey = `burgerhero_card_settings_${user.id}`;
       localStorage.setItem(storageKey, JSON.stringify(draft));
 
-      // 2. Aplica Globalmente (Store)
-      setAll({
-        templateId: draft.templateId,
-        font: draft.fontFamily,
-        color: draft.fontColor,
-        fontSize: draft.fontSize
-      });
-      setHeroTheme(draft.heroTheme);
-      setMode(draft.mode as any);
-
-      // 3. Persiste no DB (Opcional/Silent)
+      // 2. Persiste no DB (Supabase)
       await updateCardSettings(user.id, {
         templateId: draft.templateId,
         fontFamily: draft.fontFamily,
@@ -197,20 +185,47 @@ const Profile: React.FC = () => {
         fontSize: draft.fontSize,
         heroTheme: draft.heroTheme,
         mode: draft.mode
-      }).catch(err => console.warn("Erro ao salvar no DB (mas salvo localmente):", err));
+      });
+
+      // 3. Atualiza "Last Saved"
+      setLastSavedState(draft);
+      
+      // 4. Sincroniza Store de Cartão (Tema já foi syncado no updateDraft)
+      setAll({
+        templateId: draft.templateId,
+        font: draft.fontFamily,
+        color: draft.fontColor,
+        fontSize: draft.fontSize
+      });
 
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (e) {
       console.error("Erro ao salvar:", e);
-      alert("Erro ao salvar configurações.");
+      alert("Erro ao salvar configurações no servidor.");
     } finally {
       setIsSaving(false);
     }
   };
 
   const handleCancelChanges = () => {
-    initDraftFromStore();
+    if (!lastSavedState) return;
+    
+    // Reverte Draft
+    setDraft(lastSavedState);
+    
+    // Reverte Tema Global (Visual)
+    setHeroTheme(lastSavedState.heroTheme);
+    setMode(lastSavedState.mode);
+
+    // Reverte Card Store (Visual do Cartão)
+    setAll({
+      templateId: lastSavedState.templateId,
+      font: lastSavedState.fontFamily,
+      color: lastSavedState.fontColor,
+      fontSize: lastSavedState.fontSize
+    });
+
     setSaveSuccess(false);
   };
 
