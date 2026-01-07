@@ -76,31 +76,19 @@ const Profile: React.FC = () => {
         fakeApi.getSubscriptionStatus(user.id).then(setSub);
       }
 
-      const init = async () => {
-        const storageKey = `burgerhero_card_settings_${user.id}`;
-        const savedLocal = localStorage.getItem(storageKey);
-        let settings: DraftSettings;
-
-        if (savedLocal) {
-          settings = JSON.parse(savedLocal);
-        } else {
-          const db = await getCardSettings(user.id);
-          settings = {
-            templateId: db?.card_template_id || selectedTemplateId,
-            fontFamily: db?.font_style || selectedFont,
-            fontColor: db?.font_color || selectedColor,
-            fontSize: db?.font_size_px || selectedFontSize,
-            heroTheme: (db?.hero_theme as HeroTheme) || heroTheme,
-            mode: (db?.theme_mode as any) || mode
-          };
-        }
+      const initDraftState = () => {
+        const settings: DraftSettings = {
+          templateId: useCardStore.getState().selectedTemplateId,
+          fontFamily: useCardStore.getState().selectedFont,
+          fontColor: useCardStore.getState().selectedColor,
+          fontSize: useCardStore.getState().selectedFontSize,
+          heroTheme: useThemeStore.getState().heroTheme,
+          mode: useThemeStore.getState().mode,
+        };
         setDraft(settings);
         setLastSavedState(settings);
-        setCardAll({ templateId: settings.templateId, font: settings.fontFamily, color: settings.fontColor, fontSize: settings.fontSize });
-        setHeroTheme(settings.heroTheme);
-        setMode(settings.mode as any);
       };
-      init();
+      initDraftState();
     }
   }, [user?.id]);
 
@@ -141,18 +129,15 @@ const Profile: React.FC = () => {
     setCardAll({ templateId: lastSavedState.templateId, font: lastSavedState.fontFamily, color: lastSavedState.fontColor, fontSize: lastSavedState.fontSize });
   };
 
-  // --- PHOTO UPLOAD LOGIC ---
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file && user) {
-      // 1. Preview Instantâneo (Tempo Real na UI)
       const reader = new FileReader();
       reader.onload = (e) => {
         updateUser({ avatarUrl: e.target?.result as string });
       };
       reader.readAsDataURL(file);
 
-      // 2. Upload e Sincronização com Banco
       setUploadingAvatar(true);
       try {
         const finalUrl = await uploadAndSyncAvatar(user.id, file);
@@ -192,7 +177,6 @@ const Profile: React.FC = () => {
       });
   };
 
-  // --- LOGOUT LOGIC ---
   const handleLogout = async () => {
     const { error } = await supabase.auth.signOut();
     if (error) {

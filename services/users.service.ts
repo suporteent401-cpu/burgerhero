@@ -1,8 +1,17 @@
 import { supabase } from '../lib/supabaseClient';
-import { User as AppUser, Role } from '../types';
+import { User as AppUser, Role, HeroTheme } from '../types';
 import { User as SupabaseUser } from '@supabase/supabase-js';
 
 const normalizeCpf = (cpf: string) => (cpf ? cpf.replace(/[^\d]/g, '') : '');
+
+export interface CardSettings {
+  card_template_id: string | null;
+  font_style: string;
+  font_color: string;
+  font_size_px: number;
+  theme_mode: 'light' | 'dark' | 'system';
+  hero_theme: HeroTheme;
+}
 
 export const checkCpfExists = async (cpf: string): Promise<boolean> => {
   const normalizedCpf = normalizeCpf(cpf);
@@ -37,11 +46,11 @@ export const getUserProfileById = async (userId: string) => {
   return data;
 };
 
-export const getFullUserProfile = async (authUser: SupabaseUser): Promise<AppUser | null> => {
+export const getFullUserProfile = async (authUser: SupabaseUser): Promise<{ profile: AppUser; settings: CardSettings | null } | null> => {
   const [appUserResponse, clientProfileResponse, settingsResponse] = await Promise.all([
     supabase.from('app_users').select('role, is_active').eq('id', authUser.id).maybeSingle(),
     supabase.from('client_profiles').select('*').eq('user_id', authUser.id).maybeSingle(),
-    supabase.from('hero_card_settings').select('hero_theme').eq('user_id', authUser.id).maybeSingle()
+    supabase.from('hero_card_settings').select('*').eq('user_id', authUser.id).maybeSingle()
   ]);
 
   if (appUserResponse.error) {
@@ -54,9 +63,9 @@ export const getFullUserProfile = async (authUser: SupabaseUser): Promise<AppUse
 
   const role = appUserData.role as Role;
   const clientProfileData = clientProfileResponse.data;
-  const settingsData = settingsResponse.data;
+  const settingsData = settingsResponse.data as CardSettings | null;
 
-  const savedTheme = settingsData?.hero_theme as any || 'sombra-noturna';
+  const savedTheme = settingsData?.hero_theme || 'sombra-noturna';
 
   const fullProfile: AppUser = {
     id: authUser.id,
@@ -71,17 +80,13 @@ export const getFullUserProfile = async (authUser: SupabaseUser): Promise<AppUse
     heroTheme: savedTheme,
   };
 
-  return fullProfile;
+  return { profile: fullProfile, settings: settingsData };
 };
-
-// --- NOVOS MÉTODOS DE AVATAR ---
 
 export const uploadAndSyncAvatar = async (userId: string, file: File): Promise<string | null> => {
   const fileExt = file.name.split('.').pop();
-  // Usamos timestamp para evitar cache do navegador ao sobrescrever
   const fileName = `${userId}/${Date.now()}.${fileExt}`;
 
-  // 1. Upload para o Storage
   const { error: uploadError } = await supabase.storage
     .from('avatars')
     .upload(fileName, file, { 
@@ -94,11 +99,9 @@ export const uploadAndSyncAvatar = async (userId: string, file: File): Promise<s
     throw uploadError;
   }
 
-  // 2. Pega a URL pública
   const { data: publicUrlData } = supabase.storage.from('avatars').getPublicUrl(fileName);
   const publicUrl = publicUrlData.publicUrl;
 
-  // 3. Sincroniza com a tabela de perfis
   const { error: dbError } = await supabase
     .from('client_profiles')
     .update({ avatar_url: publicUrl })
