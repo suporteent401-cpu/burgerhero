@@ -192,6 +192,15 @@ const Profile: React.FC = () => {
       });
   };
 
+  // --- LOGOUT LOGIC ---
+  const handleLogout = async () => {
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      console.error('Erro ao fazer logout:', error);
+      alert('Erro ao sair. Tente novamente.');
+    }
+  };
+
   const themes: { name: HeroTheme, color: string }[] = [
     { name: 'sombra-noturna', color: '#1e40af' },
     { name: 'guardiao-escarlate', color: '#ef4444' },
