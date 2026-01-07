@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Card, CardBody } from '../components/ui/Card';
 import { useAuthStore } from '../store/authStore';
 import { useCardStore } from '../store/cardStore';
-import { fakeApi } from '../lib/fakeApi';
+import { getSubscriptionStatus, getMonthlyBenefit } from '../services/clientHome.service';
 import { Subscription, MonthlyBenefit } from '../types';
 import { Clock, Ticket, Utensils, ChevronRight, QrCode } from 'lucide-react';
 import { Link } from 'react-router-dom';
@@ -17,12 +17,22 @@ const Home: React.FC = () => {
 
   const cardTemplate = getSelectedTemplate();
 
-  // FIX: Depender de user.id em vez do objeto user inteiro evita loops infinitos
   useEffect(() => {
     if (user?.id) {
-      fakeApi.getSubscriptionStatus(user.id).then(setSub);
-      const monthKey = new Date().toISOString().slice(0, 7);
-      fakeApi.getMonthlyBenefit(user.id, monthKey).then(setBenefit);
+      const fetchData = async () => {
+        try {
+          const subscriptionData = await getSubscriptionStatus(user.id);
+          setSub(subscriptionData);
+
+          const monthKey = new Date().toISOString().slice(0, 7);
+          const benefitData = await getMonthlyBenefit(user.id, monthKey);
+          setBenefit(benefitData);
+        } catch (error) {
+          console.error("Falha ao buscar dados da Home, usando fallback silencioso.", error);
+          // A UI continuará com os valores iniciais (null) e não vai quebrar.
+        }
+      };
+      fetchData();
     }
   }, [user?.id]);
 
