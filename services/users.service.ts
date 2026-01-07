@@ -105,33 +105,52 @@ export const signUpAndCreateProfile = async (userData: any) => {
   return authData;
 };
 
-// --- NOVOS MÉTODOS ---
+// --- UPDATE NAME ---
+
+export const updateProfileName = async (userId: string, name: string) => {
+  console.log('[UsersService] Atualizando nome...', { userId, name });
+  
+  const { data, error } = await supabase
+    .from('client_profiles')
+    .update({ display_name: name })
+    .eq('user_id', userId)
+    .select(); // Importante: select() retorna o dado atualizado para confirmar sucesso
+
+  if (error) {
+    console.error('[UsersService] Erro ao atualizar nome:', error);
+    throw error;
+  }
+  
+  console.log('[UsersService] Nome atualizado com sucesso:', data);
+  return data;
+};
+
+// --- AVATAR ---
 
 export const uploadAvatar = async (userId: string, file: File): Promise<string | null> => {
+  console.log('[UsersService] Iniciando upload de avatar...', { userId, fileName: file.name });
+  
   const fileExt = file.name.split('.').pop();
   const fileName = `${userId}/${Date.now()}.${fileExt}`;
 
+  // 1. Upload
   const { error: uploadError } = await supabase.storage
     .from('avatars')
     .upload(fileName, file, { upsert: true });
 
   if (uploadError) {
-    console.error('Erro no upload:', uploadError);
+    console.error('[UsersService] Erro no upload:', uploadError);
     throw uploadError;
   }
 
+  // 2. Get Public URL
   const { data } = supabase.storage.from('avatars').getPublicUrl(fileName);
+  console.log('[UsersService] Upload concluído. URL:', data.publicUrl);
+  
   return data.publicUrl;
 };
 
-export const updateProfileName = async (userId: string, name: string) => {
-  const { error } = await supabase
-    .from('client_profiles')
-    .update({ display_name: name })
-    .eq('user_id', userId);
-
-  if (error) throw error;
-};
+// --- SETTINGS ---
 
 export const updateCardSettings = async (userId: string, settings: any) => {
   // Mapeia os campos do store para o DB
