@@ -9,41 +9,28 @@ import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 
 const QRCodePage: React.FC = () => {
-  const { user, isLoading } = useAuthStore((state) => ({
-    user: state.user,
-    isLoading: state.isLoading,
-  }));
+  // ✅ NÃO retornar objeto no selector (evita getSnapshot loop)
+  const user = useAuthStore((s) => s.user);
+  const isLoading = useAuthStore((s) => s.isLoading);
 
-  // ✅ NÃO use getSelectedTemplate() aqui para evitar loop.
-  // Pegamos só estado puro do store:
+  // ✅ Evita chamar função "getSelectedTemplate" que pode criar referência nova
   const selectedTemplateId = useCardStore((s) => s.selectedTemplateId);
   const availableTemplates = useCardStore((s) => s.availableTemplates);
+
+  const template = useMemo(() => {
+    if (!availableTemplates?.length) return null;
+    return availableTemplates.find((t) => t.id === selectedTemplateId) || availableTemplates[0] || null;
+  }, [availableTemplates, selectedTemplateId]);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [copied, setCopied] = useState(false);
 
   const customerCode = user?.customerCode;
 
-  // ✅ Template calculado de forma pura (sem setState/store update)
-  const template = useMemo(() => {
-    if (!availableTemplates || availableTemplates.length === 0) return null;
-
-    // Se tiver selecionado, usa ele. Se não, cai no primeiro.
-    const found = selectedTemplateId
-      ? availableTemplates.find((t) => t.id === selectedTemplateId)
-      : null;
-
-    return found ?? availableTemplates[0] ?? null;
-  }, [availableTemplates, selectedTemplateId]);
-
-  // ✅ URL estável do QR (evita ficar recalculando e também evita issues com window.location.href)
   const qrUrl = useMemo(() => {
     if (!customerCode) return '';
-
-    // Como você usa HashRouter, o caminho público fica dentro do hash
-    // Ex: https://dominio.com/#/public/client/ABC123
-    const origin = window.location.origin;
-    return `${origin}/#/public/client/${customerCode}`;
+    // Mantém hash router: abre a rota pública em /#/public/client/:code
+    return new URL(`#/public/client/${customerCode}`, window.location.href).href;
   }, [customerCode]);
 
   const handleCopy = async () => {
@@ -52,13 +39,20 @@ const QRCodePage: React.FC = () => {
       await navigator.clipboard.writeText(customerCode);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    } catch (e) {
-      console.error('Falha ao copiar:', e);
-      alert('Não foi possível copiar. Tente novamente.');
+    } catch {
+      // fallback simples
+      const el = document.createElement('textarea');
+      el.value = customerCode;
+      document.body.appendChild(el);
+      el.select();
+      document.execCommand('copy');
+      document.body.removeChild(el);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
     }
   };
 
-  // 1) Loader enquanto autenticação inicial roda
+  // 1) Loader de autenticação
   if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center py-20">
@@ -68,7 +62,23 @@ const QRCodePage: React.FC = () => {
     );
   }
 
-  // 2) Sem customerCode → erro guiado
+  // 2) Sem user (proteção extra)
+  if (!user) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 text-center text-slate-500">
+        <AlertCircle className="w-12 h-12 text-amber-500 mb-4" />
+        <h3 className="font-black text-lg text-slate-700 dark:text-slate-200">Sessão não encontrada</h3>
+        <p className="text-sm max-w-xs mt-1 mb-6">
+          Faça login novamente para acessar seu QR Code.
+        </p>
+        <Link to="/auth">
+          <Button variant="secondary">Ir para Login</Button>
+        </Link>
+      </div>
+    );
+  }
+
+  // 3) Sem código do cliente
   if (!customerCode) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-center text-slate-500">
@@ -85,15 +95,8 @@ const QRCodePage: React.FC = () => {
     );
   }
 
-  // 3) Se não carregou templates ainda, evita quebrar no template.imageUrl
-  if (!template) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 text-center">
-        <Loader2 className="w-10 h-10 text-hero-primary animate-spin" />
-        <p className="mt-4 text-sm font-medium text-slate-500">Carregando modelo do cartão...</p>
-      </div>
-    );
-  }
+  // 4) Template pode estar vazio no primeiro carregamento
+  const templateImageUrl = template?.imageUrl || 'https://picsum.photos/seed/hero-card/800/400';
 
   return (
     <div className="space-y-6">
@@ -113,7 +116,7 @@ const QRCodePage: React.FC = () => {
         <div className="bg-white dark:bg-slate-900 rounded-3xl overflow-hidden shadow-2xl border border-slate-100 dark:border-slate-800">
           <div className="h-32 relative overflow-hidden">
             <img
-              src={template.imageUrl}
+              src={templateImageUrl}
               alt="Card Background"
               className="absolute inset-0 w-full h-full object-cover scale-[1.35]"
             />
@@ -122,7 +125,7 @@ const QRCodePage: React.FC = () => {
             <div className="absolute top-4 left-0 right-0 flex justify-center z-10">
               <div className="bg-black/30 backdrop-blur-md px-3 py-1 rounded-full flex items-center gap-2 border border-white/20">
                 <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-                <span className="text-[10px] font-bold text-white uppercase tracking-widest">Assinante Ativo</span>
+                <span className="text-[10px] font-bold text-white uppercase tracking-widest">Assinante</span>
               </div>
             </div>
           </div>
@@ -130,16 +133,16 @@ const QRCodePage: React.FC = () => {
           <div className="px-8 pb-8 -mt-12 flex flex-col items-center relative z-10">
             <div className="w-24 h-24 rounded-full border-[5px] border-white dark:border-slate-900 bg-slate-200 overflow-hidden shadow-lg mb-4">
               <img
-                src={user?.avatarUrl || `https://picsum.photos/seed/${user?.id}/100`}
+                src={user.avatarUrl || `https://picsum.photos/seed/${user.id}/100`}
                 alt="User"
                 className="w-full h-full object-cover"
               />
             </div>
 
             <h3 className="text-xl font-black text-slate-800 dark:text-white text-center leading-tight mb-1">
-              {user?.name}
+              {user.name}
             </h3>
-            <p className="text-sm font-medium text-slate-400 mb-6">{user?.email}</p>
+            <p className="text-sm font-medium text-slate-400 mb-6">{user.email}</p>
 
             <div
               className="bg-white p-4 rounded-2xl shadow-inner border border-slate-100 cursor-pointer hover:scale-105 transition-transform duration-300"
@@ -158,9 +161,7 @@ const QRCodePage: React.FC = () => {
             </div>
 
             <div className="w-full">
-              <p className="text-center text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2">
-                ID do Cliente
-              </p>
+              <p className="text-center text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2">ID do Cliente</p>
 
               <div
                 onClick={handleCopy}
@@ -169,7 +170,6 @@ const QRCodePage: React.FC = () => {
                 <span className="font-mono font-bold text-lg text-slate-700 dark:text-slate-200 tracking-wider pl-2">
                   {customerCode}
                 </span>
-
                 <div
                   className={`p-2 rounded-lg ${
                     copied
