@@ -25,15 +25,12 @@ import AdminDashboard from './app/AdminDashboard';
 import AdminUsers from './app/AdminUsers';
 import AdminUserDetails from './app/AdminUserDetails';
 import AdminPlans from './app/AdminPlans';
-import AdminTemplates from './app/AdminTemplates'; // Nova página
 import AdminCoupons from './app/AdminCoupons';
 import StaffHome from './app/StaffHome';
 import StaffValidate from './app/StaffValidate';
-import StaffClientProfile from './app/StaffClientProfile';
 import Debug from './app/Debug';
-import PublicClientProfile from './app/PublicClientProfile';
 
-// 🔒 Proteção por papel (Role é minúsculo: 'client' | 'staff' | 'admin')
+// 🔒 Proteção por papel (ROLE é minúsculo: 'client' | 'staff' | 'admin')
 const ProtectedRoute = ({
   children,
   allowedRoles,
@@ -41,19 +38,9 @@ const ProtectedRoute = ({
   children?: React.ReactNode;
   allowedRoles?: Role[];
 }) => {
-  const { isAuthed, user, isLoading } = useAuthStore();
+  const { isAuthed, user } = useAuthStore();
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <div className="w-8 h-8 border-4 border-hero-primary border-t-transparent rounded-full animate-spin"></div>
-      </div>
-    );
-  }
-
-  if (!isAuthed || !user) {
-    return <Navigate to="/auth" replace />;
-  }
+  if (!isAuthed || !user) return <Navigate to="/auth" replace />;
 
   if (allowedRoles && !allowedRoles.includes(user.role)) {
     if (user.role === 'admin') return <Navigate to="/admin" replace />;
@@ -65,7 +52,7 @@ const ProtectedRoute = ({
 };
 
 const App: React.FC = () => {
-  const applyTheme = useThemeStore((state) => state.applyTheme);
+  const applyTheme = useThemeStore(state => state.applyTheme);
 
   useEffect(() => {
     applyTheme();
@@ -80,8 +67,6 @@ const App: React.FC = () => {
             <Route path="/" element={<Landing />} />
             <Route path="/auth" element={<Auth />} />
             <Route path="/plans" element={<Plans />} />
-            <Route path="/public/client/:customerCode" element={<PublicClientProfile />} />
-
             <Route
               path="/checkout"
               element={
@@ -90,7 +75,6 @@ const App: React.FC = () => {
                 </ProtectedRoute>
               }
             />
-
             <Route path="/debug" element={<Debug />} />
 
             {/* Cliente */}
@@ -122,7 +106,6 @@ const App: React.FC = () => {
               <Route path="users" element={<AdminUsers />} />
               <Route path="users/:id" element={<AdminUserDetails />} />
               <Route path="plans" element={<AdminPlans />} />
-              <Route path="templates" element={<AdminTemplates />} />
               <Route path="coupons" element={<AdminCoupons />} />
             </Route>
 
@@ -137,7 +120,6 @@ const App: React.FC = () => {
             >
               <Route index element={<StaffHome />} />
               <Route path="validate" element={<StaffValidate />} />
-              <Route path="client/:customerCode" element={<StaffClientProfile />} />
             </Route>
 
             {/* Fallback */}
