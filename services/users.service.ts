@@ -4,6 +4,24 @@ import { User as SupabaseUser } from '@supabase/supabase-js';
 
 // --- LEITURA ---
 
+/**
+ * Busca o perfil de um usuário específico pelo ID.
+ * Usado pelo StaffValidate para recuperar dados após escanear QR Code.
+ */
+export const getUserProfileById = async (userId: string) => {
+  const { data, error } = await supabase
+    .from('client_profiles')
+    .select('*')
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (error) {
+    console.warn('[UsersService] getUserProfileById error:', error.message);
+    return null;
+  }
+  return data;
+};
+
 export const getFullUserProfile = async (authUser: SupabaseUser): Promise<AppUser | null> => {
   const [appUserResponse, clientProfileResponse, settingsResponse] = await Promise.all([
     supabase.from('app_users').select('role, is_active').eq('id', authUser.id).maybeSingle(),
