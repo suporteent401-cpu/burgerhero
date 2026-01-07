@@ -38,3 +38,16 @@ export interface Subscription {
   currentPeriodStart?: string | null;
   currentPeriodEnd?: string | null;
 }
+
+export interface Plan {
+  id: string;
+  name: string;
+  price_cents: number;
+  description: string;
+  benefits: string[];
+  image_url: string;
+  is_active: boolean;
+  created_at?: string;
+  subscriber_count?: number;
+  popularity?: number;
+}
