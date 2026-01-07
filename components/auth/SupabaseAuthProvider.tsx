@@ -2,93 +2,85 @@ import React, { useEffect, useRef } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuthStore } from '../../store/authStore';
 import { getFullUserProfile } from '../../services/users.service';
-import { User } from '../../types';
+import type { Role } from '../../types';
 
 interface AuthProviderProps {
   children: React.ReactNode;
 }
 
+const inferRoleFromEmail = (email?: string | null): Role => {
+  const e = (email || '').toLowerCase().trim();
+  if (e === 'admin@hero.com') return 'admin';
+  if (e === 'staff@hero.com') return 'staff';
+  return 'client';
+};
+
 export const SupabaseAuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
-  const { login, logout } = useAuthStore();
+  const login = useAuthStore((s) => s.login);
+  const logout = useAuthStore((s) => s.logout);
+
+  // evita dupla execução em dev/strict mode
   const isHandlingRef = useRef(false);
 
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      // 1. Tratamento de Logout
-      if (event === 'SIGNED_OUT' || !session) {
-        logout();
-        isHandlingRef.current = false;
-        return;
-      }
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (isHandlingRef.current) return;
+      isHandlingRef.current = true;
 
-      // 2. Tratamento de Login e Sessão Inicial
-      if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
-        // Bloqueio para evitar chamadas duplicadas/concorrentes
-        if (isHandlingRef.current) return;
-        isHandlingRef.current = true;
-
-        try {
-          // Tenta buscar o perfil completo
-          let profile = await getFullUserProfile(session.user);
-
-          // Se não encontrou perfil, tenta criar/garantir via RPC (fail-safe)
-          if (!profile) {
-            console.warn(`Perfil não encontrado para ${session.user.id}. Tentando RPC de fallback...`);
-            
-            try {
-              const { data: rpcData, error: rpcError } = await supabase.rpc('ensure_user_profile', {
-                p_display_name: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'Hero',
-                p_email: session.user.email,
-                p_cpf: '00000000000', // Placeholder para evitar erro de constraint se obrigatório
-                p_birthdate: null
-              });
-
-              if (rpcError) {
-                console.error("Erro na RPC ensure_user_profile:", rpcError);
-              } else {
-                // Se a RPC funcionou, tenta buscar o perfil novamente
-                profile = await getFullUserProfile(session.user);
-              }
-            } catch (rpcErr) {
-               console.error("Exceção ao chamar RPC de fallback:", rpcErr);
-            }
-          }
-
-          // 3. Fallback Final: Cria um perfil temporário em memória para não quebrar a UI
-          if (!profile) {
-            console.error("FALHA CRÍTICA: Não foi possível carregar ou criar o perfil completo do usuário a partir do banco de dados. O registro em 'app_users' pode estar ausente. Criando um perfil de fallback com role 'CLIENT' para evitar que a aplicação quebre. O acesso pode ser incorreto.");
-            profile = {
-              id: session.user.id,
-              name: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'Visitante',
-              email: session.user.email || '',
-              role: 'CLIENT', // Mantendo para não quebrar a tipagem, mas com um erro explícito acima.
-              cpf: '',
-              whatsapp: '',
-              birthDate: '',
-              heroTheme: 'sombra-noturna',
-              avatarUrl: session.user.user_metadata?.avatar_url || null,
-              customerCode: 'ERROR'
-            } as User;
-          }
-
-          // Log de verificação de role antes de atualizar o store
-          console.log('[AUTH] Logging in user. Role:', profile.role, 'ID:', profile.id);
-
-          // Atualiza o store.
-          login(profile);
-
-        } catch (err) {
-          console.error("Erro inesperado no fluxo de autenticação:", err);
-          // Manter sessão ativa para permitir retry ou debug
-        } finally {
-          isHandlingRef.current = false;
+      try {
+        if (!session?.user) {
+          logout();
+          return;
         }
+
+        // 1) tenta buscar perfil completo
+        let profile = await getFullUserProfile(session.user);
+
+        // 2) se não existir app_users ainda, cria via RPC segura (login)
+        if (!profile) {
+          const role = inferRoleFromEmail(session.user.email);
+
+          const { data: rpcData, error: rpcError } = await supabase.rpc('ensure_user_profile_login', {
+            p_display_name: session.user.email?.split('@')[0] || 'Hero',
+            p_email: session.user.email,
+            p_cpf: '',
+            p_birthdate: null,
+            p_role: role,
+          });
+
+          if (rpcError) {
+            console.error('AUTH_ERROR (RPC ensure_user_profile_login):', rpcError);
+            await supabase.auth.signOut();
+            logout();
+            return;
+          }
+
+          const result = rpcData?.[0];
+          if (!result?.ok) {
+            console.error('AUTH_ERROR (RPC result):', result);
+            await supabase.auth.signOut();
+            logout();
+            return;
+          }
+
+          // 3) busca novamente após garantir app_users
+          profile = await getFullUserProfile(session.user);
+        }
+
+        if (profile) {
+          login(profile);
+        } else {
+          console.error('AUTH_ERROR: perfil não carregou mesmo após fallback');
+          await supabase.auth.signOut();
+          logout();
+        }
+      } finally {
+        // pequena janela para não disparar duplo por render
+        setTimeout(() => { isHandlingRef.current = false; }, 50);
       }
     });
 
-    return () => {
-      subscription.unsubscribe();
-    };
+    return () => subscription.unsubscribe();
   }, [login, logout]);
 
   return <>{children}</>;
