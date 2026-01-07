@@ -62,99 +62,57 @@ export const getFullUserProfile = async (authUser: SupabaseUser): Promise<AppUse
   return fullProfile;
 };
 
-const normalizeCpf = (cpf: string) => cpf.replace(/[^\d]/g, '');
-
-const checkCpfExists = async (cpf: string): Promise<boolean> => {
-  const { data, error } = await supabase
-    .from('client_profiles')
-    .select('cpf')
-    .eq('cpf', normalizeCpf(cpf))
-    .limit(1)
-    .single();
-
-  if (error && error.code !== 'PGRST116') {
-    console.error('Erro ao verificar CPF:', error);
-    throw error;
-  }
-  return !!data;
-};
-
-const generateUniqueHeroCode = async (): Promise<string> => {
-  let heroCode = '';
-  let isUnique = false;
-  while (!isUnique) {
-    heroCode = `HE${Math.floor(10000 + Math.random() * 90000)}`;
-    const { data } = await supabase.from('client_profiles').select('hero_code').eq('hero_code', heroCode).single();
-    if (!data) isUnique = true;
-  }
-  return heroCode;
-};
-
-export const registerNewUser = async (userData: any) => {
-  // 1. Verifica se o CPF já existe antes de tentar criar o usuário.
-  const cpfExists = await checkCpfExists(userData.cpf);
-  if (cpfExists) {
-    throw new Error('CPF já cadastrado.');
-  }
-
-  // 2. Cria o usuário no Supabase Auth.
+/**
+ * Registra um novo usuário e garante a criação do seu perfil via RPC.
+ */
+export const signUpAndCreateProfile = async (userData: any) => {
+  // 1. Cria o usuário no Supabase Auth.
   const { data: authData, error: signUpError } = await supabase.auth.signUp({
     email: userData.email,
     password: userData.password,
   });
 
   if (signUpError) {
-    if (signUpError.message.includes('unique constraint')) {
-      throw new Error('Este e-mail já está em uso.');
+    if (signUpError.message.includes('User already registered')) {
+      throw new Error('E-mail já cadastrado. Faça login.');
     }
     throw signUpError;
   }
   if (!authData.user) {
     throw new Error('Não foi possível criar o usuário. Tente novamente.');
   }
-  
-  const userId = authData.user.id;
 
-  // 3. Gera um código de herói único.
-  const heroCode = await generateUniqueHeroCode();
+  // 2. Faz login para obter uma sessão válida para a chamada RPC.
+  const { error: signInError } = await supabase.auth.signInWithPassword({
+    email: userData.email,
+    password: userData.password,
+  });
 
-  // 4. Insere os dados nas tabelas sequencialmente para garantir a integridade.
-  // a) Tabela de roles (app_users)
-  const { error: appUserError } = await supabase
-    .from('app_users')
-    .insert({ id: userId, role: 'client', is_active: true });
-
-  if (appUserError) {
-    console.error('Falha ao criar registro em app_users:', appUserError);
-    throw new Error('Falha ao configurar o perfil (app). Contate o suporte.');
+  if (signInError) {
+    console.error("Falha no login automático após cadastro:", signInError);
+    throw new Error('Cadastro realizado, mas falha ao iniciar sessão. Tente fazer login manualmente.');
   }
 
-  // b) Tabela de perfis (client_profiles)
-  const { error: clientProfileError } = await supabase
-    .from('client_profiles')
-    .insert({
-      user_id: userId,
-      display_name: userData.name,
-      email: userData.email,
-      cpf: normalizeCpf(userData.cpf), // Salva o CPF normalizado
-      hero_code: heroCode,
-    });
+  // 3. Chama a RPC para criar/garantir o perfil completo.
+  const { data: rpcData, error: rpcError } = await supabase.rpc('ensure_user_profile', {
+    p_display_name: userData.name,
+    p_email: userData.email,
+    p_cpf: userData.cpf,
+    p_birthdate: userData.birthDate || null
+  });
 
-  if (clientProfileError) {
-    console.error('Falha ao criar registro em client_profiles:', clientProfileError);
-    throw new Error('Falha ao configurar o perfil (profile). Contate o suporte.');
+  if (rpcError) {
+    console.error("Erro na RPC ensure_user_profile:", rpcError);
+    await supabase.auth.signOut(); // Desloga em caso de erro para evitar estado inconsistente.
+    throw new Error('Ocorreu um erro ao configurar seu perfil. Tente novamente.');
   }
 
-  // c) Tabela de configurações do cartão (hero_card_settings)
-  const { error: cardSettingsError } = await supabase
-    .from('hero_card_settings')
-    .insert({ user_id: userId });
-
-  if (cardSettingsError) {
-    console.error('Falha ao criar registro em hero_card_settings:', cardSettingsError);
-    throw new Error('Falha ao configurar o perfil (settings). Contate o suporte.');
+  const result = rpcData[0];
+  if (!result || !result.ok) {
+    await supabase.auth.signOut();
+    throw new Error(result?.message || 'Falha ao criar perfil de usuário.');
   }
 
-  // 5. Retorna os dados de autenticação se tudo ocorrer bem.
+  // 4. Retorna os dados da sessão de autenticação.
   return authData;
 };

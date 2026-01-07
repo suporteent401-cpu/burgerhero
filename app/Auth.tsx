@@ -8,7 +8,7 @@ import { Mail, Lock, User as UserIcon, Calendar, Phone, CreditCard } from 'lucid
 import { useAuthStore } from '../store/authStore';
 import { motion } from 'framer-motion';
 import { supabase } from '../lib/supabaseClient';
-import { getFullUserProfile, registerNewUser } from '../services/users.service';
+import { getFullUserProfile, signUpAndCreateProfile } from '../services/users.service';
 
 const Auth: React.FC = () => {
   const [isLogin, setIsLogin] = useState(true);
@@ -37,8 +37,9 @@ const Auth: React.FC = () => {
 
         const fullProfile = await getFullUserProfile(authData.user);
         if (!fullProfile) {
+          // Este é um estado inconsistente. Desloga o usuário e pede para contatar o suporte.
           await supabase.auth.signOut();
-          throw new Error('Perfil de usuário não configurado. Contate o suporte.');
+          throw new Error('Falha ao carregar o perfil. Por favor, contate o suporte.');
         }
 
         login(fullProfile);
@@ -52,9 +53,9 @@ const Auth: React.FC = () => {
         }
         
         const fullUserData = { ...step1Data, ...data };
-        const { data: authData } = await registerNewUser(fullUserData);
+        const { data: authData } = await signUpAndCreateProfile(fullUserData);
 
-        if (!authData.user) throw new Error('Cadastro realizado, mas não foi possível fazer login. Tente logar manualmente.');
+        if (!authData.user) throw new Error('Cadastro realizado, mas não foi possível fazer login. Tente logar manually.');
 
         const fullProfile = await getFullUserProfile(authData.user);
         if (!fullProfile) throw new Error('Perfil criado com sucesso, mas houve um problema ao carregar seus dados. Tente logar manualmente.');
