@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { Button } from '../components/ui/Button';
 import { useAuthStore } from '../store/authStore';
@@ -9,27 +9,56 @@ import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 
 const QRCodePage: React.FC = () => {
-  const { user, isLoading } = useAuthStore(state => ({ user: state.user, isLoading: state.isLoading }));
-  const { getSelectedTemplate } = useCardStore();
+  const { user, isLoading } = useAuthStore((state) => ({
+    user: state.user,
+    isLoading: state.isLoading,
+  }));
+
+  // ✅ NÃO use getSelectedTemplate() aqui para evitar loop.
+  // Pegamos só estado puro do store:
+  const selectedTemplateId = useCardStore((s) => s.selectedTemplateId);
+  const availableTemplates = useCardStore((s) => s.availableTemplates);
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  const template = getSelectedTemplate();
   const customerCode = user?.customerCode;
-  
-  const qrUrl = customerCode 
-    ? new URL(`#/public/client/${customerCode}`, window.location.href).href
-    : '';
 
-  const handleCopy = () => {
-    if (customerCode) {
-      navigator.clipboard.writeText(customerCode);
+  // ✅ Template calculado de forma pura (sem setState/store update)
+  const template = useMemo(() => {
+    if (!availableTemplates || availableTemplates.length === 0) return null;
+
+    // Se tiver selecionado, usa ele. Se não, cai no primeiro.
+    const found = selectedTemplateId
+      ? availableTemplates.find((t) => t.id === selectedTemplateId)
+      : null;
+
+    return found ?? availableTemplates[0] ?? null;
+  }, [availableTemplates, selectedTemplateId]);
+
+  // ✅ URL estável do QR (evita ficar recalculando e também evita issues com window.location.href)
+  const qrUrl = useMemo(() => {
+    if (!customerCode) return '';
+
+    // Como você usa HashRouter, o caminho público fica dentro do hash
+    // Ex: https://dominio.com/#/public/client/ABC123
+    const origin = window.location.origin;
+    return `${origin}/#/public/client/${customerCode}`;
+  }, [customerCode]);
+
+  const handleCopy = async () => {
+    if (!customerCode) return;
+    try {
+      await navigator.clipboard.writeText(customerCode);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
+    } catch (e) {
+      console.error('Falha ao copiar:', e);
+      alert('Não foi possível copiar. Tente novamente.');
     }
   };
 
-  // 1. Exibe o loader enquanto a autenticação inicial está em andamento
+  // 1) Loader enquanto autenticação inicial roda
   if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center py-20">
@@ -39,14 +68,14 @@ const QRCodePage: React.FC = () => {
     );
   }
 
-  // 2. Após o carregamento, verifica se o código existe. Se não, mostra o erro.
+  // 2) Sem customerCode → erro guiado
   if (!customerCode) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-center text-slate-500">
         <AlertCircle className="w-12 h-12 text-amber-500 mb-4" />
         <h3 className="font-black text-lg text-slate-700 dark:text-slate-200">Identidade de Herói Incompleta</h3>
         <p className="text-sm max-w-xs mt-1 mb-6">
-          Seu código de cliente ainda não foi gerado. Isso pode acontecer no primeiro acesso. 
+          Seu código de cliente ainda não foi gerado. Isso pode acontecer no primeiro acesso.
           Por favor, visite seu perfil para garantir que todos os dados estão corretos.
         </p>
         <Link to="/app/profile">
@@ -56,7 +85,16 @@ const QRCodePage: React.FC = () => {
     );
   }
 
-  // 3. Se tudo estiver certo, renderiza a página
+  // 3) Se não carregou templates ainda, evita quebrar no template.imageUrl
+  if (!template) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 text-center">
+        <Loader2 className="w-10 h-10 text-hero-primary animate-spin" />
+        <p className="mt-4 text-sm font-medium text-slate-500">Carregando modelo do cartão...</p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div className="text-center mb-2">
@@ -64,86 +102,118 @@ const QRCodePage: React.FC = () => {
         <p className="text-slate-500 text-sm font-medium">Apresente para resgatar benefícios</p>
       </div>
 
-      <motion.div 
+      <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
         className="relative max-w-sm mx-auto"
       >
         <div className="absolute inset-0 bg-hero-primary/20 blur-3xl rounded-full -z-10"></div>
+
         <div className="bg-white dark:bg-slate-900 rounded-3xl overflow-hidden shadow-2xl border border-slate-100 dark:border-slate-800">
           <div className="h-32 relative overflow-hidden">
-             <img 
-               src={template.imageUrl} 
-               alt="Card Background" 
-               className="absolute inset-0 w-full h-full object-cover scale-[1.35]"
-             />
-             <div className="absolute inset-0 bg-black/30"></div>
-             <div className="absolute top-4 left-0 right-0 flex justify-center z-10">
-                <div className="bg-black/30 backdrop-blur-md px-3 py-1 rounded-full flex items-center gap-2 border border-white/20">
-                   <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-                   <span className="text-[10px] font-bold text-white uppercase tracking-widest">Assinante Ativo</span>
-                </div>
-             </div>
+            <img
+              src={template.imageUrl}
+              alt="Card Background"
+              className="absolute inset-0 w-full h-full object-cover scale-[1.35]"
+            />
+            <div className="absolute inset-0 bg-black/30"></div>
+
+            <div className="absolute top-4 left-0 right-0 flex justify-center z-10">
+              <div className="bg-black/30 backdrop-blur-md px-3 py-1 rounded-full flex items-center gap-2 border border-white/20">
+                <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                <span className="text-[10px] font-bold text-white uppercase tracking-widest">Assinante Ativo</span>
+              </div>
+            </div>
           </div>
+
           <div className="px-8 pb-8 -mt-12 flex flex-col items-center relative z-10">
             <div className="w-24 h-24 rounded-full border-[5px] border-white dark:border-slate-900 bg-slate-200 overflow-hidden shadow-lg mb-4">
-               <img src={user?.avatarUrl || `https://picsum.photos/seed/${user?.id}/100`} alt="User" className="w-full h-full object-cover" />
+              <img
+                src={user?.avatarUrl || `https://picsum.photos/seed/${user?.id}/100`}
+                alt="User"
+                className="w-full h-full object-cover"
+              />
             </div>
-            <h3 className="text-xl font-black text-slate-800 dark:text-white text-center leading-tight mb-1">{user?.name}</h3>
+
+            <h3 className="text-xl font-black text-slate-800 dark:text-white text-center leading-tight mb-1">
+              {user?.name}
+            </h3>
             <p className="text-sm font-medium text-slate-400 mb-6">{user?.email}</p>
-            <div 
+
+            <div
               className="bg-white p-4 rounded-2xl shadow-inner border border-slate-100 cursor-pointer hover:scale-105 transition-transform duration-300"
               onClick={() => setIsModalOpen(true)}
             >
               <QRCodeSVG value={qrUrl} size={180} level="H" includeMargin />
             </div>
+
             <p className="mt-3 text-[10px] text-slate-400 font-bold uppercase tracking-widest flex items-center gap-1">
               <Sun size={12} /> Aumente o brilho da tela
             </p>
+
             <div className="w-full my-6 border-t-2 border-dashed border-slate-200 dark:border-slate-800 relative">
-               <div className="absolute -left-12 -top-3 w-6 h-6 bg-slate-50 dark:bg-slate-950 rounded-full"></div>
-               <div className="absolute -right-12 -top-3 w-6 h-6 bg-slate-50 dark:bg-slate-950 rounded-full"></div>
+              <div className="absolute -left-12 -top-3 w-6 h-6 bg-slate-50 dark:bg-slate-950 rounded-full"></div>
+              <div className="absolute -right-12 -top-3 w-6 h-6 bg-slate-50 dark:bg-slate-950 rounded-full"></div>
             </div>
+
             <div className="w-full">
-              <p className="text-center text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2">ID do Cliente</p>
-              <div 
+              <p className="text-center text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2">
+                ID do Cliente
+              </p>
+
+              <div
                 onClick={handleCopy}
                 className="bg-slate-50 dark:bg-slate-800 p-3 rounded-xl flex items-center justify-between cursor-pointer active:scale-95 transition-transform group"
               >
-                 <span className="font-mono font-bold text-lg text-slate-700 dark:text-slate-200 tracking-wider pl-2">
-                    {customerCode}
-                 </span>
-                 <div className={`p-2 rounded-lg ${copied ? 'bg-green-100 text-green-600' : 'bg-white dark:bg-slate-700 text-slate-400 group-hover:text-hero-primary'}`}>
-                    {copied ? <Check size={18} /> : <Copy size={18} />}
-                 </div>
+                <span className="font-mono font-bold text-lg text-slate-700 dark:text-slate-200 tracking-wider pl-2">
+                  {customerCode}
+                </span>
+
+                <div
+                  className={`p-2 rounded-lg ${
+                    copied
+                      ? 'bg-green-100 text-green-600'
+                      : 'bg-white dark:bg-slate-700 text-slate-400 group-hover:text-hero-primary'
+                  }`}
+                >
+                  {copied ? <Check size={18} /> : <Copy size={18} />}
+                </div>
               </div>
+
               <p className="text-center text-[10px] text-slate-400 mt-2 h-4">
-                 {copied ? 'Código copiado!' : 'Toque para copiar'}
+                {copied ? 'Código copiado!' : 'Toque para copiar'}
               </p>
             </div>
           </div>
         </div>
+
         <div className="mt-4">
-          <Button variant="secondary" className="w-full dark:bg-slate-800 dark:text-white" onClick={() => setIsModalOpen(true)}>
-             <Maximize2 size={18} className="mr-2" /> Expandir QR Code
+          <Button
+            variant="secondary"
+            className="w-full dark:bg-slate-800 dark:text-white"
+            onClick={() => setIsModalOpen(true)}
+          >
+            <Maximize2 size={18} className="mr-2" /> Expandir QR Code
           </Button>
         </div>
       </motion.div>
+
       <div className="max-w-sm mx-auto text-center space-y-2 pb-6">
-         <div className="flex items-center justify-center gap-2 text-xs text-slate-400">
-            <Smartphone size={14} />
-            <span>Aproxime do leitor no balcão</span>
-         </div>
+        <div className="flex items-center justify-center gap-2 text-xs text-slate-400">
+          <Smartphone size={14} />
+          <span>Aproxime do leitor no balcão</span>
+        </div>
       </div>
+
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="QR Code" size="default">
         <div className="flex flex-col items-center space-y-8 py-8">
           <div className="p-6 bg-white rounded-3xl shadow-2xl">
             <QRCodeSVG value={qrUrl} size={280} level="H" includeMargin />
           </div>
           <div className="text-center">
-             <h3 className="text-2xl font-black text-slate-800 mb-2">{customerCode}</h3>
-             <p className="text-slate-500 text-sm">Mostre este código ao atendente</p>
+            <h3 className="text-2xl font-black text-slate-800 mb-2">{customerCode}</h3>
+            <p className="text-slate-500 text-sm">Mostre este código ao atendente</p>
           </div>
         </div>
       </Modal>
