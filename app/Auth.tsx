@@ -10,7 +10,15 @@ import { motion } from 'framer-motion';
 import { supabase } from '../lib/supabaseClient';
 import { getFullUserProfile, checkCpfExists } from '../services/users.service';
 import { subscriptionMockService } from '../services/subscriptionMock.service';
+import { useThemeStore } from '../store/themeStore';
+import { useCardStore } from '../store/cardStore';
 import type { Role } from '../types';
+
+const normalizeRole = (input: any): Role => {
+  const r = String(input || '').toLowerCase();
+  if (r === 'admin' || r === 'staff' || r === 'client') return r;
+  return 'client';
+};
 
 const Auth: React.FC = () => {
   const [isLogin, setIsLogin] = useState(true);
@@ -24,15 +32,25 @@ const Auth: React.FC = () => {
   const { register, handleSubmit, watch, formState: { errors } } = useForm();
   const password = watch('password');
 
+  const applySettings = (settings: any) => {
+    useThemeStore.getState().setHeroTheme(settings.heroTheme);
+    useThemeStore.getState().setMode(settings.mode);
+    useCardStore.getState().setAll({
+      templateId: settings.cardTemplateId || undefined,
+      font: settings.fontStyle,
+      color: settings.fontColor,
+      fontSize: settings.fontSize,
+    });
+    useThemeStore.getState().applyTheme();
+  };
+
   const handlePostAuthRedirect = (role: Role) => {
-    // 1) Se existe plano pendente, vai direto pro checkout
     const pendingPlan = subscriptionMockService.getPendingPlan();
     if (pendingPlan) {
       navigate('/checkout', { replace: true });
       return;
     }
 
-    // 2) Sem plano pendente: segue por role (minúsculo)
     if (role === 'admin') navigate('/admin', { replace: true });
     else if (role === 'staff') navigate('/staff', { replace: true });
     else navigate('/app', { replace: true });
@@ -51,18 +69,28 @@ const Auth: React.FC = () => {
         });
 
         if (authError) {
-          throw new Error(authError.message === 'Invalid login credentials' ? 'Credenciais inválidas.' : authError.message);
+          throw new Error(
+            authError.message === 'Invalid login credentials'
+              ? 'Credenciais inválidas.'
+              : authError.message
+          );
         }
 
         if (!signInData.session) {
           throw new Error('Não foi possível iniciar a sessão.');
         }
 
-        const fullProfile = await getFullUserProfile(signInData.session.user);
-        if (fullProfile) {
-          login(fullProfile);
-          handlePostAuthRedirect(fullProfile.role);
+        const full = await getFullUserProfile(signInData.session.user);
+
+        if (full) {
+          const role = normalizeRole(full.profile.role);
+          const safeProfile = { ...full.profile, role };
+
+          applySettings(full.settings);
+          login(safeProfile);
+          handlePostAuthRedirect(role);
         } else {
+          // Se não carregou perfil, deixa o Provider tentar, mas joga pro app
           console.error('Falha ao carregar perfil no login, AuthProvider irá tentar recuperar.');
           navigate('/app', { replace: true });
         }
@@ -115,10 +143,15 @@ const Auth: React.FC = () => {
           }
         }
 
-        const fullProfile = await getFullUserProfile(signUpData.session.user);
-        if (fullProfile) {
-          login(fullProfile);
-          handlePostAuthRedirect(fullProfile.role);
+        const full = await getFullUserProfile(signUpData.session.user);
+
+        if (full) {
+          const role = normalizeRole(full.profile.role);
+          const safeProfile = { ...full.profile, role };
+
+          applySettings(full.settings);
+          login(safeProfile);
+          handlePostAuthRedirect(role);
         } else {
           navigate('/app', { replace: true });
         }
