@@ -56,22 +56,25 @@ export const SupabaseAuthProvider: React.FC<AuthProviderProps> = ({ children }) 
 
           // 3. Fallback Final: Cria um perfil temporário em memória para não quebrar a UI
           if (!profile) {
-            console.error("FALHA CRÍTICA: Não foi possível carregar ou criar perfil no banco. Usando perfil de sessão.");
+            console.error("FALHA CRÍTICA: Não foi possível carregar ou criar o perfil completo do usuário a partir do banco de dados. O registro em 'app_users' pode estar ausente. Criando um perfil de fallback com role 'CLIENT' para evitar que a aplicação quebre. O acesso pode ser incorreto.");
             profile = {
               id: session.user.id,
               name: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'Visitante',
               email: session.user.email || '',
-              role: 'CLIENT',
+              role: 'CLIENT', // Mantendo para não quebrar a tipagem, mas com um erro explícito acima.
               cpf: '',
               whatsapp: '',
               birthDate: '',
               heroTheme: 'sombra-noturna',
               avatarUrl: session.user.user_metadata?.avatar_url || null,
-              customerCode: 'PENDING'
+              customerCode: 'ERROR'
             } as User;
           }
 
-          // Atualiza o store. NÃO fazemos logout se algo falhar acima.
+          // Log de verificação de role antes de atualizar o store
+          console.log('[AUTH] Logging in user. Role:', profile.role, 'ID:', profile.id);
+
+          // Atualiza o store.
           login(profile);
 
         } catch (err) {

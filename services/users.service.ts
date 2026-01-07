@@ -53,43 +53,42 @@ export const getUserProfileById = async (userId: string) => {
  * Busca o perfil completo de um usuário (auth + app_users + client_profiles).
  */
 export const getFullUserProfile = async (authUser: SupabaseUser): Promise<AppUser | null> => {
-  const { data: appUser, error: appUserError } = await supabase
+  // 1. Busca o 'role' essencial da tabela 'app_users'. Este é um dado obrigatório.
+  const { data: appUserData, error: appUserError } = await supabase
     .from('app_users')
     .select('role')
     .eq('id', authUser.id)
-    .maybeSingle();
+    .single();
 
-  if (appUserError) {
-    console.error('Erro ao buscar dados de app_users:', appUserError.message);
-    return null;
+  // Se não encontrar um registro em app_users, é um erro crítico de integridade de dados.
+  if (appUserError || !appUserData) {
+    console.error('CRÍTICO: Registro em "app_users" não encontrado para o usuário autenticado.', { userId: authUser.id, error: appUserError });
+    return null; // Retornar null acionará o fallback no AuthProvider.
   }
 
-  if (!appUser) {
-    console.error(`app_users não encontrado para userId ${authUser.id}`);
-    return null;
-  }
-
-  const { data: clientProfile, error: clientProfileError } = await supabase
+  // 2. Busca dados opcionais do perfil de cliente. Admins/Staff podem não ter este registro.
+  const { data: clientProfileData, error: clientProfileError } = await supabase
     .from('client_profiles')
     .select('display_name, hero_code, avatar_url, cpf')
     .eq('user_id', authUser.id)
-    .single();
+    .maybeSingle(); // Usa maybeSingle() para não gerar erro se o perfil não existir.
 
-  if (clientProfileError && clientProfileError.code !== 'PGRST116') {
-    console.error('Erro ao buscar perfil do cliente:', clientProfileError.message);
+  if (clientProfileError) {
+    console.warn('Não foi possível buscar "client_profile". Isso é normal para roles de admin/staff.', { userId: authUser.id, error: clientProfileError.message });
   }
 
+  // 3. Constrói o objeto de usuário completo para a aplicação.
   const fullProfile: AppUser = {
     id: authUser.id,
     email: authUser.email || '',
-    role: appUser.role as Role,
-    name: clientProfile?.display_name || authUser.email?.split('@')[0] || 'Herói',
-    customerCode: clientProfile?.hero_code || 'N/A',
-    avatarUrl: clientProfile?.avatar_url || null,
-    cpf: clientProfile?.cpf || '',
-    whatsapp: '',
-    birthDate: '',
-    heroTheme: 'sombra-noturna',
+    role: appUserData.role as Role, // O 'role' é garantido pela busca em 'app_users'.
+    name: clientProfileData?.display_name || authUser.user_metadata?.full_name || authUser.email?.split('@')[0] || 'Herói',
+    customerCode: clientProfileData?.hero_code || 'N/A',
+    avatarUrl: clientProfileData?.avatar_url || authUser.user_metadata?.avatar_url || null,
+    cpf: clientProfileData?.cpf || '',
+    whatsapp: '', // Placeholder, não está no DB atualmente
+    birthDate: '', // Placeholder
+    heroTheme: 'sombra-noturna', // TODO: Integrar com hero_card_settings
   };
 
   return fullProfile;
