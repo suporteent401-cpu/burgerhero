@@ -8,7 +8,7 @@ import { Mail, Lock, User as UserIcon, Calendar, Phone, CreditCard } from 'lucid
 import { useAuthStore } from '../store/authStore';
 import { motion } from 'framer-motion';
 import { supabase } from '../lib/supabaseClient';
-import { getFullUserProfile, signUpAndCreateProfile, checkCpfExists } from '../services/users.service';
+import { getFullUserProfile, checkCpfExists } from '../services/users.service';
 
 const Auth: React.FC = () => {
   const [isLogin, setIsLogin] = useState(true);
@@ -27,7 +27,7 @@ const Auth: React.FC = () => {
     setLoading(true);
     try {
       if (isLogin) {
-        const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        const { error: authError } = await supabase.auth.signInWithPassword({
           email: data.email,
           password: data.password,
         });
@@ -49,6 +49,7 @@ const Auth: React.FC = () => {
         login(fullProfile);
         redirectByRole(fullProfile.role);
       } else {
+        // FLUXO DE CADASTRO
         if (step === 1) {
           const cpfExists = await checkCpfExists(data.cpf);
           if (cpfExists) {
@@ -56,16 +57,62 @@ const Auth: React.FC = () => {
           }
           setStep1Data(data);
           setStep(2);
+          setLoading(false); // Para o loading para o usuário preencher o próximo passo
           return;
         }
         
         const fullUserData = { ...step1Data, ...data };
-        const { data: authData } = await signUpAndCreateProfile(fullUserData);
+        
+        // 1. Cria o usuário no Auth
+        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+            email: fullUserData.email,
+            password: fullUserData.password,
+        });
+        if (signUpError) throw signUpError;
+        if (!signUpData.user) throw new Error('Não foi possível criar o usuário.');
 
-        if (!authData.user) throw new Error('Cadastro realizado, mas não foi possível fazer login. Tente logar manualmente.');
+        // 2. Faz login para criar a sessão
+        const { error: signInError } = await supabase.auth.signInWithPassword({
+            email: fullUserData.email,
+            password: fullUserData.password,
+        });
+        if (signInError) throw new Error('Cadastro realizado, mas falha ao iniciar sessão. Tente logar manualmente.');
 
-        const fullProfile = await getFullUserProfile(authData.user);
-        if (!fullProfile) throw new Error('Perfil criado com sucesso, mas houve um problema ao carregar seus dados. Tente logar manualmente.');
+        // 3. Garante que a sessão existe
+        const { data: sessionData } = await supabase.auth.getSession();
+        if (!sessionData.session) {
+            console.error("Sessão não iniciada após cadastro/login.", { sessionData });
+            await supabase.auth.signOut();
+            throw new Error("Sessão não iniciada. Tente novamente.");
+        }
+
+        // 4. Com a sessão garantida, cria o perfil via RPC
+        const { data: rpcData, error: rpcError } = await supabase.rpc('ensure_user_profile', {
+            p_display_name: fullUserData.name,
+            p_email: fullUserData.email,
+            p_cpf: fullUserData.cpf,
+            p_birthdate: fullUserData.birthDate || null
+        });
+
+        if (rpcError) {
+            console.error("Erro na RPC ensure_user_profile:", rpcError);
+            await supabase.auth.signOut();
+            throw new Error('Ocorreu um erro ao configurar seu perfil.');
+        }
+
+        const result = rpcData[0];
+        if (!result || !result.ok) {
+            console.error("Resultado da RPC não foi 'ok':", result);
+            await supabase.auth.signOut();
+            throw new Error(result?.message || 'Falha ao criar perfil de usuário.');
+        }
+
+        // 5. Busca o perfil completo para popular o estado global
+        const fullProfile = await getFullUserProfile(sessionData.session.user);
+        if (!fullProfile) {
+            await supabase.auth.signOut();
+            throw new Error('Perfil criado, mas houve um problema ao carregar seus dados. Tente logar manualmente.');
+        }
 
         login(fullProfile);
         navigate('/plans');
