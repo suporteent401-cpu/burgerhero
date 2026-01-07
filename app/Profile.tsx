@@ -1,10 +1,10 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { Card, CardBody, CardHeader } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { useAuthStore } from '../store/authStore';
 import { useThemeStore } from '../store/themeStore';
 import { useCardStore, FONT_OPTIONS, COLOR_OPTIONS } from '../store/cardStore';
-import { LogOut, Palette, Moon, Sun, Monitor, CreditCard, CheckCircle2, Type, Camera, Pencil, Check, X, TextQuote, Download, Fingerprint, Loader2 } from 'lucide-react';
+import { LogOut, Palette, Moon, Sun, Monitor, CreditCard, CheckCircle2, Type, Camera, Pencil, Check, X, TextQuote, Download, Fingerprint, Loader2, Save, RotateCcw } from 'lucide-react';
 import { HeroTheme, Subscription } from '../types';
 import { fakeApi } from '../lib/fakeApi';
 import { supabase } from '../lib/supabaseClient';
@@ -23,47 +23,57 @@ const Profile: React.FC = () => {
   const user = useAuthStore(state => state.user);
   const updateUser = useAuthStore(state => state.updateUser);
   
+  // Global Stores (Saved State)
   const heroTheme = useThemeStore(state => state.heroTheme);
   const setHeroTheme = useThemeStore(state => state.setHeroTheme);
   const mode = useThemeStore(state => state.mode);
   const setMode = useThemeStore(state => state.setMode);
 
+  const { 
+    selectedTemplateId, 
+    selectedFont, 
+    selectedColor, 
+    selectedFontSize,
+    setAll, 
+    setTemplates, 
+    availableTemplates 
+  } = useCardStore();
+
+  // Local State
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   
-  // Name Edit State
   const [isEditingName, setIsEditingName] = useState(false);
   const [editName, setEditName] = useState(user?.name || '');
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
-  
-  // Card Store hooks
-  const { 
-    selectedTemplateId, 
-    setTemplateId, 
-    getSelectedTemplate,
-    selectedFont,
-    setFont,
-    selectedColor,
-    setColor,
-    selectedFontSize,
-    setFontSize,
-    setAll,
-    setTemplates,
-    availableTemplates
-  } = useCardStore();
-
   const [sub, setSub] = useState<Subscription | null>(null);
 
-  // Carrega templates, assinatura e settings
+  // --- DRAFT SYSTEM START ---
+  
+  // Estrutura do Rascunho
+  interface DraftSettings {
+    templateId: string;
+    fontFamily: string;
+    fontColor: string;
+    fontSize: number;
+    heroTheme: HeroTheme;
+    mode: 'light' | 'dark' | 'system';
+  }
+
+  const [draft, setDraft] = useState<DraftSettings | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+
+  // Carrega configurações iniciais (Local -> Store -> Default)
   useEffect(() => {
     if (user?.id) {
-      // 1. Carrega Templates do Banco
+      // 1. Carrega Templates
       templatesService.getActiveTemplates().then(dbTemplates => {
         const mapped = templatesService.mapToStoreFormat(dbTemplates);
         setTemplates(mapped);
       });
 
-      // 2. Carrega Assinatura (Mock + Real)
+      // 2. Carrega Assinatura
       const mockSub = subscriptionMockService.getActiveSubscription(user.id);
       if (mockSub && mockSub.status === 'active') {
         setSub({
@@ -75,72 +85,142 @@ const Profile: React.FC = () => {
         fakeApi.getSubscriptionStatus(user.id).then(setSub);
       }
 
-      // 3. Carrega Settings do Cartão
-      getCardSettings(user.id).then(settings => {
-        if (settings) {
+      // 3. Inicializa Draft com dados salvos localmente ou do store atual
+      const storageKey = `burgerhero_card_settings_${user.id}`;
+      const savedLocal = localStorage.getItem(storageKey);
+
+      if (savedLocal) {
+        try {
+          const parsed: DraftSettings = JSON.parse(savedLocal);
+          setDraft(parsed);
+          
+          // Aplica o que estava salvo localmente no store global para consistência ao recarregar
           setAll({
-            templateId: settings.card_template_id,
-            font: settings.font_style,
-            color: settings.font_color,
-            fontSize: settings.font_size_px
+            templateId: parsed.templateId,
+            font: parsed.fontFamily,
+            color: parsed.fontColor,
+            fontSize: parsed.fontSize
           });
           
-          if (settings.hero_theme && settings.hero_theme !== heroTheme) {
-            setHeroTheme(settings.hero_theme as HeroTheme);
-          }
-          if (settings.theme_mode && settings.theme_mode !== mode) {
-            setMode(settings.theme_mode);
-          }
+          // Só aplica tema se for diferente para evitar flash
+          if (parsed.heroTheme !== heroTheme) setHeroTheme(parsed.heroTheme);
+          if (parsed.mode !== mode) setMode(parsed.mode as any);
+
+        } catch (e) {
+          console.error("Erro ao ler configurações locais:", e);
+          initDraftFromStore();
         }
-      });
+      } else {
+        initDraftFromStore();
+        
+        // Tenta buscar do DB como fallback secundário se não tiver local
+        getCardSettings(user.id).then(settings => {
+          if (settings) {
+             const dbSettings: DraftSettings = {
+                templateId: settings.card_template_id || selectedTemplateId,
+                fontFamily: settings.font_style || selectedFont,
+                fontColor: settings.font_color || selectedColor,
+                fontSize: settings.font_size_px || selectedFontSize,
+                heroTheme: (settings.hero_theme as HeroTheme) || heroTheme,
+                mode: (settings.theme_mode as any) || mode
+             };
+             // Atualiza draft e store com dados do DB se não tinha local
+             setDraft(dbSettings);
+             setAll({
+                templateId: dbSettings.templateId,
+                font: dbSettings.fontFamily,
+                color: dbSettings.fontColor,
+                fontSize: dbSettings.fontSize
+             });
+             setHeroTheme(dbSettings.heroTheme);
+             setMode(dbSettings.mode as any);
+          }
+        });
+      }
     }
-  }, [user?.id, setAll, setHeroTheme, setMode, setTemplates]);
+  }, [user?.id, setTemplates]); // Executa uma vez na montagem/troca de user
+
+  const initDraftFromStore = () => {
+    setDraft({
+      templateId: selectedTemplateId,
+      fontFamily: selectedFont,
+      fontColor: selectedColor,
+      fontSize: selectedFontSize,
+      heroTheme: heroTheme,
+      mode: mode
+    });
+  };
+
+  // Verifica se há alterações não salvas comparando Draft vs Store Global
+  const hasUnsavedChanges = useMemo(() => {
+    if (!draft) return false;
+    return (
+      draft.templateId !== selectedTemplateId ||
+      draft.fontFamily !== selectedFont ||
+      draft.fontColor !== selectedColor ||
+      draft.fontSize !== selectedFontSize ||
+      draft.heroTheme !== heroTheme ||
+      draft.mode !== mode
+    );
+  }, [draft, selectedTemplateId, selectedFont, selectedColor, selectedFontSize, heroTheme, mode]);
+
+  // Handlers de alteração do Draft
+  const updateDraft = (key: keyof DraftSettings, value: any) => {
+    setDraft(prev => prev ? ({ ...prev, [key]: value }) : null);
+    setSaveSuccess(false);
+  };
+
+  const handleSaveSettings = async () => {
+    if (!user || !draft) return;
+    setIsSaving(true);
+
+    try {
+      // 1. Salva Local
+      const storageKey = `burgerhero_card_settings_${user.id}`;
+      localStorage.setItem(storageKey, JSON.stringify(draft));
+
+      // 2. Aplica Globalmente (Store)
+      setAll({
+        templateId: draft.templateId,
+        font: draft.fontFamily,
+        color: draft.fontColor,
+        fontSize: draft.fontSize
+      });
+      setHeroTheme(draft.heroTheme);
+      setMode(draft.mode as any);
+
+      // 3. Persiste no DB (Opcional/Silent)
+      await updateCardSettings(user.id, {
+        templateId: draft.templateId,
+        fontFamily: draft.fontFamily,
+        fontColor: draft.fontColor,
+        fontSize: draft.fontSize,
+        heroTheme: draft.heroTheme,
+        mode: draft.mode
+      }).catch(err => console.warn("Erro ao salvar no DB (mas salvo localmente):", err));
+
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
+    } catch (e) {
+      console.error("Erro ao salvar:", e);
+      alert("Erro ao salvar configurações.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleCancelChanges = () => {
+    initDraftFromStore();
+    setSaveSuccess(false);
+  };
+
+  // --- DRAFT SYSTEM END ---
 
   useEffect(() => {
     if (!isEditingName && user?.name && user.name !== editName) {
       setEditName(user.name);
     }
   }, [user?.name, isEditingName, editName]);
-
-  const saveSettingsToDb = async (newSettings: any) => {
-    if (!user) return;
-    try {
-      await updateCardSettings(user.id, newSettings);
-    } catch (err) {
-      console.error('Erro ao salvar configurações:', err);
-    }
-  };
-
-  const handleThemeChange = (theme: HeroTheme) => {
-    setHeroTheme(theme);
-    updateUser({ heroTheme: theme });
-    saveSettingsToDb({ heroTheme: theme });
-  };
-
-  const handleModeChange = (newMode: 'light' | 'dark') => {
-    setMode(newMode);
-    saveSettingsToDb({ mode: newMode });
-  };
-
-  const handleTemplateChange = (id: string) => {
-    setTemplateId(id);
-    saveSettingsToDb({ templateId: id });
-  };
-
-  const handleFontChange = (font: string) => {
-    setFont(font);
-    saveSettingsToDb({ fontFamily: font });
-  };
-
-  const handleColorChange = (color: string) => {
-    setColor(color);
-    saveSettingsToDb({ fontColor: color });
-  };
-
-  const handleFontSizeChange = (size: number) => {
-    setFontSize(size);
-    saveSettingsToDb({ fontSize: size });
-  };
 
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -175,7 +255,7 @@ const Profile: React.FC = () => {
     }
   };
 
-  const handleCancelEdit = () => {
+  const handleCancelEditName = () => {
     setIsEditingName(false);
     setEditName(user?.name || '');
   };
@@ -213,6 +293,10 @@ const Profile: React.FC = () => {
     { name: 'azul-eletrico', color: '#0300FF', label: 'Elétrico' },
   ];
 
+  if (!draft) return <div className="p-10 text-center"><Loader2 className="animate-spin mx-auto text-hero-primary" /></div>;
+
+  const currentTemplate = availableTemplates.find(t => t.id === draft.templateId) || availableTemplates[0];
+
   return (
     <div className="space-y-6 pb-10">
       
@@ -249,7 +333,7 @@ const Profile: React.FC = () => {
                 />
                 <div className="flex gap-1 shrink-0">
                   <button onClick={handleSaveName} className="p-1.5 bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded-full hover:bg-green-200 dark:hover:bg-green-900/50"><Check size={16}/></button>
-                  <button onClick={handleCancelEdit} className="p-1.5 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-full hover:bg-red-200 dark:hover:bg-red-900/50"><X size={16}/></button>
+                  <button onClick={handleCancelEditName} className="p-1.5 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-full hover:bg-red-200 dark:hover:bg-red-900/50"><X size={16}/></button>
                 </div>
              </div>
           ) : (
@@ -269,12 +353,35 @@ const Profile: React.FC = () => {
       </div>
 
       {/* SEÇÃO: CARTÃO DO HERÓI */}
-      <Card>
-        <CardHeader>
+      <Card className="overflow-hidden border border-slate-200 dark:border-slate-800">
+        <CardHeader className="flex justify-between items-center bg-slate-50 dark:bg-slate-900/50">
           <div className="flex items-center gap-2 font-black text-xs uppercase tracking-widest text-slate-400">
             <CreditCard size={14} /> Cartão do Herói
           </div>
+          {saveSuccess && (
+            <span className="text-xs font-bold text-green-600 flex items-center gap-1 animate-in fade-in slide-in-from-right-2">
+              <CheckCircle2 size={12} /> Salvo!
+            </span>
+          )}
         </CardHeader>
+        
+        {/* Barra de Ações (Visível apenas se houver mudanças) */}
+        {hasUnsavedChanges && (
+          <div className="bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800 p-3 flex items-center justify-between sticky top-0 z-20 animate-in slide-in-from-top-2">
+            <span className="text-xs font-bold text-amber-700 dark:text-amber-400 pl-2">
+              Alterações não salvas
+            </span>
+            <div className="flex gap-2">
+              <Button size="sm" variant="ghost" onClick={handleCancelChanges} className="text-amber-700 hover:text-amber-800 hover:bg-amber-100 h-8">
+                <RotateCcw size={14} className="mr-1.5" /> Cancelar
+              </Button>
+              <Button size="sm" onClick={handleSaveSettings} isLoading={isSaving} className="h-8 bg-amber-600 hover:bg-amber-700 border-transparent text-white shadow-sm">
+                <Save size={14} className="mr-1.5" /> Salvar
+              </Button>
+            </div>
+          </div>
+        )}
+
         <CardBody className="p-6 space-y-8">
           
           {/* 1. Escolha do Template Dinâmico */}
@@ -285,11 +392,11 @@ const Profile: React.FC = () => {
             ) : (
               <div className="grid grid-cols-3 gap-3">
                 {availableTemplates.map((template) => {
-                  const isSelected = selectedTemplateId === template.id;
+                  const isSelected = draft.templateId === template.id;
                   return (
                     <button
                       key={template.id}
-                      onClick={() => handleTemplateChange(template.id)}
+                      onClick={() => updateDraft('templateId', template.id)}
                       className={`
                         relative rounded-xl overflow-hidden transition-all duration-200 aspect-[1.586/1]
                         ${isSelected ? 'ring-4 ring-hero-primary shadow-lg scale-[1.02]' : 'ring-1 ring-slate-200 dark:ring-slate-700 hover:ring-slate-300'}
@@ -319,9 +426,9 @@ const Profile: React.FC = () => {
                 {FONT_OPTIONS.map((font) => (
                   <button
                     key={font.name}
-                    onClick={() => handleFontChange(font.value)}
+                    onClick={() => updateDraft('fontFamily', font.value)}
                     style={{ fontFamily: font.value }}
-                    className={`px-3 py-2 rounded-lg text-sm border transition-all ${selectedFont === font.value ? 'bg-hero-primary text-white border-hero-primary shadow-md' : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-slate-300'}`}
+                    className={`px-3 py-2 rounded-lg text-sm border transition-all ${draft.fontFamily === font.value ? 'bg-hero-primary text-white border-hero-primary shadow-md' : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-slate-300'}`}
                   >
                     {font.name}
                   </button>
@@ -335,12 +442,12 @@ const Profile: React.FC = () => {
                 {COLOR_OPTIONS.map((color) => (
                   <button
                     key={color.name}
-                    onClick={() => handleColorChange(color.value)}
-                    className={`w-10 h-10 rounded-full border-2 shadow-sm transition-all flex items-center justify-center relative group ${selectedColor === color.value ? 'scale-110 ring-2 ring-offset-2 ring-hero-primary dark:ring-offset-slate-900' : 'hover:scale-105'}`}
+                    onClick={() => updateDraft('fontColor', color.value)}
+                    className={`w-10 h-10 rounded-full border-2 shadow-sm transition-all flex items-center justify-center relative group ${draft.fontColor === color.value ? 'scale-110 ring-2 ring-offset-2 ring-hero-primary dark:ring-offset-slate-900' : 'hover:scale-105'}`}
                     style={{ backgroundColor: color.value, borderColor: color.value === '#FFFFFF' ? '#e2e8f0' : 'transparent' }}
                     title={color.name}
                   >
-                    {selectedColor === color.value && <CheckCircle2 size={18} className="drop-shadow-md" style={{ color: ['#FFFFFF', '#FCD34D', '#C0C0C0', '#00FFFF', '#39FF14', '#08FF01'].includes(color.value) ? '#000' : '#FFF' }} />}
+                    {draft.fontColor === color.value && <CheckCircle2 size={18} className="drop-shadow-md" style={{ color: ['#FFFFFF', '#FCD34D', '#C0C0C0', '#00FFFF', '#39FF14', '#08FF01'].includes(color.value) ? '#000' : '#FFF' }} />}
                   </button>
                 ))}
               </div>
@@ -348,11 +455,11 @@ const Profile: React.FC = () => {
 
             <div>
               <p className="text-sm font-bold text-slate-500 dark:text-slate-400 mb-3 flex items-center gap-2">
-                <TextQuote size={16} /> Tamanho da Fonte: <span className="font-black text-hero-primary">{selectedFontSize}px</span>
+                <TextQuote size={16} /> Tamanho da Fonte: <span className="font-black text-hero-primary">{draft.fontSize}px</span>
               </p>
               <div className="flex items-center gap-4">
                 <span className="text-lg font-bold">A</span>
-                <input type="range" min="16" max="32" step="1" value={selectedFontSize} onChange={(e) => handleFontSizeChange(Number(e.target.value))} className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-hero-primary" />
+                <input type="range" min="16" max="32" step="1" value={draft.fontSize} onChange={(e) => updateDraft('fontSize', Number(e.target.value))} className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-hero-primary" />
                 <span className="text-3xl font-bold">A</span>
               </div>
             </div>
@@ -361,17 +468,17 @@ const Profile: React.FC = () => {
           {/* Prévia */}
           <div className="flex flex-col items-center border-t border-slate-50 dark:border-slate-800 pt-6">
              <div className="flex justify-between items-center w-full mb-4">
-                <p className="text-sm font-bold text-slate-500 dark:text-slate-400 self-start">Prévia Atual:</p>
+                <p className="text-sm font-bold text-slate-500 dark:text-slate-400 self-start">Prévia (Rascunho):</p>
                 <Button onClick={handleExportCard} variant="outline" size="sm"><Download size={14} className="mr-2" /> Exportar</Button>
              </div>
              <HeroCard 
                ref={cardRef}
                user={user} 
-               imageUrl={getSelectedTemplate().imageUrl} 
+               imageUrl={currentTemplate ? currentTemplate.imageUrl : ''} 
                memberSince={sub?.currentPeriodStart}
-               fontFamily={selectedFont}
-               textColor={selectedColor}
-               fontSize={selectedFontSize}
+               fontFamily={draft.fontFamily}
+               textColor={draft.fontColor}
+               fontSize={draft.fontSize}
              />
           </div>
         </CardBody>
@@ -388,8 +495,8 @@ const Profile: React.FC = () => {
               {themes.map(t => (
                 <button 
                   key={t.name}
-                  onClick={() => handleThemeChange(t.name)}
-                  className={`flex flex-col items-center gap-1 p-2 rounded-xl border-2 transition-all ${heroTheme === t.name ? 'border-hero-primary bg-hero-primary/5 shadow-inner' : 'border-slate-50 dark:border-slate-800 hover:border-slate-100'}`}
+                  onClick={() => updateDraft('heroTheme', t.name)}
+                  className={`flex flex-col items-center gap-1 p-2 rounded-xl border-2 transition-all ${draft.heroTheme === t.name ? 'border-hero-primary bg-hero-primary/5 shadow-inner' : 'border-slate-50 dark:border-slate-800 hover:border-slate-100'}`}
                 >
                   <div className="w-6 h-6 rounded-full border dark:border-slate-600" style={{ backgroundColor: t.color }}></div>
                 </button>
@@ -402,8 +509,8 @@ const Profile: React.FC = () => {
             <div className="flex items-center gap-2 font-black text-xs uppercase tracking-widest text-slate-400"><Monitor size={14} /> Modo</div>
           </CardHeader>
           <CardBody className="p-4 flex flex-col gap-2">
-              <button onClick={() => handleModeChange('light')} className={`flex items-center gap-3 p-3 rounded-xl border-2 transition-all ${mode === 'light' ? 'border-hero-primary text-hero-primary bg-hero-primary/5' : 'border-slate-50 dark:border-slate-800 text-slate-400'}`}><Sun size={18} /> <span className="text-xs font-bold uppercase">Claro</span></button>
-              <button onClick={() => handleModeChange('dark')} className={`flex items-center gap-3 p-3 rounded-xl border-2 transition-all ${mode === 'dark' ? 'border-hero-primary text-hero-primary bg-hero-primary/5' : 'border-slate-50 dark:border-slate-800 text-slate-400'}`}><Moon size={18} /> <span className="text-xs font-bold uppercase">Escuro</span></button>
+              <button onClick={() => updateDraft('mode', 'light')} className={`flex items-center gap-3 p-3 rounded-xl border-2 transition-all ${draft.mode === 'light' ? 'border-hero-primary text-hero-primary bg-hero-primary/5' : 'border-slate-50 dark:border-slate-800 text-slate-400'}`}><Sun size={18} /> <span className="text-xs font-bold uppercase">Claro</span></button>
+              <button onClick={() => updateDraft('mode', 'dark')} className={`flex items-center gap-3 p-3 rounded-xl border-2 transition-all ${draft.mode === 'dark' ? 'border-hero-primary text-hero-primary bg-hero-primary/5' : 'border-slate-50 dark:border-slate-800 text-slate-400'}`}><Moon size={18} /> <span className="text-xs font-bold uppercase">Escuro</span></button>
           </CardBody>
         </Card>
       </div>
