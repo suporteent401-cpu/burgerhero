@@ -65,7 +65,7 @@ const HeroCard = React.forwardRef<HTMLDivElement, HeroCardProps>(({
               fontSize: `${fontSize * 0.6}px`
             }}
           >
-            {user?.customerCode || 'HE-----'}
+            ID: {user?.customerCode || '—'}
           </p>
         </div>
 
