@@ -1,7 +1,8 @@
 import React from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { Home, QrCode } from 'lucide-react';
+import { Home, QrCode, LogOut } from 'lucide-react';
 import { useThemeStore } from '../store/themeStore';
+import { supabase } from '../lib/supabaseClient';
 
 const StaffLayout: React.FC = () => {
   const location = useLocation();
@@ -15,16 +16,31 @@ const StaffLayout: React.FC = () => {
   const themesForBlueText = ['guardiao-escarlate', 'aurora-rosa', 'tita-dourado', 'vermelho-heroi', 'laranja-vulcanico'];
   const heroTextColor = themesForBlueText.includes(heroTheme) ? 'text-blue-300' : 'text-red-500';
 
+  const handleLogout = async () => {
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      console.error('Erro ao fazer logout:', error);
+    }
+    // O listener onAuthStateChange no SupabaseAuthProvider cuidará de limpar o estado e redirecionar.
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 pb-20 transition-colors duration-300">
       <header className="sticky top-0 z-30 bg-hero-primary text-white px-4 py-3 shadow-md">
-        <div className="flex items-center justify-center max-w-lg mx-auto">
+        <div className="flex items-center justify-between max-w-lg mx-auto">
           <Link to="/staff" className="flex items-center gap-3">
             <img src="https://ik.imagekit.io/lflb43qwh/Heros/images.jpg" alt="BurgerHero Logo" className="h-10 w-10 rounded-full border-2 border-white/50" />
             <h1 className="text-xl font-extrabold tracking-tight">
               <span className="text-white/90">Staff</span><span className={heroTextColor}>Hero</span>
             </h1>
           </Link>
+          <button 
+            onClick={handleLogout}
+            className="p-2 rounded-full hover:bg-white/10 transition-colors"
+            aria-label="Sair"
+          >
+            <LogOut size={20} />
+          </button>
         </div>
       </header>
 
