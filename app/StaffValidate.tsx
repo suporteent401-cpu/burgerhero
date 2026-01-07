@@ -3,7 +3,8 @@ import { Card, CardBody } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Modal } from '../components/ui/Modal';
-import { Search, QrCode, ShieldCheck, ShieldAlert, CheckCircle, Award } from 'lucide-react';
+import { Search, QrCode, ShieldCheck, ShieldAlert, Award } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { User } from '../types';
 import QrScanner from '../components/QrScanner';
 import { validateVoucher } from '../services/redemption.service';
@@ -14,17 +15,38 @@ const StaffValidate: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<{ success: boolean; message: string; user?: User } | null>(null);
   const [isScannerOpen, setIsScannerOpen] = useState(false);
+  const navigate = useNavigate();
 
   const handleValidate = useCallback(async (val: string) => {
     if (!val) return;
+    const input = val.trim();
+
+    // 1. Verificar se é uma URL de Perfil Público ou Código BH Direto
+    // Ex: .../#/public/client/BH-12345 ou apenas BH-12345
+    let extractedCode = null;
+
+    if (input.includes('/public/client/')) {
+      const parts = input.split('/public/client/');
+      if (parts[1]) extractedCode = parts[1].split('?')[0].split('#')[0]; // Limpa sufixos
+    } else if (input.toUpperCase().startsWith('BH-')) {
+      extractedCode = input.toUpperCase();
+    }
+
+    // Se for um código de cliente, redireciona para o perfil (não valida voucher)
+    if (extractedCode) {
+      navigate(`/staff/client/${extractedCode}`);
+      return;
+    }
+
+    // 2. Se não for perfil, assume que é tentativa de resgate de Voucher (QR Token ou Hero Code legado)
     setLoading(true);
     setResult(null);
 
     let rpcResult;
     try {
-      const isQrData = val.trim().startsWith('{') && val.trim().endsWith('}');
-      const qrToken = isQrData ? val : undefined;
-      const heroCode = isQrData ? undefined : val;
+      const isQrData = input.startsWith('{') && input.endsWith('}');
+      const qrToken = isQrData ? input : undefined;
+      const heroCode = isQrData ? undefined : input;
       
       const data = await validateVoucher(qrToken, heroCode);
       rpcResult = data[0];
@@ -63,7 +85,7 @@ const StaffValidate: React.FC = () => {
     });
 
     setLoading(false);
-  }, []);
+  }, [navigate]);
 
   const handleScanSuccess = useCallback((decodedText: string) => {
     setIsScannerOpen(false);
@@ -80,8 +102,8 @@ const StaffValidate: React.FC = () => {
             alt="BurgerHero Logo" 
             className="w-24 h-24 rounded-full mx-auto mb-6 border-4 border-white shadow-lg" 
           />
-          <h2 className="text-3xl font-black text-slate-800">Validação de <span className="text-hero-primary">Herói</span></h2>
-          <p className="text-slate-500 mt-1">Escaneie o QR Code ou busque pelo CPF/ID.</p>
+          <h2 className="text-3xl font-black text-slate-800">Leitor <span className="text-hero-primary">Hero</span></h2>
+          <p className="text-slate-500 mt-1">Valide vouchers ou veja perfis de clientes.</p>
         </div>
 
         <Card className="mb-6">
@@ -98,7 +120,7 @@ const StaffValidate: React.FC = () => {
 
             <form onSubmit={(e) => { e.preventDefault(); handleValidate(query); }} className="flex gap-2">
               <Input 
-                placeholder="Buscar por CPF ou Código HE..." 
+                placeholder="Ex: BH-12345" 
                 value={query} 
                 onChange={e => setQuery(e.target.value)}
                 className="rounded-2xl"
@@ -141,7 +163,7 @@ const StaffValidate: React.FC = () => {
               </div>
 
               {result.user && (
-                <div className="w-full bg-slate-50 p-4 rounded-2xl flex items-center gap-4 text-left">
+                <div className="w-full bg-slate-50 p-4 rounded-2xl flex items-center gap-4 text-left cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => navigate(`/staff/client/${result.user?.customerCode}`)}>
                   <div className="w-12 h-12 bg-slate-200 rounded-xl overflow-hidden">
                     <img src={result.user.avatarUrl || `https://picsum.photos/seed/${result.user.id}/100`} alt={result.user.name} />
                   </div>

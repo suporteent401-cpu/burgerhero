@@ -28,6 +28,7 @@ import AdminPlans from './app/AdminPlans';
 import AdminCoupons from './app/AdminCoupons';
 import StaffHome from './app/StaffHome';
 import StaffValidate from './app/StaffValidate';
+import StaffClientProfile from './app/StaffClientProfile';
 import Debug from './app/Debug';
 import PublicClientProfile from './app/PublicClientProfile';
 
@@ -125,6 +126,7 @@ const App: React.FC = () => {
             >
               <Route index element={<StaffHome />} />
               <Route path="validate" element={<StaffValidate />} />
+              <Route path="client/:customerCode" element={<StaffClientProfile />} />
             </Route>
 
             {/* Fallback */}
