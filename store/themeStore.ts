@@ -1,4 +1,3 @@
-
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { HeroTheme } from '../types';
@@ -35,7 +34,11 @@ export const useThemeStore = create<ThemeState>()(
           'theme-tita-dourado',
           'theme-tempestade-azul',
           'theme-sentinela-verde',
-          'theme-aurora-rosa'
+          'theme-aurora-rosa',
+          'theme-vermelho-heroi',
+          'theme-verde-neon',
+          'theme-laranja-vulcanico',
+          'theme-azul-eletrico'
         ];
         root.classList.remove(...themeClasses);
         root.classList.add(`theme-${heroTheme}`);

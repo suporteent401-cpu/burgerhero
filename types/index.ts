@@ -72,4 +72,8 @@ export type HeroTheme =
   | 'tita-dourado' 
   | 'tempestade-azul' 
   | 'sentinela-verde' 
-  | 'aurora-rosa';
+  | 'aurora-rosa'
+  | 'vermelho-heroi'
+  | 'verde-neon'
+  | 'laranja-vulcanico'
+  | 'azul-eletrico';

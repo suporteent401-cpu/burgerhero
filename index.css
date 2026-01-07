@@ -12,6 +12,10 @@
 .theme-tempestade-azul { --primary-color: #3b82f6; }
 .theme-sentinela-verde { --primary-color: #10b981; }
 .theme-aurora-rosa { --primary-color: #ec4899; }
+.theme-vermelho-heroi { --primary-color: #FF0004; }
+.theme-verde-neon { --primary-color: #08FF01; }
+.theme-laranja-vulcanico { --primary-color: #FF4F02; }
+.theme-azul-eletrico { --primary-color: #0300FF; }
 
 .bg-hero-primary { background-color: var(--primary-color); }
 .text-hero-primary { color: var(--primary-color); }

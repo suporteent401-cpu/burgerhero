@@ -11,16 +11,16 @@ interface HeroCardProps {
   fontSize?: number;
 }
 
-const HeroCard: React.FC<HeroCardProps> = ({ 
+const HeroCard = React.forwardRef<HTMLDivElement, HeroCardProps>(({ 
   user, 
   imageUrl, 
   className = '',
   fontFamily = 'Inter, sans-serif',
   textColor = '#FFFFFF',
   fontSize = 22
-}) => {
+}, ref) => {
   return (
-    <div className={`w-full max-w-[420px] mx-auto ${className}`}>
+    <div ref={ref} className={`w-full max-w-[420px] mx-auto ${className}`}>
       {/* Container Principal */}
       <div className="relative aspect-[1.586/1] w-full rounded-2xl shadow-xl overflow-hidden ring-1 ring-black/10 isolate bg-slate-900">
         
@@ -72,6 +72,6 @@ const HeroCard: React.FC<HeroCardProps> = ({
       </div>
     </div>
   );
-};
+});
 
 export default HeroCard;

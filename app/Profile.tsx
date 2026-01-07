@@ -4,10 +4,11 @@ import { Button } from '../components/ui/Button';
 import { useAuthStore } from '../store/authStore';
 import { useThemeStore } from '../store/themeStore';
 import { useCardStore, CARD_TEMPLATES, FONT_OPTIONS, COLOR_OPTIONS } from '../store/cardStore';
-import { LogOut, Palette, Moon, Sun, Monitor, CreditCard, CheckCircle2, Type, Camera, Pencil, Check, X, TextQuote } from 'lucide-react';
+import { LogOut, Palette, Moon, Sun, Monitor, CreditCard, CheckCircle2, Type, Camera, Pencil, Check, X, TextQuote, Download } from 'lucide-react';
 import { HeroTheme, Subscription } from '../types';
 import { fakeApi } from '../lib/fakeApi';
 import HeroCard from '../components/HeroCard';
+import { toPng } from 'html-to-image';
 
 const Profile: React.FC = () => {
   const user = useAuthStore(state => state.user);
@@ -20,6 +21,7 @@ const Profile: React.FC = () => {
   const setMode = useThemeStore(state => state.setMode);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
   
   // Name Edit State
   const [isEditingName, setIsEditingName] = useState(false);
@@ -46,7 +48,6 @@ const Profile: React.FC = () => {
     }
   }, [user?.id]);
 
-  // Sync editName when user name changes externally or on load, but only if not editing
   useEffect(() => {
     if (!isEditingName && user?.name && user.name !== editName) {
       setEditName(user.name);
@@ -60,6 +61,10 @@ const Profile: React.FC = () => {
     { name: 'tempestade-azul', color: '#3b82f6', label: 'Tempestade' },
     { name: 'sentinela-verde', color: '#10b981', label: 'Sentinela' },
     { name: 'aurora-rosa', color: '#ec4899', label: 'Aurora' },
+    { name: 'vermelho-heroi', color: '#FF0004', label: 'Herói' },
+    { name: 'verde-neon', color: '#08FF01', label: 'Neon' },
+    { name: 'laranja-vulcanico', color: '#FF4F02', label: 'Vulcão' },
+    { name: 'azul-eletrico', color: '#0300FF', label: 'Elétrico' },
   ];
 
   const handleThemeChange = async (theme: HeroTheme) => {
@@ -85,8 +90,6 @@ const Profile: React.FC = () => {
 
   const handleSaveName = async () => {
     if (!user || !editName.trim()) return;
-    
-    // Optimistic update
     updateUser({ name: editName });
     setIsEditingName(false);
     await fakeApi.updateUserProfile(user.id, { name: editName });
@@ -95,6 +98,21 @@ const Profile: React.FC = () => {
   const handleCancelEdit = () => {
     setIsEditingName(false);
     setEditName(user?.name || '');
+  };
+
+  const handleExportCard = () => {
+    if (cardRef.current === null) return;
+    toPng(cardRef.current, { cacheBust: true, pixelRatio: 2 })
+      .then((dataUrl) => {
+        const link = document.createElement('a');
+        link.download = `burgerhero-card-${user?.name.replace(/\s/g, '-')}.png`;
+        link.href = dataUrl;
+        link.click();
+      })
+      .catch((err) => {
+        console.error('Erro ao exportar cartão:', err);
+        alert('Ocorreu um erro ao exportar o cartão.');
+      });
   };
 
   return (
@@ -280,8 +298,14 @@ const Profile: React.FC = () => {
 
           {/* Prévia */}
           <div className="flex flex-col items-center border-t border-slate-50 dark:border-slate-800 pt-6">
-             <p className="text-sm font-bold text-slate-500 dark:text-slate-400 mb-4 self-start">Prévia Atual:</p>
+             <div className="flex justify-between items-center w-full mb-4">
+                <p className="text-sm font-bold text-slate-500 dark:text-slate-400 self-start">Prévia Atual:</p>
+                <Button onClick={handleExportCard} variant="outline" size="sm">
+                  <Download size={14} className="mr-2" /> Exportar
+                </Button>
+             </div>
              <HeroCard 
+               ref={cardRef}
                user={user} 
                imageUrl={getSelectedTemplate().imageUrl} 
                memberSince={sub?.currentPeriodStart}
@@ -303,7 +327,7 @@ const Profile: React.FC = () => {
             </div>
           </CardHeader>
           <CardBody className="p-4">
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-5 gap-2">
               {themes.map(t => (
                 <button 
                   key={t.name}
