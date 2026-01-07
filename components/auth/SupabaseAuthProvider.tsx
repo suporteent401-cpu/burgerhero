@@ -48,12 +48,15 @@ export const SupabaseAuthProvider: React.FC<AuthProviderProps> = ({ children }) 
           useThemeStore.getState().applyTheme();
 
         } else {
-          console.error('AUTH_ERROR: Perfil completo não pôde ser carregado.');
+          console.error('AUTH_ERROR: Perfil completo não pôde ser carregado. Desconectando.');
           await supabase.auth.signOut();
           logout();
         }
-      } catch (error) {
-        console.error("Erro no provedor de autenticação:", error);
+      } catch (error: any) {
+        console.error("Erro no provedor de autenticação, limpando sessão:", error);
+        if (error.message && error.message.includes('Invalid Refresh Token')) {
+            console.warn("Token de atualização inválido detectado. O usuário será desconectado.");
+        }
         await supabase.auth.signOut();
         logout();
       } finally {
