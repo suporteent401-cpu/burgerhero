@@ -2,12 +2,26 @@ import { supabase } from '../lib/supabaseClient';
 import { User as AppUser, Role } from '../types';
 import { User as SupabaseUser } from '@supabase/supabase-js';
 
-// --- LEITURA ---
+const normalizeCpf = (cpf: string) => (cpf ? cpf.replace(/[^\d]/g, '') : '');
 
-/**
- * Busca o perfil de um usuário específico pelo ID.
- * Usado pelo StaffValidate para recuperar dados após escanear QR Code.
- */
+export const checkCpfExists = async (cpf: string): Promise<boolean> => {
+  const normalizedCpf = normalizeCpf(cpf);
+  if (!normalizedCpf) return false;
+
+  const { data, error } = await supabase
+    .from('client_profiles')
+    .select('cpf')
+    .eq('cpf', normalizedCpf)
+    .limit(1);
+
+  if (error) {
+    console.error('Erro ao verificar CPF:', error);
+    throw new Error('Não foi possível verificar o CPF. Tente novamente.');
+  }
+
+  return Array.isArray(data) && data.length > 0;
+};
+
 export const getUserProfileById = async (userId: string) => {
   const { data, error } = await supabase
     .from('client_profiles')
@@ -16,9 +30,10 @@ export const getUserProfileById = async (userId: string) => {
     .maybeSingle();
 
   if (error) {
-    console.warn('[UsersService] getUserProfileById error:', error.message);
+    console.error('Erro ao buscar perfil do cliente:', error);
     return null;
   }
+
   return data;
 };
 
@@ -30,7 +45,7 @@ export const getFullUserProfile = async (authUser: SupabaseUser): Promise<AppUse
   ]);
 
   if (appUserResponse.error) {
-    console.error('Erro app_users:', appUserResponse.error.message);
+    console.error('CRÍTICO: erro ao buscar app_users:', appUserResponse.error);
     return null;
   }
   
@@ -40,55 +55,86 @@ export const getFullUserProfile = async (authUser: SupabaseUser): Promise<AppUse
   const role = appUserData.role as Role;
   const clientProfileData = clientProfileResponse.data;
   const settingsData = settingsResponse.data;
+
+  // Usa o tema salvo em settings, ou do perfil (se tivesse), ou default
   const savedTheme = settingsData?.hero_theme as any || 'sombra-noturna';
 
-  return {
+  const fullProfile: AppUser = {
     id: authUser.id,
     email: authUser.email || '',
     role,
     name: clientProfileData?.display_name || (authUser.user_metadata as any)?.full_name || 'Herói',
     customerCode: clientProfileData?.customer_id_public || clientProfileData?.hero_code || '',
-    avatarUrl: clientProfileData?.avatar_url || null,
+    avatarUrl: clientProfileData?.avatar_url || (authUser.user_metadata as any)?.avatar_url || null,
     cpf: clientProfileData?.cpf || '',
-    whatsapp: '',
-    birthDate: '',
+    whatsapp: '', // Futuro: adicionar no client_profiles
+    birthDate: '', // Futuro
     heroTheme: savedTheme,
   };
+
+  return fullProfile;
 };
 
-// --- ESCRITA (PERSISTÊNCIA) ---
+export const signUpAndCreateProfile = async (userData: any) => {
+  const { data: authData, error: signUpError } = await supabase.auth.signUp({
+    email: userData.email,
+    password: userData.password,
+  });
 
-/**
- * Atualiza o perfil do usuário de forma unificada.
- * Retorna erro cru do Supabase se falhar, para debug na UI.
- */
-export const updateUserProfile = async (userId: string, data: { name?: string; avatarUrl?: string }) => {
-  const payload: any = {};
-  
-  // Só adiciona ao payload se tiver valor (evita apagar dados acidentalmente)
-  if (data.name !== undefined) payload.display_name = data.name;
-  if (data.avatarUrl !== undefined) payload.avatar_url = data.avatarUrl;
-
-  console.log('[UsersService] Tentando update em client_profiles:', payload);
-
-  const { data: result, error } = await supabase
-    .from('client_profiles')
-    .update(payload)
-    .eq('user_id', userId)
-    .select()
-    .single();
-
-  if (error) {
-    console.error('[UsersService] Erro REAL do Supabase:', error);
-    throw error; // Lança o erro completo (code, message, details)
+  if (signUpError) {
+    if (signUpError.message.includes('User already registered')) throw new Error('E-mail já cadastrado. Faça login.');
+    throw signUpError;
   }
-  
-  return result;
+
+  if (!authData.user) throw new Error('Não foi possível criar o usuário. Tente novamente.');
+
+  const { error: signInError } = await supabase.auth.signInWithPassword({
+    email: userData.email,
+    password: userData.password,
+  });
+
+  if (signInError) console.warn('Falha no login automático:', signInError);
+
+  await supabase.rpc('ensure_user_profile', {
+    p_display_name: userData.name,
+    p_email: userData.email,
+    p_cpf: userData.cpf,
+    p_birthdate: userData.birthDate || null,
+  });
+
+  return authData;
 };
 
-// --- SETTINGS (Card & Tema) ---
+// --- NOVOS MÉTODOS ---
+
+export const uploadAvatar = async (userId: string, file: File): Promise<string | null> => {
+  const fileExt = file.name.split('.').pop();
+  const fileName = `${userId}/${Date.now()}.${fileExt}`;
+
+  const { error: uploadError } = await supabase.storage
+    .from('avatars')
+    .upload(fileName, file, { upsert: true });
+
+  if (uploadError) {
+    console.error('Erro no upload:', uploadError);
+    throw uploadError;
+  }
+
+  const { data } = supabase.storage.from('avatars').getPublicUrl(fileName);
+  return data.publicUrl;
+};
+
+export const updateProfileName = async (userId: string, name: string) => {
+  const { error } = await supabase
+    .from('client_profiles')
+    .update({ display_name: name })
+    .eq('user_id', userId);
+
+  if (error) throw error;
+};
 
 export const updateCardSettings = async (userId: string, settings: any) => {
+  // Mapeia os campos do store para o DB
   const dbPayload: any = {};
   if (settings.templateId) dbPayload.card_template_id = settings.templateId;
   if (settings.fontFamily) dbPayload.font_style = settings.fontFamily;
@@ -116,14 +162,7 @@ export const getCardSettings = async (userId: string) => {
   return data;
 };
 
-// --- HELPERS ---
-
-export const checkCpfExists = async (cpf: string): Promise<boolean> => {
-  const normalizedCpf = cpf.replace(/[^\d]/g, '');
-  if (!normalizedCpf) return false;
-  const { data } = await supabase.from('client_profiles').select('cpf').eq('cpf', normalizedCpf).limit(1);
-  return Array.isArray(data) && data.length > 0;
-};
+// --- Tipos e Interfaces ---
 
 export interface PublicProfile {
   display_name: string;
@@ -135,6 +174,10 @@ export interface PublicProfile {
 
 export const getPublicProfileByCode = async (code: string): Promise<PublicProfile | null> => {
   const { data, error } = await supabase.rpc('get_public_profile_by_code', { p_code: code });
-  if (error) return null;
-  return (data && data.length > 0) ? data[0] : null;
+  if (error) {
+    console.error('Erro ao buscar perfil público:', error);
+    return null;
+  }
+  if (Array.isArray(data) && data.length > 0) return data[0] as PublicProfile;
+  return null;
 };
