@@ -4,7 +4,7 @@ import { Button } from '../components/ui/Button';
 import { useAuthStore } from '../store/authStore';
 import { useThemeStore } from '../store/themeStore';
 import { useCardStore, FONT_OPTIONS, COLOR_OPTIONS } from '../store/cardStore';
-import { LogOut, Palette, Moon, Sun, Monitor, CreditCard, CheckCircle2, Type, Camera, Pencil, Check, X, TextQuote, Download, Fingerprint, Loader2 } from 'lucide-react';
+import { LogOut, Palette, Moon, Sun, Monitor, CreditCard, CheckCircle2, Type, Camera, Pencil, Check, X, TextQuote, Download, Fingerprint, Loader2, ShieldCheck, ShieldAlert } from 'lucide-react';
 import { HeroTheme, Subscription } from '../types';
 import { fakeApi } from '../lib/fakeApi';
 import { supabase } from '../lib/supabaseClient';
@@ -213,6 +213,11 @@ const Profile: React.FC = () => {
     { name: 'azul-eletrico', color: '#0300FF', label: 'Elétrico' },
   ];
 
+  // Lógica de Status: Prioriza Mock > Banco > Inativo
+  const isMockActive = user?.id ? subscriptionMockService.isSubscriptionActive(user.id) : false;
+  const isDbActive = sub?.status === 'ACTIVE' || sub?.status === 'active';
+  const isActive = isMockActive || isDbActive;
+
   return (
     <div className="space-y-6 pb-10">
       
@@ -258,7 +263,15 @@ const Profile: React.FC = () => {
               <Pencil size={14} className="text-slate-400 group-hover:text-hero-primary transition-colors" />
             </div>
           )}
-          <p className="text-slate-400 font-medium text-sm mt-1 mb-3">{user?.email}</p>
+          
+          <div className="flex items-center gap-3 mt-1 mb-3">
+            <p className="text-slate-400 font-medium text-sm">{user?.email}</p>
+            <div className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border flex items-center gap-1 ${isActive ? 'bg-green-100 text-green-600 border-green-200' : 'bg-red-100 text-red-600 border-red-200'}`}>
+              {isActive ? <ShieldCheck size={10} /> : <ShieldAlert size={10} />}
+              {isActive ? 'Ativo' : 'Inativo'}
+            </div>
+          </div>
+
           <div className="bg-slate-50 dark:bg-slate-800/50 px-4 py-1.5 rounded-full border border-slate-100 dark:border-slate-800 flex items-center gap-2">
             <Fingerprint size={14} className="text-hero-primary" />
             <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">
