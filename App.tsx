@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { HashRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { useAuthStore } from './store/authStore';
 import { useThemeStore } from './store/themeStore';
+import { SupabaseAuthProvider } from './components/auth/SupabaseAuthProvider';
 
 // Layouts
 import ClientLayout from './layout/ClientLayout';
@@ -44,42 +45,44 @@ const App: React.FC = () => {
   useEffect(() => { applyTheme(); }, [applyTheme]);
 
   return (
-    <HashRouter>
-      <Routes>
-        {/* Public */}
-        <Route path="/" element={<Landing />} />
-        <Route path="/auth" element={<Auth />} />
-        <Route path="/plans" element={<Plans />} />
-        <Route path="/checkout" element={<Checkout />} />
-        <Route path="/debug" element={<Debug />} />
+    <SupabaseAuthProvider>
+      <HashRouter>
+        <Routes>
+          {/* Public */}
+          <Route path="/" element={<Landing />} />
+          <Route path="/auth" element={<Auth />} />
+          <Route path="/plans" element={<Plans />} />
+          <Route path="/checkout" element={<Checkout />} />
+          <Route path="/debug" element={<Debug />} />
 
-        {/* Client App */}
-        <Route path="/app" element={<ProtectedRoute allowedRoles={['CLIENT']}><ClientLayout /></ProtectedRoute>}>
-          <Route index element={<Home />} />
-          <Route path="qrcode" element={<QRCodePage />} />
-          <Route path="voucher" element={<Voucher />} />
-          <Route path="burgers" element={<Burgers />} />
-          <Route path="profile" element={<Profile />} />
-        </Route>
+          {/* Client App */}
+          <Route path="/app" element={<ProtectedRoute allowedRoles={['CLIENT']}><ClientLayout /></ProtectedRoute>}>
+            <Route index element={<Home />} />
+            <Route path="qrcode" element={<QRCodePage />} />
+            <Route path="voucher" element={<Voucher />} />
+            <Route path="burgers" element={<Burgers />} />
+            <Route path="profile" element={<Profile />} />
+          </Route>
 
-        {/* Admin Panel */}
-        <Route path="/admin" element={<ProtectedRoute allowedRoles={['ADMIN']}><AdminLayout /></ProtectedRoute>}>
-          <Route index element={<AdminDashboard />} />
-          <Route path="users" element={<AdminUsers />} />
-          <Route path="users/:id" element={<AdminUserDetails />} />
-          <Route path="plans" element={<AdminPlans />} />
-          <Route path="coupons" element={<AdminCoupons />} />
-        </Route>
+          {/* Admin Panel */}
+          <Route path="/admin" element={<ProtectedRoute allowedRoles={['ADMIN']}><AdminLayout /></ProtectedRoute>}>
+            <Route index element={<AdminDashboard />} />
+            <Route path="users" element={<AdminUsers />} />
+            <Route path="users/:id" element={<AdminUserDetails />} />
+            <Route path="plans" element={<AdminPlans />} />
+            <Route path="coupons" element={<AdminCoupons />} />
+          </Route>
 
-        {/* Staff Area */}
-        <Route path="/staff" element={<ProtectedRoute allowedRoles={['STAFF', 'ADMIN']} />}>
-          <Route path="validate" element={<StaffValidate />} />
-        </Route>
+          {/* Staff Area */}
+          <Route path="/staff" element={<ProtectedRoute allowedRoles={['STAFF', 'ADMIN']} />}>
+            <Route path="validate" element={<StaffValidate />} />
+          </Route>
 
-        {/* Fallback */}
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </HashRouter>
+          {/* Fallback */}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </HashRouter>
+    </SupabaseAuthProvider>
   );
 };
 

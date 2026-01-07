@@ -9,10 +9,10 @@ import { HeroTheme, Subscription } from '../types';
 import { fakeApi } from '../lib/fakeApi';
 import HeroCard from '../components/HeroCard';
 import { toPng } from 'html-to-image';
+import { supabase } from '../lib/supabaseClient';
 
 const Profile: React.FC = () => {
   const user = useAuthStore(state => state.user);
-  const logout = useAuthStore(state => state.logout);
   const updateUser = useAuthStore(state => state.updateUser);
   
   const heroTheme = useThemeStore(state => state.heroTheme);
@@ -113,6 +113,14 @@ const Profile: React.FC = () => {
         console.error('Erro ao exportar cartão:', err);
         alert('Ocorreu um erro ao exportar o cartão.');
       });
+  };
+
+  const handleLogout = async () => {
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      console.error('Erro ao fazer logout:', error);
+    }
+    // O listener onAuthStateChange cuidará de limpar o store e redirecionar.
   };
 
   return (
@@ -368,7 +376,7 @@ const Profile: React.FC = () => {
       </div>
 
       <div className="pt-4">
-        <Button variant="danger" className="w-full py-4 rounded-2xl" onClick={() => logout()}>
+        <Button variant="danger" className="w-full py-4 rounded-2xl" onClick={handleLogout}>
           <LogOut size={20} className="mr-2" /> Encerrar Sessão
         </Button>
       </div>
