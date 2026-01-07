@@ -6,6 +6,7 @@ import { fakeApi } from '../lib/fakeApi';
 import { Plan } from '../types';
 import { motion } from 'framer-motion';
 import { useAuthStore } from '../store/authStore';
+import { subscriptionMockService } from '../services/subscriptionMock.service';
 
 const Plans: React.FC = () => {
   const [plans, setPlans] = useState<Plan[]>([]);
@@ -17,13 +18,14 @@ const Plans: React.FC = () => {
   }, []);
 
   const handleSelectPlan = (plan: Plan) => {
-    const planData = {
-      planId: plan.id,
-      planName: plan.name,
-      priceCents: plan.priceCents,
-    };
-    localStorage.setItem('pending_plan', JSON.stringify(planData));
+    // 1. Salva o plano no storage persistente mock
+    subscriptionMockService.setPendingPlan({
+      id: plan.id,
+      name: plan.name,
+      priceCents: plan.priceCents
+    });
 
+    // 2. Decide o destino baseado na autenticação
     if (isAuthed) {
       navigate('/checkout');
     } else {

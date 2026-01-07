@@ -3,54 +3,53 @@ import { useNavigate } from "react-router-dom";
 import { Card, CardBody, CardHeader } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { CheckCircle2, CreditCard, QrCode } from "lucide-react";
-import { subscriptionsService } from "../services/subscriptions.service";
+import { subscriptionMockService } from "../services/subscriptionMock.service";
+import { useAuthStore } from "../store/authStore";
 
 const formatBRL = (value: number) =>
   value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
 const Checkout: React.FC = () => {
   const navigate = useNavigate();
+  const user = useAuthStore(state => state.user);
 
-  const [plan, setPlan] = useState<{ planSlug: string; planName: string; price: number } | null>(null);
+  const [plan, setPlan] = useState<{ id: string; name: string; priceCents: number } | null>(null);
   const [method, setMethod] = useState<"card" | "pix">("card");
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string>("");
 
   useEffect(() => {
-    const pendingPlanJSON = localStorage.getItem('pending_plan');
-    if (!pendingPlanJSON) {
+    // 1. Busca o plano pendente do serviço Mock
+    const pendingPlan = subscriptionMockService.getPendingPlan();
+    
+    if (!pendingPlan) {
+      // Se não houver plano selecionado, volta para a vitrine
       navigate('/plans', { replace: true });
       return;
     }
     
-    try {
-      const pendingPlan = JSON.parse(pendingPlanJSON);
-      setPlan({
-        planSlug: pendingPlan.planId,
-        planName: pendingPlan.planName,
-        price: pendingPlan.priceCents / 100,
-      });
-    } catch (e) {
-      console.error("Falha ao parsear o plano pendente", e);
-      localStorage.removeItem('pending_plan');
-      navigate('/plans', { replace: true });
-    }
+    setPlan(pendingPlan);
   }, [navigate]);
 
   const handleFinish = async () => {
-    if (!plan) return;
+    if (!plan || !user) return;
 
     setErrorMsg("");
     setLoading(true);
 
     try {
-      await subscriptionsService.refreshMyStatus();
-      await subscriptionsService.activateMock(plan.planSlug, 30);
+      // Simula delay de rede
+      await new Promise(r => setTimeout(r, 1000));
+
+      // 2. Ativa a assinatura Mock no storage local
+      subscriptionMockService.setActiveSubscription(user.id, plan);
       
-      localStorage.removeItem('pending_plan');
+      // 3. Limpa o plano pendente pois já foi processado
+      subscriptionMockService.clearPendingPlan();
+      
+      // 4. Redireciona para o app do cliente
       navigate("/app", { replace: true });
-    } catch (err: any)
-    {
+    } catch (err: any) {
       console.error(err);
       setErrorMsg(err?.message || "Não foi possível finalizar a assinatura.");
     } finally {
@@ -79,14 +78,14 @@ const Checkout: React.FC = () => {
             <div className="flex items-start justify-between gap-3">
               <div>
                 <div className="text-lg font-black text-slate-900 dark:text-white">
-                  {plan.planName}
+                  {plan.name}
                 </div>
                 <div className="text-sm text-slate-500 dark:text-slate-400">
                   Cobrança mensal
                 </div>
               </div>
               <div className="text-lg font-black text-slate-900 dark:text-white">
-                {formatBRL(plan.price)}
+                {formatBRL(plan.priceCents / 100)}
               </div>
             </div>
 
@@ -155,7 +154,7 @@ const Checkout: React.FC = () => {
           disabled={loading}
           isLoading={loading}
         >
-          {loading ? "Ativando..." : `Finalizar Assinatura - ${formatBRL(plan.price)}`}
+          {loading ? "Ativando..." : `Finalizar Assinatura - ${formatBRL(plan.priceCents / 100)}`}
         </Button>
 
         <div className="text-center text-xs text-slate-400">

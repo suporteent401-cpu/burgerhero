@@ -9,6 +9,7 @@ import { useAuthStore } from '../store/authStore';
 import { motion } from 'framer-motion';
 import { supabase } from '../lib/supabaseClient';
 import { getFullUserProfile, checkCpfExists } from '../services/users.service';
+import { subscriptionMockService } from '../services/subscriptionMock.service';
 
 const Auth: React.FC = () => {
   const [isLogin, setIsLogin] = useState(true);
@@ -22,14 +23,17 @@ const Auth: React.FC = () => {
   const { register, handleSubmit, watch, formState: { errors } } = useForm();
   const password = watch('password');
 
-  const redirectByRole = (role: string) => {
-    const pendingPlanJSON = localStorage.getItem('pending_plan');
-    if (pendingPlanJSON) {
+  const handlePostAuthRedirect = (role: string) => {
+    // 1. Verifica se existe um plano pendente de assinatura
+    const pendingPlan = subscriptionMockService.getPendingPlan();
+    
+    if (pendingPlan) {
+      // Prioridade total para o checkout se houver plano selecionado
       navigate('/checkout', { replace: true });
       return;
     }
 
-    console.log(`Redirecting user with role: ${role}`);
+    // 2. Se não houver plano, segue fluxo normal por role
     if (role === 'ADMIN') navigate('/admin');
     else if (role === 'STAFF') navigate('/staff');
     else navigate('/app');
@@ -56,7 +60,7 @@ const Auth: React.FC = () => {
         const fullProfile = await getFullUserProfile(signInData.session.user);
         if (fullProfile) {
           login(fullProfile);
-          redirectByRole(fullProfile.role);
+          handlePostAuthRedirect(fullProfile.role);
         } else {
           console.error("Falha ao carregar perfil no login, AuthProvider irá tentar recuperar.");
           navigate('/app'); 
@@ -120,7 +124,7 @@ const Auth: React.FC = () => {
         
         if (fullProfile) {
             login(fullProfile);
-            redirectByRole(fullProfile.role);
+            handlePostAuthRedirect(fullProfile.role);
         } else {
             // Fallback if profile is not ready, redirect to a safe place
             navigate('/app');
