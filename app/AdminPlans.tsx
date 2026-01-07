@@ -1,112 +1,141 @@
-import React, { useEffect, useState } from 'react';
-import { fakeApi } from '../lib/fakeApi';
-import { Plan } from '../types';
+import React, { useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '../components/ui/Button';
-import { PlusCircle, TrendingUp, Award, AlertTriangle, BarChart } from 'lucide-react';
-import { PlanCard } from '../components/admin/PlanCard';
-import { PlanFormModal } from '../components/admin/PlanFormModal';
-import { Card, CardBody } from '../components/ui/Card';
+import { CheckCircle2, ChevronLeft, ShieldCheck } from 'lucide-react';
+import { Plan } from '../types';
+import { motion } from 'framer-motion';
+import { useAuthStore } from '../store/authStore';
+import { subscriptionMockService } from '../services/subscriptionMock.service';
 
-const InsightPill: React.FC<{ icon: React.ElementType, label: string, value: string }> = ({ icon: Icon, label, value }) => (
-  <div className="bg-slate-50 p-3 rounded-lg flex items-center gap-3">
-    <div className="bg-white p-2 rounded-md text-hero-primary"><Icon size={16} /></div>
-    <div>
-      <p className="text-xs font-bold text-slate-500">{label}</p>
-      <p className="text-sm font-black text-slate-800">{value}</p>
-    </div>
-  </div>
-);
+const Plans: React.FC = () => {
+  const navigate = useNavigate();
+  const isAuthed = useAuthStore(state => state.isAuthed);
 
-const AdminPlans: React.FC = () => {
-  const [plans, setPlans] = useState<Plan[]>([]);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingPlan, setEditingPlan] = useState<Plan | null>(null);
-
-  const fetchPlans = () => {
-    fakeApi.adminListAllPlans().then(setPlans);
-  };
-
-  useEffect(() => {
-    fetchPlans();
+  // ✅ Fonte temporária (sem fakeApi)
+  // Quando tiver tabela/plans no Supabase, trocamos isso por um service.
+  const plans = useMemo<Plan[]>(() => {
+    return [
+      {
+        id: 'p-1',
+        name: 'Plano Justiceiro',
+        priceCents: 2990,
+        description: '1 burger clássico por mês + 10% de desconto em extras.',
+        benefits: ['1 Burger do Mês', '10% de desconto adicional', 'Fila prioritária'],
+        imageUrl: '',
+        active: true,
+      },
+      {
+        id: 'p-2',
+        name: 'Plano Vingador',
+        priceCents: 4990,
+        description: '1 burger gourmet por mês + batata + 15% de desconto.',
+        benefits: ['1 Burger Gourmet do Mês', 'Batata Média Inclusa', '15% de desconto adicional', 'Brinde surpresa'],
+        imageUrl: '',
+        active: true,
+      },
+    ].filter(p => p.active);
   }, []);
 
-  const openModal = (plan: Plan | null = null) => {
-    setEditingPlan(plan);
-    setIsModalOpen(true);
-  };
+  const handleSelectPlan = (plan: Plan) => {
+    subscriptionMockService.setPendingPlan({
+      id: plan.id,
+      name: plan.name,
+      priceCents: plan.priceCents
+    });
 
-  const closeModal = () => {
-    setIsModalOpen(false);
-    setEditingPlan(null);
-  };
-
-  const onSubmit = async (data: Plan) => {
-    if (editingPlan) {
-      await fakeApi.adminUpdatePlan(editingPlan.id, data);
-    } else {
-      await fakeApi.adminCreatePlan(data);
-    }
-    fetchPlans();
-    closeModal();
-  };
-  
-  const handleToggleStatus = async (plan: Plan) => {
-    if (window.confirm(`Tem certeza que deseja ${plan.active ? 'desativar' : 'ativar'} o plano "${plan.name}"?`)) {
-      await fakeApi.adminUpdatePlan(plan.id, { active: !plan.active });
-      fetchPlans();
-    }
-  };
-
-  const handleDuplicate = async (plan: Plan) => {
-    const newPlanData = { ...plan, name: `${plan.name} (Cópia)`, active: false };
-    delete (newPlanData as any).id;
-    await fakeApi.adminCreatePlan(newPlanData);
-    fetchPlans();
+    if (isAuthed) navigate('/checkout');
+    else navigate('/auth');
   };
 
   return (
-    <div className="space-y-8">
-      <div className="flex justify-between items-center">
-        <div>
-          <h2 className="text-3xl font-black text-slate-800">Planos</h2>
-          <p className="text-slate-500 font-medium">Gerencie os planos de assinatura disponíveis.</p>
-        </div>
-        <Button onClick={() => openModal()}>
-          <PlusCircle size={18} className="mr-2" /> Novo Plano
-        </Button>
-      </div>
+    <div className="min-h-screen bg-slate-50 py-12 px-4">
+      <div className="max-w-5xl mx-auto">
+        <button
+          onClick={() => navigate(-1)}
+          className="mb-8 flex items-center gap-2 text-slate-500 font-bold hover:text-hero-primary transition-colors"
+        >
+          <ChevronLeft size={20} /> Voltar
+        </button>
 
-      {/* Insights Section */}
-      <Card>
-        <CardBody className="p-4 grid grid-cols-2 md:grid-cols-4 gap-4">
-          <InsightPill icon={TrendingUp} label="Mais Vendido" value="Plano Vingador" />
-          <InsightPill icon={Award} label="Maior Resgate" value="Plano Vingador" />
-          <InsightPill icon={AlertTriangle} label="Maior Churn" value="Plano Justiceiro" />
-          <InsightPill icon={BarChart} label="Ticket Médio" value="R$ 39,90" />
-        </CardBody>
-      </Card>
-
-      {/* Plans Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {plans.map(plan => (
-          <PlanCard 
-            key={plan.id} 
-            plan={plan}
-            onEdit={openModal}
-            onDuplicate={handleDuplicate}
-            onToggleStatus={handleToggleStatus}
+        <div className="text-center mb-16">
+          <motion.img
+            src="https://ik.imagekit.io/lflb43qwh/Heros/images.jpg"
+            alt="BurgerHero Logo"
+            className="w-24 h-24 rounded-full mx-auto mb-8 border-4 border-white shadow-lg"
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.5 }}
           />
-        ))}
-      </div>
+          <motion.h2
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6 }}
+            className="text-4xl md:text-5xl font-black mb-4 tracking-tighter"
+          >
+            Escolha sua patente de Herói
+          </motion.h2>
+          <motion.p
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.1 }}
+            className="text-slate-500 max-w-lg mx-auto"
+          >
+            Assine e garanta seu burger sagrado todos os meses, além de descontos em toda a rede.
+          </motion.p>
+        </div>
 
-      <PlanFormModal 
-        isOpen={isModalOpen}
-        onClose={closeModal}
-        onSubmit={onSubmit}
-        editingPlan={editingPlan}
-      />
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
+          {plans.map((plan, index) => (
+            <motion.div
+              key={plan.id}
+              initial={{ opacity: 0, y: 30 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.2 + index * 0.1 }}
+              className="relative rounded-3xl overflow-hidden shadow-xl transition-all duration-300 hover:scale-[1.02]"
+            >
+              <div className="p-8 bg-slate-900 text-white">
+                <h3 className="text-2xl font-black mb-2">{plan.name}</h3>
+                <p className="mb-8 h-10 text-slate-400">{plan.description}</p>
+
+                <div className="mb-8">
+                  <span className="text-5xl font-black">
+                    R$ {(plan.priceCents / 100).toFixed(2).replace('.', ',')}
+                  </span>
+                  <span className="ml-1 font-bold text-slate-400">/mês</span>
+                </div>
+
+                <Button
+                  onClick={() => handleSelectPlan(plan)}
+                  className="w-full"
+                  size="lg"
+                  variant="primary"
+                >
+                  Assinar Agora
+                </Button>
+              </div>
+
+              <div className="p-8 bg-slate-800 text-white">
+                <p className="font-bold mb-4 text-sm">O que está incluso:</p>
+                <ul className="space-y-3">
+                  {plan.benefits.map((b, i) => (
+                    <li key={i} className="flex items-center gap-3 text-sm font-medium">
+                      <CheckCircle2 size={18} className="text-hero-primary flex-shrink-0" />
+                      <span>{b}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </motion.div>
+          ))}
+        </div>
+
+        <div className="mt-16 text-center flex items-center justify-center gap-3 text-slate-400 font-medium text-sm">
+          <ShieldCheck size={18} />
+          <span>Pagamento 100% seguro. Cancele quando quiser.</span>
+        </div>
+      </div>
     </div>
   );
 };
 
-export default AdminPlans;
+export default Plans;
