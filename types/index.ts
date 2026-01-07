@@ -1,79 +1,40 @@
-export type Role = 'CLIENT' | 'ADMIN' | 'STAFF';
+// /types/index.ts
 
-export interface User {
-  id: string;
-  name: string;
-  cpf: string;
-  whatsapp: string;
-  email: string;
-  birthDate: string;
-  role: Role;
-  heroTheme: string;
-  avatarUrl: string | null;
-  customerCode: string;
-}
+export type Role = 'client' | 'staff' | 'admin';
 
-export interface Plan {
-  id:string;
-  name: string;
-  priceCents: number;
-  description: string;
-  benefits: string[];
-  imageUrl: string;
-  active: boolean;
-  subscriberCount?: number; // Mock
-  popularity?: number; // Mock (0-100)
-}
-
-export interface Subscription {
-  userId: string;
-  planId: string;
-  status: 'ACTIVE' | 'INACTIVE' | 'CANCELED';
-  currentPeriodStart: string;
-  currentPeriodEnd: string;
-  nextBillingDate: string;
-}
-
-export interface MonthlyBenefit {
-  userId: string;
-  monthKey: string; // YYYY-MM
-  burgerRedeemed: boolean;
-  redeemedAt: string | null;
-}
-
-export interface Coupon {
-  id: string;
-  code: string;
-  discountPercent: number;
-  expiresAt: string;
-  active: boolean;
-  ruleOnlyForInactives: boolean;
-  activations?: number; // Mock
-}
-
-export interface CampaignLog {
-  id: string;
-  dispatchedAt: string;
-  couponCode: string;
-  segment: string;
-  reach: number;
-  reactivations: number; // Mock
-}
-
-export interface ScanPayload {
-  type: 'USER_QR';
-  userId: string;
-  customerCode: string;
-}
-
-export type HeroTheme = 
-  | 'sombra-noturna' 
-  | 'guardiao-escarlate' 
-  | 'tita-dourado' 
-  | 'tempestade-azul' 
-  | 'sentinela-verde' 
+export type HeroTheme =
+  | 'sombra-noturna'
+  | 'guardiao-escarlate'
+  | 'tita-dourado'
+  | 'tempestade-azul'
+  | 'sentinela-verde'
   | 'aurora-rosa'
   | 'vermelho-heroi'
   | 'verde-neon'
   | 'laranja-vulcanico'
   | 'azul-eletrico';
+
+export interface User {
+  id: string;
+  email: string;
+  role: Role;
+
+  name: string;
+  customerCode: string;
+
+  avatarUrl: string | null;
+  cpf: string;
+
+  whatsapp?: string;
+  birthDate?: string;
+
+  heroTheme?: HeroTheme;
+}
+
+export type SubscriptionStatus = 'active' | 'past_due' | 'canceled';
+
+export interface Subscription {
+  status: SubscriptionStatus;
+  currentPeriodStart?: string | null;
+  currentPeriodEnd?: string | null;
+}
