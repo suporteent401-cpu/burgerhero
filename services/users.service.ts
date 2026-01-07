@@ -61,8 +61,6 @@ export const getFullUserProfile = async (authUser: SupabaseUser): Promise<AppUse
   
   const appUserData = appUserResponse.data;
   if (!appUserData) {
-    // Pode ocorrer em casos de race condition no primeiro login, 
-    // mas o AuthProvider deve lidar com retry se necessário.
     console.warn('Aviso: Registro em "app_users" não encontrado para o usuário.');
     return null;
   }
@@ -70,8 +68,6 @@ export const getFullUserProfile = async (authUser: SupabaseUser): Promise<AppUse
   const role = appUserData.role as Role;
   const clientProfileData = clientProfileResponse.data;
 
-  // Monta o perfil final. 
-  // Removido o fallback 'BH-GERANDO' para evitar exibição de dado falso.
   const fullProfile: AppUser = {
     id: authUser.id,
     email: authUser.email || '',
@@ -83,7 +79,6 @@ export const getFullUserProfile = async (authUser: SupabaseUser): Promise<AppUse
       authUser.email?.split('@')[0] ||
       'Herói',
 
-    // Prioriza o ID Público gerado pelo banco. Se não existir, tenta hero_code legado ou vazio.
     customerCode: clientProfileData?.customer_id_public || clientProfileData?.hero_code || '',
     
     avatarUrl: clientProfileData?.avatar_url || (authUser.user_metadata as any)?.avatar_url || null,
@@ -113,19 +108,16 @@ export const signUpAndCreateProfile = async (userData: any) => {
     throw new Error('Não foi possível criar o usuário. Tente novamente.');
   }
 
-  // Login automático para rodar a RPC de criação de perfil
   const { error: signInError } = await supabase.auth.signInWithPassword({
     email: userData.email,
     password: userData.password,
   });
 
   if (signInError) {
-    console.warn('Falha no login automático após cadastro (pode exigir confirmação de email):', signInError);
-    // Não lançamos erro aqui se for apenas pendência de email
+    console.warn('Falha no login automático após cadastro:', signInError);
     return authData;
   }
 
-  // RPC para garantir tabelas iniciais
   const { data: rpcData, error: rpcError } = await supabase.rpc('ensure_user_profile', {
     p_display_name: userData.name,
     p_email: userData.email,
@@ -135,8 +127,33 @@ export const signUpAndCreateProfile = async (userData: any) => {
 
   if (rpcError) {
     console.error('Erro na RPC ensure_user_profile:', rpcError);
-    // Segue o fluxo, pois o usuário foi criado no Auth
   }
 
   return authData;
+};
+
+export interface PublicProfile {
+  display_name: string;
+  avatar_url: string | null;
+  customer_code: string;
+  subscription_status: string | null;
+  created_at: string;
+}
+
+export const getPublicProfileByCode = async (code: string): Promise<PublicProfile | null> => {
+  const { data, error } = await supabase.rpc('get_public_profile_by_code', {
+    p_code: code
+  });
+
+  if (error) {
+    console.error('Erro ao buscar perfil público:', error);
+    return null;
+  }
+
+  // RPC retorna array de linhas, queremos a primeira (única)
+  if (Array.isArray(data) && data.length > 0) {
+    return data[0] as PublicProfile;
+  }
+  
+  return null;
 };

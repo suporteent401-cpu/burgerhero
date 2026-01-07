@@ -29,6 +29,7 @@ import AdminCoupons from './app/AdminCoupons';
 import StaffHome from './app/StaffHome';
 import StaffValidate from './app/StaffValidate';
 import Debug from './app/Debug';
+import PublicClientProfile from './app/PublicClientProfile';
 
 // 🔒 Proteção por papel (Role é minúsculo: 'client' | 'staff' | 'admin')
 const ProtectedRoute = ({
@@ -68,6 +69,7 @@ const App: React.FC = () => {
             <Route path="/" element={<Landing />} />
             <Route path="/auth" element={<Auth />} />
             <Route path="/plans" element={<Plans />} />
+            <Route path="/public/client/:customerCode" element={<PublicClientProfile />} />
 
             <Route
               path="/checkout"

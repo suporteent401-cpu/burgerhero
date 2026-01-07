@@ -3,7 +3,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { Button } from '../components/ui/Button';
 import { useAuthStore } from '../store/authStore';
 import { useCardStore } from '../store/cardStore';
-import { Maximize2, Copy, Check, Sun, Smartphone } from 'lucide-react';
+import { Maximize2, Copy, Check, Sun, Smartphone, Loader2 } from 'lucide-react';
 import { Modal } from '../components/ui/Modal';
 import { motion } from 'framer-motion';
 
@@ -15,19 +15,32 @@ const QRCodePage: React.FC = () => {
 
   const template = getSelectedTemplate();
 
-  const qrData = JSON.stringify({
-    type: 'USER_QR',
-    userId: user?.id,
-    customerCode: user?.customerCode
-  });
+  // Garante que temos um código antes de gerar a URL
+  const customerCode = user?.customerCode;
+  
+  // Monta URL pública baseada na rota atual (HashRouter usa #)
+  // Ex: https://meusite.com/#/public/client/BH-12345
+  const origin = window.location.origin + window.location.pathname;
+  const qrUrl = customerCode 
+    ? `${origin}#/public/client/${customerCode}`
+    : '';
 
   const handleCopy = () => {
-    if (user?.customerCode) {
-      navigator.clipboard.writeText(user.customerCode);
+    if (customerCode) {
+      navigator.clipboard.writeText(customerCode);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }
   };
+
+  if (!customerCode) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 text-slate-400">
+        <Loader2 className="w-10 h-10 animate-spin mb-4 text-hero-primary" />
+        <p className="text-sm font-bold">Gerando sua identidade...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -83,7 +96,7 @@ const QRCodePage: React.FC = () => {
               className="bg-white p-4 rounded-2xl shadow-inner border border-slate-100 cursor-pointer hover:scale-105 transition-transform duration-300"
               onClick={() => setIsModalOpen(true)}
             >
-              <QRCodeSVG value={qrData} size={180} level="H" includeMargin />
+              <QRCodeSVG value={qrUrl} size={180} level="H" includeMargin />
             </div>
             
             <p className="mt-3 text-[10px] text-slate-400 font-bold uppercase tracking-widest flex items-center gap-1">
@@ -104,7 +117,7 @@ const QRCodePage: React.FC = () => {
                 className="bg-slate-50 dark:bg-slate-800 p-3 rounded-xl flex items-center justify-between cursor-pointer active:scale-95 transition-transform group"
               >
                  <span className="font-mono font-bold text-lg text-slate-700 dark:text-slate-200 tracking-wider pl-2">
-                    {user?.customerCode}
+                    {customerCode}
                  </span>
                  <div className={`p-2 rounded-lg ${copied ? 'bg-green-100 text-green-600' : 'bg-white dark:bg-slate-700 text-slate-400 group-hover:text-hero-primary'}`}>
                     {copied ? <Check size={18} /> : <Copy size={18} />}
@@ -137,10 +150,10 @@ const QRCodePage: React.FC = () => {
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="QR Code" size="default">
         <div className="flex flex-col items-center space-y-8 py-8">
           <div className="p-6 bg-white rounded-3xl shadow-2xl">
-            <QRCodeSVG value={qrData} size={280} level="H" includeMargin />
+            <QRCodeSVG value={qrUrl} size={280} level="H" includeMargin />
           </div>
           <div className="text-center">
-             <h3 className="text-2xl font-black text-slate-800 mb-2">{user?.customerCode}</h3>
+             <h3 className="text-2xl font-black text-slate-800 mb-2">{customerCode}</h3>
              <p className="text-slate-500 text-sm">Mostre este código ao atendente</p>
           </div>
         </div>
