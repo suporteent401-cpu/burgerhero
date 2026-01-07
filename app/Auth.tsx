@@ -8,6 +8,8 @@ import { Mail, Lock, User as UserIcon, Calendar, Phone, CreditCard } from 'lucid
 import { fakeApi } from '../lib/fakeApi';
 import { useAuthStore } from '../store/authStore';
 import { motion } from 'framer-motion';
+import { supabase } from '../lib/supabaseClient';
+import { getFullUserProfile } from '../services/users.service';
 
 const Auth: React.FC = () => {
   const [isLogin, setIsLogin] = useState(true);
@@ -24,9 +26,28 @@ const Auth: React.FC = () => {
     setLoading(true);
     try {
       if (isLogin) {
-        const user = await fakeApi.authLogin(data.email, data.password);
-        login(user);
-        redirectByRole(user.role);
+        const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+          email: data.email,
+          password: data.password,
+        });
+
+        if (authError) {
+          throw new Error(authError.message === 'Invalid login credentials' ? 'Credenciais inválidas.' : authError.message);
+        }
+
+        if (!authData.user) {
+          throw new Error('Usuário não encontrado após o login.');
+        }
+
+        const fullProfile = await getFullUserProfile(authData.user);
+
+        if (!fullProfile) {
+          await supabase.auth.signOut();
+          throw new Error('Perfil de usuário não configurado. Contate o suporte.');
+        }
+
+        login(fullProfile);
+        redirectByRole(fullProfile.role);
       } else {
         if (step === 1) {
           setStep(2);
