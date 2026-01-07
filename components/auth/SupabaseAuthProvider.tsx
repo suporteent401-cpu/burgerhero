@@ -1,7 +1,8 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { supabase } from '../../lib/supabaseClient';
 import { useAuthStore } from '../../store/authStore';
 import { getFullUserProfile } from '../../services/users.service';
+import { User } from '../../types';
 
 interface AuthProviderProps {
   children: React.ReactNode;
@@ -9,49 +10,76 @@ interface AuthProviderProps {
 
 export const SupabaseAuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const { login, logout } = useAuthStore();
+  const isHandlingRef = useRef(false);
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (session?.user) {
-        let profile = await getFullUserProfile(session.user);
-
-        // Se o perfil não for encontrado, tenta criar um perfil de fallback.
-        if (!profile) {
-          console.warn(`Perfil não encontrado para ${session.user.id}. Tentando criar perfil de fallback...`);
-          
-          const { data: rpcData, error: rpcError } = await supabase.rpc('ensure_user_profile', {
-            p_display_name: session.user.email?.split('@')[0] || 'Hero',
-            p_email: session.user.email,
-            p_cpf: '00000000000', // CPF placeholder, pois não está disponível neste contexto
-            p_birthdate: null
-          });
-
-          if (rpcError) {
-            console.error("AUTH_ERROR", rpcError);
-            await supabase.auth.signOut();
-            return;
-          }
-          
-          const result = rpcData[0];
-          if (!result || !result.ok) {
-            console.error("AUTH_ERROR", new Error(result?.message || 'Falha na RPC de fallback.'));
-            await supabase.auth.signOut();
-            return;
-          }
-
-          // Tenta buscar o perfil novamente após a criação.
-          profile = await getFullUserProfile(session.user);
-        }
-
-        if (profile) {
-          login(profile);
-        } else {
-          // Se o perfil ainda for nulo, é um erro crítico.
-          console.error("AUTH_ERROR", new Error("Seu perfil ainda não foi criado. Tente novamente em alguns segundos."));
-          await supabase.auth.signOut();
-        }
-      } else {
+      // 1. Tratamento de Logout
+      if (event === 'SIGNED_OUT' || !session) {
         logout();
+        isHandlingRef.current = false;
+        return;
+      }
+
+      // 2. Tratamento de Login e Sessão Inicial
+      if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
+        // Bloqueio para evitar chamadas duplicadas/concorrentes
+        if (isHandlingRef.current) return;
+        isHandlingRef.current = true;
+
+        try {
+          // Tenta buscar o perfil completo
+          let profile = await getFullUserProfile(session.user);
+
+          // Se não encontrou perfil, tenta criar/garantir via RPC (fail-safe)
+          if (!profile) {
+            console.warn(`Perfil não encontrado para ${session.user.id}. Tentando RPC de fallback...`);
+            
+            try {
+              const { data: rpcData, error: rpcError } = await supabase.rpc('ensure_user_profile', {
+                p_display_name: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'Hero',
+                p_email: session.user.email,
+                p_cpf: '00000000000', // Placeholder para evitar erro de constraint se obrigatório
+                p_birthdate: null
+              });
+
+              if (rpcError) {
+                console.error("Erro na RPC ensure_user_profile:", rpcError);
+              } else {
+                // Se a RPC funcionou, tenta buscar o perfil novamente
+                profile = await getFullUserProfile(session.user);
+              }
+            } catch (rpcErr) {
+               console.error("Exceção ao chamar RPC de fallback:", rpcErr);
+            }
+          }
+
+          // 3. Fallback Final: Cria um perfil temporário em memória para não quebrar a UI
+          if (!profile) {
+            console.error("FALHA CRÍTICA: Não foi possível carregar ou criar perfil no banco. Usando perfil de sessão.");
+            profile = {
+              id: session.user.id,
+              name: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'Visitante',
+              email: session.user.email || '',
+              role: 'CLIENT',
+              cpf: '',
+              whatsapp: '',
+              birthDate: '',
+              heroTheme: 'sombra-noturna',
+              avatarUrl: session.user.user_metadata?.avatar_url || null,
+              customerCode: 'PENDING'
+            } as User;
+          }
+
+          // Atualiza o store. NÃO fazemos logout se algo falhar acima.
+          login(profile);
+
+        } catch (err) {
+          console.error("Erro inesperado no fluxo de autenticação:", err);
+          // Manter sessão ativa para permitir retry ou debug
+        } finally {
+          isHandlingRef.current = false;
+        }
       }
     });
 
