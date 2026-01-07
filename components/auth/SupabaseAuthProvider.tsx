@@ -3,7 +3,6 @@ import { supabase } from '../../lib/supabaseClient';
 import { useAuthStore } from '../../store/authStore';
 import { useThemeStore } from '../../store/themeStore';
 import { useCardStore } from '../../store/cardStore';
-import { getFullUserProfile } from '../../services/users.service';
 import type { Role } from '../../types';
 
 interface AuthProviderProps {
@@ -17,8 +16,27 @@ const normalizeRole = (input: any): Role => {
 };
 
 const generateCustomerCode = () => {
-  const random = Math.random().toString(36).substring(2, 8).toUpperCase();
-  return `BH-${random}`;
+  // curto, fácil de ler no balcão
+  const rand = Math.random().toString(36).substring(2, 8).toUpperCase();
+  return `BH-${rand}`;
+};
+
+type ClientProfileRow = {
+  user_id: string;
+  display_name: string | null;
+  email: string | null;
+  avatar_url: string | null;
+  customer_code: string | null; // ✅ nova coluna
+};
+
+type HeroCardSettingsRow = {
+  user_id: string;
+  card_template_id: string | null;
+  font_style: string | null;
+  font_color: string | null;
+  font_size: number | null;
+  hero_theme: any | null;
+  mode: 'light' | 'dark' | 'system' | null;
 };
 
 export const SupabaseAuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
@@ -33,64 +51,70 @@ export const SupabaseAuthProvider: React.FC<AuthProviderProps> = ({ children }) 
     if (isInitializingRef.current) return;
     isInitializingRef.current = true;
 
-    const applySettings = (settings: any) => {
-      useThemeStore.getState().setHeroTheme(settings.heroTheme);
-      useThemeStore.getState().setMode(settings.mode);
+    const applySettings = (settings?: HeroCardSettingsRow | null) => {
+      if (!settings) return;
+
+      // Theme
+      if (settings.hero_theme) useThemeStore.getState().setHeroTheme(settings.hero_theme);
+      if (settings.mode) useThemeStore.getState().setMode(settings.mode);
+
+      // Card prefs
       useCardStore.getState().setAll({
-        templateId: settings.cardTemplateId || undefined,
-        font: settings.fontStyle,
-        color: settings.fontColor,
-        fontSize: settings.fontSize,
+        templateId: settings.card_template_id || undefined,
+        font: settings.font_style || undefined,
+        color: settings.font_color || undefined,
+        fontSize: settings.font_size || undefined,
       });
+
       useThemeStore.getState().applyTheme();
     };
 
-    /**
-     * Garante que o usuário autenticado tenha customerCode.
-     * IMPORTANTE:
-     * - Aqui eu atualizo direto no Supabase.
-     * - Ajuste o nome da coluna se no seu banco for `customer_code` ao invés de `customerCode`.
-     */
-    const ensureCustomerCode = async (profile: any) => {
-      // Se já tem, beleza
-      if (profile?.customerCode) return profile;
+    const ensureCustomerCode = async (profile: ClientProfileRow) => {
+      if (profile.customer_code) return profile;
 
       const newCode = generateCustomerCode();
 
-      // ⚠️ ATENÇÃO: escolha 1 dos campos abaixo conforme sua tabela.
-      // Se a coluna no banco for snake_case: use { customer_code: newCode }
-      // Se for camelCase (menos comum): use { customerCode: newCode }
-      //
-      // Eu vou tentar snake_case primeiro, e se falhar, tento camelCase.
-      // (Assim evita ficar travado sem saber o nome exato.)
-      let updated = false;
+      const { error } = await supabase
+        .from('client_profiles')
+        .update({ customer_code: newCode })
+        .eq('user_id', profile.user_id);
 
-      // tentativa 1: snake_case
-      {
-        const { error } = await supabase
-          .from('profiles')
-          .update({ customer_code: newCode })
-          .eq('id', profile.id);
-
-        if (!error) updated = true;
+      if (error) {
+        console.error('Falha ao atualizar customer_code em client_profiles:', error);
+        return profile; // não derruba o app
       }
 
-      // tentativa 2: camelCase (fallback)
-      if (!updated) {
-        const { error } = await supabase
-          .from('profiles')
-          .update({ customerCode: newCode })
-          .eq('id', profile.id);
+      return { ...profile, customer_code: newCode };
+    };
 
-        if (error) {
-          console.error('Falha ao gerar customerCode no profile:', error);
-          // Não joga logout por isso; só retorna o profile como está.
-          return profile;
-        }
+    const fetchClientProfile = async (userId: string): Promise<ClientProfileRow | null> => {
+      const { data, error } = await supabase
+        .from('client_profiles')
+        .select('user_id, display_name, email, avatar_url, customer_code')
+        .eq('user_id', userId)
+        .single();
+
+      if (error) {
+        console.error('Erro ao buscar client_profiles:', error);
+        return null;
       }
 
-      // Atualiza o objeto em memória para o app já enxergar agora
-      return { ...profile, customerCode: newCode };
+      return data as ClientProfileRow;
+    };
+
+    const fetchHeroCardSettings = async (userId: string): Promise<HeroCardSettingsRow | null> => {
+      const { data, error } = await supabase
+        .from('hero_card_settings')
+        .select('user_id, card_template_id, font_style, font_color, font_size, hero_theme, mode')
+        .eq('user_id', userId)
+        .single();
+
+      if (error) {
+        // Se ainda não existir registro, não é erro fatal
+        return null;
+      }
+
+      return data as HeroCardSettingsRow;
     };
 
     const initAuth = async () => {
@@ -104,9 +128,6 @@ export const SupabaseAuthProvider: React.FC<AuthProviderProps> = ({ children }) 
 
         if (error) {
           console.error('Erro ao verificar sessão inicial:', error);
-          if (error.message?.includes('Invalid Refresh Token')) {
-            await supabase.auth.signOut();
-          }
           logout();
           return;
         }
@@ -116,23 +137,39 @@ export const SupabaseAuthProvider: React.FC<AuthProviderProps> = ({ children }) 
           return;
         }
 
-        const full = await getFullUserProfile(session.user);
+        const authUser = session.user;
 
-        if (!full) {
-          console.error('Perfil não encontrado para usuário autenticado.');
-          await supabase.auth.signOut();
+        // 1) Busca perfil do app na sua tabela
+        let profile = await fetchClientProfile(authUser.id);
+
+        // Se não existir client_profiles para esse user, algo falhou no signup
+        if (!profile) {
+          console.error('client_profiles não encontrado para usuário autenticado:', authUser.id);
+          // não dá logout automaticamente — mas evita quebrar
           logout();
           return;
         }
 
-        // Garante role válida
-        let safeProfile = { ...full.profile, role: normalizeRole(full.profile.role) };
+        // 2) Garante customer_code
+        profile = await ensureCustomerCode(profile);
 
-        // ✅ Garante customerCode
-        safeProfile = await ensureCustomerCode(safeProfile);
+        // 3) Busca settings (se existir)
+        const settings = await fetchHeroCardSettings(authUser.id);
+        applySettings(settings);
 
-        applySettings(full.settings);
-        login(safeProfile);
+        // 4) Monta objeto do store (o que seu app usa)
+        // Role: se você controla isso em app_users, depois a gente integra.
+        // Por enquanto client.
+        const userForStore = {
+          id: authUser.id,
+          name: profile.display_name || authUser.email?.split('@')[0] || 'Cliente',
+          email: profile.email || authUser.email || '',
+          avatarUrl: profile.avatar_url || '',
+          customerCode: profile.customer_code || '',
+          role: normalizeRole('client'),
+        };
+
+        login(userForStore as any);
       } catch (err) {
         console.error('Exceção na inicialização da autenticação:', err);
         logout();
@@ -146,7 +183,6 @@ export const SupabaseAuthProvider: React.FC<AuthProviderProps> = ({ children }) 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
-      // Já tratamos manualmente a inicialização
       if (event === 'INITIAL_SESSION') return;
 
       if (event === 'SIGNED_OUT') {
@@ -154,41 +190,41 @@ export const SupabaseAuthProvider: React.FC<AuthProviderProps> = ({ children }) 
         return;
       }
 
-      // SIGNED_IN / TOKEN_REFRESHED
       if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session?.user) {
         try {
-          // Se já tiver usuário no store, normalmente não precisa reload
-          // MAS: se não tiver customerCode ainda, a gente garante aqui.
           const currentUser = useAuthStore.getState().user;
 
-          // Se já existe user e já tem customerCode, não faz nada
+          // se já tem user e já tem customerCode, não refaz tudo
           if (currentUser?.id && currentUser?.customerCode) return;
 
           setLoading(true);
 
-          // Se já existe user no store, tenta garantir code sem refazer tudo
-          if (currentUser?.id && !currentUser.customerCode) {
-            const ensured = await ensureCustomerCode(currentUser);
-            // login() aqui serve como "refresh" do store do auth
-            login({ ...ensured, role: normalizeRole(ensured.role) });
-            return;
-          }
+          const authUser = session.user;
 
-          // Se não tem user no store, carrega completo
-          const full = await getFullUserProfile(session.user);
-          if (!full) {
-            await supabase.auth.signOut();
+          let profile = await fetchClientProfile(authUser.id);
+          if (!profile) {
+            console.error('client_profiles não encontrado no auth change:', authUser.id);
             logout();
             return;
           }
 
-          let safeProfile = { ...full.profile, role: normalizeRole(full.profile.role) };
-          safeProfile = await ensureCustomerCode(safeProfile);
+          profile = await ensureCustomerCode(profile);
 
-          applySettings(full.settings);
-          login(safeProfile);
+          const settings = await fetchHeroCardSettings(authUser.id);
+          applySettings(settings);
+
+          const userForStore = {
+            id: authUser.id,
+            name: profile.display_name || authUser.email?.split('@')[0] || 'Cliente',
+            email: profile.email || authUser.email || '',
+            avatarUrl: profile.avatar_url || '',
+            customerCode: profile.customer_code || '',
+            role: normalizeRole('client'),
+          };
+
+          login(userForStore as any);
         } catch (e) {
-          console.error('Erro ao processar mudança de auth state:', e);
+          console.error('Erro no onAuthStateChange:', e);
           logout();
         } finally {
           setLoading(false);
