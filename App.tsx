@@ -4,6 +4,7 @@ import { useAuthStore } from './store/authStore';
 import { useThemeStore } from './store/themeStore';
 import { SupabaseAuthProvider } from './components/auth/SupabaseAuthProvider';
 import ErrorBoundary from './components/ErrorBoundary';
+import type { Role } from './types';
 
 // Layouts
 import ClientLayout from './layout/ClientLayout';
@@ -29,13 +30,13 @@ import StaffHome from './app/StaffHome';
 import StaffValidate from './app/StaffValidate';
 import Debug from './app/Debug';
 
-// 🔒 Proteção por papel
+// 🔒 Proteção por papel (Role é minúsculo: 'client' | 'staff' | 'admin')
 const ProtectedRoute = ({
   children,
   allowedRoles,
 }: {
   children?: React.ReactNode;
-  allowedRoles?: Array<'CLIENT' | 'STAFF' | 'ADMIN'>;
+  allowedRoles?: Role[];
 }) => {
   const { isAuthed, user } = useAuthStore();
 
@@ -43,8 +44,8 @@ const ProtectedRoute = ({
   if (!user) return <Navigate to="/auth" replace />;
 
   if (allowedRoles && !allowedRoles.includes(user.role)) {
-    if (user.role === 'ADMIN') return <Navigate to="/admin" replace />;
-    if (user.role === 'STAFF') return <Navigate to="/staff" replace />;
+    if (user.role === 'admin') return <Navigate to="/admin" replace />;
+    if (user.role === 'staff') return <Navigate to="/staff" replace />;
     return <Navigate to="/app" replace />;
   }
 
@@ -52,7 +53,7 @@ const ProtectedRoute = ({
 };
 
 const App: React.FC = () => {
-  const applyTheme = useThemeStore(state => state.applyTheme);
+  const applyTheme = useThemeStore((state) => state.applyTheme);
 
   useEffect(() => {
     applyTheme();
@@ -67,21 +68,23 @@ const App: React.FC = () => {
             <Route path="/" element={<Landing />} />
             <Route path="/auth" element={<Auth />} />
             <Route path="/plans" element={<Plans />} />
+
             <Route
               path="/checkout"
               element={
-                <ProtectedRoute allowedRoles={['CLIENT']}>
+                <ProtectedRoute allowedRoles={['client']}>
                   <Checkout />
                 </ProtectedRoute>
               }
             />
+
             <Route path="/debug" element={<Debug />} />
 
             {/* Cliente */}
             <Route
               path="/app"
               element={
-                <ProtectedRoute allowedRoles={['CLIENT']}>
+                <ProtectedRoute allowedRoles={['client']}>
                   <ClientLayout />
                 </ProtectedRoute>
               }
@@ -97,7 +100,7 @@ const App: React.FC = () => {
             <Route
               path="/admin"
               element={
-                <ProtectedRoute allowedRoles={['ADMIN']}>
+                <ProtectedRoute allowedRoles={['admin']}>
                   <AdminLayout />
                 </ProtectedRoute>
               }
@@ -113,7 +116,7 @@ const App: React.FC = () => {
             <Route
               path="/staff"
               element={
-                <ProtectedRoute allowedRoles={['STAFF', 'ADMIN']}>
+                <ProtectedRoute allowedRoles={['staff', 'admin']}>
                   <StaffLayout />
                 </ProtectedRoute>
               }
