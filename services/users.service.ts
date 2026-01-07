@@ -91,35 +91,70 @@ const generateUniqueHeroCode = async (): Promise<string> => {
 };
 
 export const registerNewUser = async (userData: any) => {
+  // 1. Verifica se o CPF já existe antes de tentar criar o usuário.
   const cpfExists = await checkCpfExists(userData.cpf);
-  if (cpfExists) throw new Error('CPF já cadastrado.');
+  if (cpfExists) {
+    throw new Error('CPF já cadastrado.');
+  }
 
+  // 2. Cria o usuário no Supabase Auth.
   const { data: authData, error: signUpError } = await supabase.auth.signUp({
     email: userData.email,
     password: userData.password,
   });
 
-  if (signUpError) throw signUpError;
-  if (!authData.user) throw new Error('Não foi possível criar o usuário.');
+  if (signUpError) {
+    if (signUpError.message.includes('unique constraint')) {
+      throw new Error('Este e-mail já está em uso.');
+    }
+    throw signUpError;
+  }
+  if (!authData.user) {
+    throw new Error('Não foi possível criar o usuário. Tente novamente.');
+  }
   
   const userId = authData.user.id;
+
+  // 3. Gera um código de herói único.
   const heroCode = await generateUniqueHeroCode();
 
-  const [appUserResult, clientProfileResult, cardSettingsResult] = await Promise.all([
-    supabase.from('app_users').insert({ id: userId, role: 'client', is_active: true }),
-    supabase.from('client_profiles').insert({
+  // 4. Insere os dados nas tabelas sequencialmente para garantir a integridade.
+  // a) Tabela de roles (app_users)
+  const { error: appUserError } = await supabase
+    .from('app_users')
+    .insert({ id: userId, role: 'client', is_active: true });
+
+  if (appUserError) {
+    console.error('Falha ao criar registro em app_users:', appUserError);
+    throw new Error('Falha ao configurar o perfil (app). Contate o suporte.');
+  }
+
+  // b) Tabela de perfis (client_profiles)
+  const { error: clientProfileError } = await supabase
+    .from('client_profiles')
+    .insert({
       user_id: userId,
       display_name: userData.name,
       email: userData.email,
-      cpf: userData.cpf,
+      cpf: normalizeCpf(userData.cpf), // Salva o CPF normalizado
       hero_code: heroCode,
-    }),
-    supabase.from('hero_card_settings').insert({ user_id: userId }),
-  ]);
+    });
 
-  if (appUserResult.error) throw new Error(`Erro (app): ${appUserResult.error.message}`);
-  if (clientProfileResult.error) throw new Error(`Erro (profile): ${clientProfileResult.error.message}`);
-  if (cardSettingsResult.error) throw new Error(`Erro (settings): ${cardSettingsResult.error.message}`);
+  if (clientProfileError) {
+    console.error('Falha ao criar registro em client_profiles:', clientProfileError);
+    throw new Error('Falha ao configurar o perfil (profile). Contate o suporte.');
+  }
 
+  // c) Tabela de configurações do cartão (hero_card_settings)
+  const { error: cardSettingsError } = await supabase
+    .from('hero_card_settings')
+    .insert({ user_id: userId });
+
+  if (cardSettingsError) {
+    console.error('Falha ao criar registro em hero_card_settings:', cardSettingsError);
+    throw new Error('Falha ao configurar o perfil (settings). Contate o suporte.');
+  }
+
+  // 5. Retorna os dados de autenticação se tudo ocorrer bem.
   return authData;
 };
