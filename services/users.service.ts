@@ -56,7 +56,6 @@ export const getFullUserProfile = async (authUser: SupabaseUser): Promise<AppUse
   const clientProfileData = clientProfileResponse.data;
   const settingsData = settingsResponse.data;
 
-  // Usa o tema salvo em settings, ou do perfil (se tivesse), ou default
   const savedTheme = settingsData?.hero_theme as any || 'sombra-noturna';
 
   const fullProfile: AppUser = {
@@ -67,8 +66,8 @@ export const getFullUserProfile = async (authUser: SupabaseUser): Promise<AppUse
     customerCode: clientProfileData?.customer_id_public || clientProfileData?.hero_code || '',
     avatarUrl: clientProfileData?.avatar_url || (authUser.user_metadata as any)?.avatar_url || null,
     cpf: clientProfileData?.cpf || '',
-    whatsapp: '', // Futuro: adicionar no client_profiles
-    birthDate: '', // Futuro
+    whatsapp: '',
+    birthDate: '',
     heroTheme: savedTheme,
   };
 
@@ -105,8 +104,6 @@ export const signUpAndCreateProfile = async (userData: any) => {
   return authData;
 };
 
-// --- UPDATE NAME ---
-
 export const updateProfileName = async (userId: string, name: string) => {
   console.log('[UsersService] Atualizando nome...', { userId, name });
   
@@ -114,14 +111,13 @@ export const updateProfileName = async (userId: string, name: string) => {
     .from('client_profiles')
     .update({ display_name: name })
     .eq('user_id', userId)
-    .select(); // Importante: select() retorna o dado atualizado para confirmar sucesso
+    .select();
 
   if (error) {
     console.error('[UsersService] Erro ao atualizar nome:', error);
     throw error;
   }
   
-  console.log('[UsersService] Nome atualizado com sucesso:', data);
   return data;
 };
 
@@ -130,30 +126,37 @@ export const updateProfileName = async (userId: string, name: string) => {
 export const uploadAvatar = async (userId: string, file: File): Promise<string | null> => {
   console.log('[UsersService] Iniciando upload de avatar...', { userId, fileName: file.name });
   
+  // Cria um nome de arquivo único para evitar cache: uid/timestamp.ext
   const fileExt = file.name.split('.').pop();
   const fileName = `${userId}/${Date.now()}.${fileExt}`;
 
   // 1. Upload
   const { error: uploadError } = await supabase.storage
     .from('avatars')
-    .upload(fileName, file, { upsert: true });
+    .upload(fileName, file, { 
+      upsert: true,
+      contentType: file.type 
+    });
 
   if (uploadError) {
     console.error('[UsersService] Erro no upload:', uploadError);
-    throw uploadError;
+    throw new Error(`Falha no upload: ${uploadError.message}`);
   }
 
   // 2. Get Public URL
   const { data } = supabase.storage.from('avatars').getPublicUrl(fileName);
-  console.log('[UsersService] Upload concluído. URL:', data.publicUrl);
   
+  if (!data.publicUrl) {
+     throw new Error('Falha ao obter URL pública do avatar.');
+  }
+
+  console.log('[UsersService] Upload concluído. URL:', data.publicUrl);
   return data.publicUrl;
 };
 
 // --- SETTINGS ---
 
 export const updateCardSettings = async (userId: string, settings: any) => {
-  // Mapeia os campos do store para o DB
   const dbPayload: any = {};
   if (settings.templateId) dbPayload.card_template_id = settings.templateId;
   if (settings.fontFamily) dbPayload.font_style = settings.fontFamily;

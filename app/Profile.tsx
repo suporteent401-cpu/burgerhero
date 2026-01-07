@@ -4,7 +4,7 @@ import { Button } from '../components/ui/Button';
 import { useAuthStore } from '../store/authStore';
 import { useThemeStore } from '../store/themeStore';
 import { useCardStore, FONT_OPTIONS, COLOR_OPTIONS } from '../store/cardStore';
-import { LogOut, Palette, Moon, Sun, Monitor, CreditCard, CheckCircle2, Type, Camera, Pencil, Check, X, TextQuote, Download, Fingerprint, Loader2, ShieldCheck, ShieldAlert } from 'lucide-react';
+import { LogOut, Palette, Moon, Sun, Monitor, CreditCard, CheckCircle2, Type, Camera, Pencil, Check, X, TextQuote, Download, Fingerprint, Loader2, ShieldCheck, ShieldAlert, Upload } from 'lucide-react';
 import { HeroTheme, Subscription } from '../types';
 import { fakeApi } from '../lib/fakeApi';
 import { supabase } from '../lib/supabaseClient';
@@ -35,8 +35,12 @@ const Profile: React.FC = () => {
   const [isEditingName, setIsEditingName] = useState(false);
   const [isSavingName, setIsSavingName] = useState(false);
   const [editName, setEditName] = useState(user?.name || '');
-  const [uploadingAvatar, setUploadingAvatar] = useState(false);
   
+  // Avatar Edit State
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [previewAvatar, setPreviewAvatar] = useState<string | null>(null);
+  const [selectedAvatarFile, setSelectedAvatarFile] = useState<File | null>(null);
+
   // Card Store hooks
   const { 
     selectedTemplateId, 
@@ -58,13 +62,11 @@ const Profile: React.FC = () => {
   // Carrega templates, assinatura e settings
   useEffect(() => {
     if (user?.id) {
-      // 1. Carrega Templates do Banco
       templatesService.getActiveTemplates().then(dbTemplates => {
         const mapped = templatesService.mapToStoreFormat(dbTemplates);
         setTemplates(mapped);
       });
 
-      // 2. Carrega Assinatura (Mock + Real)
       const mockSub = subscriptionMockService.getActiveSubscription(user.id);
       if (mockSub && mockSub.status === 'active') {
         setSub({
@@ -76,7 +78,6 @@ const Profile: React.FC = () => {
         fakeApi.getSubscriptionStatus(user.id).then(setSub);
       }
 
-      // 3. Carrega Settings do Cartão
       getCardSettings(user.id).then(settings => {
         if (settings) {
           setAll({
@@ -97,7 +98,6 @@ const Profile: React.FC = () => {
     }
   }, [user?.id, setAll, setHeroTheme, setMode, setTemplates]);
 
-  // Sincroniza o input de edição com o nome do usuário quando não está editando
   useEffect(() => {
     if (!isEditingName && user?.name && user.name !== editName) {
       setEditName(user.name);
@@ -144,38 +144,54 @@ const Profile: React.FC = () => {
     saveSettingsToDb({ fontSize: size });
   };
 
-  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (file && user) {
-      try {
-        setUploadingAvatar(true);
-        const publicUrl = await uploadAvatar(user.id, file);
-        if (publicUrl) {
-          // Atualiza banco
-          const { error } = await supabase
-            .from('client_profiles')
-            .update({ avatar_url: publicUrl })
-            .eq('user_id', user.id);
-
-          if (error) throw error;
-
-          // Atualiza store local
-          updateUser({ avatarUrl: publicUrl });
-          alert('Foto de perfil atualizada com sucesso!');
-        }
-      } catch (err: any) {
-        console.error('Erro no upload:', err);
-        alert(`Erro ao enviar imagem: ${err.message || 'Falha no upload.'}`);
-      } finally {
-        setUploadingAvatar(false);
-      }
+    if (file) {
+      // Cria preview local
+      const previewUrl = URL.createObjectURL(file);
+      setPreviewAvatar(previewUrl);
+      setSelectedAvatarFile(file);
     }
+  };
+
+  const handleConfirmAvatar = async () => {
+    if (!user || !selectedAvatarFile) return;
+
+    try {
+      setUploadingAvatar(true);
+      const publicUrl = await uploadAvatar(user.id, selectedAvatarFile);
+      
+      if (publicUrl) {
+        // Atualiza banco com a URL
+        const { error } = await supabase
+          .from('client_profiles')
+          .update({ avatar_url: publicUrl })
+          .eq('user_id', user.id);
+
+        if (error) throw error;
+
+        // Atualiza UI
+        updateUser({ avatarUrl: publicUrl });
+        alert('Foto atualizada com sucesso!');
+        handleCancelAvatar(); // Limpa preview e arquivo
+      }
+    } catch (err: any) {
+      console.error('Erro no upload:', err);
+      alert(`Erro ao enviar imagem: ${err.message || 'Falha no upload.'}`);
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
+
+  const handleCancelAvatar = () => {
+    setPreviewAvatar(null);
+    setSelectedAvatarFile(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const handleSaveName = async () => {
     if (!user || !editName.trim()) return;
     
-    // Se o nome não mudou, apenas sai do modo de edição
     if (editName.trim() === user.name) {
       setIsEditingName(false);
       return;
@@ -183,17 +199,12 @@ const Profile: React.FC = () => {
 
     setIsSavingName(true);
     try {
-      // 1. Persiste no Banco
       await updateProfileName(user.id, editName.trim());
-      
-      // 2. Atualiza Store Local (apenas após sucesso no banco)
       updateUser({ name: editName.trim() });
-      
       setIsEditingName(false);
       alert('Nome salvo com sucesso!');
     } catch (err: any) {
       console.error('Erro ao salvar nome:', err);
-      // Mostra mensagem real do erro
       alert(`Erro ao salvar: ${err.message || err.error_description || 'Erro desconhecido'}`);
     } finally {
       setIsSavingName(false);
@@ -238,7 +249,6 @@ const Profile: React.FC = () => {
     { name: 'azul-eletrico', color: '#0300FF', label: 'Elétrico' },
   ];
 
-  // Lógica de Status: Prioriza Mock > Banco > Inativo
   const isMockActive = user?.id ? subscriptionMockService.isSubscriptionActive(user.id) : false;
   const isDbActive = sub?.status === 'ACTIVE' || sub?.status === 'active';
   const isActive = isMockActive || isDbActive;
@@ -248,26 +258,65 @@ const Profile: React.FC = () => {
       
       {/* CABEÇALHO */}
       <div className="flex flex-col items-center">
-        <div className="relative group cursor-pointer" onClick={() => !uploadingAvatar && fileInputRef.current?.click()}>
-          <div className="w-28 h-28 rounded-full border-4 border-white dark:border-slate-800 shadow-xl bg-slate-200 overflow-hidden relative">
+        <div className="relative group">
+          <div 
+            className="w-28 h-28 rounded-full border-4 border-white dark:border-slate-800 shadow-xl bg-slate-200 overflow-hidden relative cursor-pointer"
+            onClick={() => !uploadingAvatar && !previewAvatar && fileInputRef.current?.click()}
+          >
             {uploadingAvatar ? (
               <div className="w-full h-full flex items-center justify-center bg-black/50">
                 <Loader2 className="animate-spin text-white" />
               </div>
             ) : (
-              <img src={user?.avatarUrl || 'https://picsum.photos/seed/hero/200'} alt="Profile" className="w-full h-full object-cover" />
+              <img 
+                src={previewAvatar || user?.avatarUrl || 'https://picsum.photos/seed/hero/200'} 
+                alt="Profile" 
+                className={`w-full h-full object-cover transition-opacity ${uploadingAvatar ? 'opacity-50' : 'opacity-100'}`} 
+              />
+            )}
+            
+            {/* Overlay de Hover (só se não tiver preview pendente) */}
+            {!previewAvatar && !uploadingAvatar && (
+              <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                 <Camera size={24} className="text-white" />
+              </div>
             )}
           </div>
-          <div className="absolute inset-0 bg-black/30 rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-             <Camera size={24} className="text-white" />
-          </div>
-          <button className="absolute bottom-0 right-0 bg-hero-primary text-white p-2 rounded-full shadow-lg hover:scale-110 transition-transform pointer-events-none">
-            <Camera size={16} />
-          </button>
+
+          {/* Botões de Ação para Avatar (Preview State) */}
+          {previewAvatar && !uploadingAvatar ? (
+             <div className="absolute -bottom-10 left-1/2 -translate-x-1/2 flex gap-2 z-10 w-max bg-white dark:bg-slate-900 p-1.5 rounded-full shadow-lg border border-slate-100 dark:border-slate-800 animate-in fade-in slide-in-from-top-2">
+                <button 
+                  onClick={handleConfirmAvatar}
+                  className="bg-green-500 hover:bg-green-600 text-white p-2 rounded-full transition-colors"
+                  title="Confirmar Foto"
+                >
+                  <Check size={16} />
+                </button>
+                <button 
+                  onClick={handleCancelAvatar}
+                  className="bg-red-500 hover:bg-red-600 text-white p-2 rounded-full transition-colors"
+                  title="Cancelar"
+                >
+                  <X size={16} />
+                </button>
+             </div>
+          ) : (
+             // Ícone Padrão de Câmera
+             !uploadingAvatar && (
+              <button 
+                onClick={() => fileInputRef.current?.click()}
+                className="absolute bottom-0 right-0 bg-hero-primary text-white p-2 rounded-full shadow-lg hover:scale-110 transition-transform"
+              >
+                <Camera size={16} />
+              </button>
+             )
+          )}
+          
           <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileChange} disabled={uploadingAvatar} />
         </div>
         
-        <div className="mt-4 flex flex-col items-center w-full">
+        <div className="mt-8 flex flex-col items-center w-full">
           {isEditingName ? (
              <div className="flex items-center justify-center gap-2 w-full max-w-[280px]">
                 <input
