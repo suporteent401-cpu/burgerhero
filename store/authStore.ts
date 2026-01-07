@@ -17,17 +17,20 @@ export const useAuthStore = create<AuthState>()(
     (set) => ({
       user: null,
       isAuthed: false,
-      isLoading: true, // Inicia como true para aguardar a verificação inicial
+      isLoading: true,
+
       login: (user) => set({ user, isAuthed: true, isLoading: false }),
       logout: () => set({ user: null, isAuthed: false, isLoading: false }),
-      updateUser: (data) => set((state) => ({
-        user: state.user ? { ...state.user, ...data } : null
-      })),
+
+      updateUser: (data) =>
+        set((state) => ({
+          user: state.user ? { ...state.user, ...data } : null,
+        })),
+
       setLoading: (loading) => set({ isLoading: loading }),
     }),
-    { 
+    {
       name: 'burger-hero-auth',
-      // Não persistir o estado de carregamento
       partialize: (state) => ({ user: state.user, isAuthed: state.isAuthed }),
     }
   )
