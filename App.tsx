@@ -25,6 +25,7 @@ import AdminDashboard from './app/AdminDashboard';
 import AdminUsers from './app/AdminUsers';
 import AdminUserDetails from './app/AdminUserDetails';
 import AdminPlans from './app/AdminPlans';
+import AdminTemplates from './app/AdminTemplates'; // Nova página
 import AdminCoupons from './app/AdminCoupons';
 import StaffHome from './app/StaffHome';
 import StaffValidate from './app/StaffValidate';
@@ -112,6 +113,7 @@ const App: React.FC = () => {
               <Route path="users" element={<AdminUsers />} />
               <Route path="users/:id" element={<AdminUserDetails />} />
               <Route path="plans" element={<AdminPlans />} />
+              <Route path="templates" element={<AdminTemplates />} />
               <Route path="coupons" element={<AdminCoupons />} />
             </Route>
 

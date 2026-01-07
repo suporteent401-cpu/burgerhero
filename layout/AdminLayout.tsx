@@ -1,6 +1,6 @@
 import React from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Users, CreditCard, Tag, LogOut, ChevronDown } from 'lucide-react';
+import { LayoutDashboard, Users, CreditCard, Tag, LogOut, ChevronDown, Image as ImageIcon } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 
 const AdminLayout: React.FC = () => {
@@ -18,6 +18,7 @@ const AdminLayout: React.FC = () => {
     { label: 'Painel', icon: LayoutDashboard, path: '/admin' },
     { label: 'Usuários', icon: Users, path: '/admin/users' },
     { label: 'Planos', icon: CreditCard, path: '/admin/plans' },
+    { label: 'Modelos', icon: ImageIcon, path: '/admin/templates' },
     { label: 'Cupons', icon: Tag, path: '/admin/coupons' },
   ];
 
