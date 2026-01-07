@@ -29,38 +29,56 @@ import StaffHome from './app/StaffHome';
 import StaffValidate from './app/StaffValidate';
 import Debug from './app/Debug';
 
-// Role Protection Component
-const ProtectedRoute = ({ children, allowedRoles }: { children?: React.ReactNode, allowedRoles?: string[] }) => {
-  const isAuthed = useAuthStore(state => state.isAuthed);
-  const user = useAuthStore(state => state.user);
-  
+// 🔒 Proteção por papel
+const ProtectedRoute = ({
+  children,
+  allowedRoles,
+}: {
+  children?: React.ReactNode;
+  allowedRoles?: Array<'client' | 'staff' | 'admin'>;
+}) => {
+  const { isAuthed, user } = useAuthStore();
+
   if (!isAuthed) return <Navigate to="/auth" replace />;
-  if (allowedRoles && user && !allowedRoles.includes(user.role)) {
-    if (user.role === 'ADMIN') return <Navigate to="/admin" replace />;
-    if (user.role === 'STAFF') return <Navigate to="/staff" replace />;
+  if (!user) return <Navigate to="/auth" replace />;
+
+  if (allowedRoles && !allowedRoles.includes(user.role)) {
+    if (user.role === 'admin') return <Navigate to="/admin" replace />;
+    if (user.role === 'staff') return <Navigate to="/staff" replace />;
     return <Navigate to="/app" replace />;
   }
+
   return <>{children || <Outlet />}</>;
 };
 
 const App: React.FC = () => {
   const applyTheme = useThemeStore(state => state.applyTheme);
-  useEffect(() => { applyTheme(); }, [applyTheme]);
+
+  useEffect(() => {
+    applyTheme();
+  }, [applyTheme]);
 
   return (
     <ErrorBoundary>
       <SupabaseAuthProvider>
         <HashRouter>
           <Routes>
-            {/* Public */}
+            {/* Público */}
             <Route path="/" element={<Landing />} />
             <Route path="/auth" element={<Auth />} />
             <Route path="/plans" element={<Plans />} />
             <Route path="/checkout" element={<Checkout />} />
             <Route path="/debug" element={<Debug />} />
 
-            {/* Client App */}
-            <Route path="/app" element={<ProtectedRoute allowedRoles={['CLIENT']}><ClientLayout /></ProtectedRoute>}>
+            {/* Cliente */}
+            <Route
+              path="/app"
+              element={
+                <ProtectedRoute allowedRoles={['client']}>
+                  <ClientLayout />
+                </ProtectedRoute>
+              }
+            >
               <Route index element={<Home />} />
               <Route path="qrcode" element={<QRCodePage />} />
               <Route path="voucher" element={<Voucher />} />
@@ -68,8 +86,15 @@ const App: React.FC = () => {
               <Route path="profile" element={<Profile />} />
             </Route>
 
-            {/* Admin Panel */}
-            <Route path="/admin" element={<ProtectedRoute allowedRoles={['ADMIN']}><AdminLayout /></ProtectedRoute>}>
+            {/* Admin */}
+            <Route
+              path="/admin"
+              element={
+                <ProtectedRoute allowedRoles={['admin']}>
+                  <AdminLayout />
+                </ProtectedRoute>
+              }
+            >
               <Route index element={<AdminDashboard />} />
               <Route path="users" element={<AdminUsers />} />
               <Route path="users/:id" element={<AdminUserDetails />} />
@@ -77,8 +102,15 @@ const App: React.FC = () => {
               <Route path="coupons" element={<AdminCoupons />} />
             </Route>
 
-            {/* Staff Area */}
-            <Route path="/staff" element={<ProtectedRoute allowedRoles={['STAFF', 'ADMIN']}><StaffLayout /></ProtectedRoute>}>
+            {/* Staff */}
+            <Route
+              path="/staff"
+              element={
+                <ProtectedRoute allowedRoles={['staff', 'admin']}>
+                  <StaffLayout />
+                </ProtectedRoute>
+              }
+            >
               <Route index element={<StaffHome />} />
               <Route path="validate" element={<StaffValidate />} />
             </Route>
