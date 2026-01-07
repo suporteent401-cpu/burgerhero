@@ -1,13 +1,13 @@
-import React, { useState, useMemo } from 'react';
-import { BURGERS_CATALOG, Burger } from '../lib/burgersCatalog';
+import React, { useState, useMemo, useEffect } from 'react';
+import { Burger } from '../lib/burgersCatalog';
 import BurgerCard from '../components/BurgerCard';
 import BurgerDetailsModal from '../components/BurgerDetailsModal';
-import { UtensilsCrossed, BellRing, Lock, Search, FilterX } from 'lucide-react';
+import { UtensilsCrossed, BellRing, Lock, Search, FilterX, Loader2 } from 'lucide-react';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
-import { Input } from '../components/ui/Input';
 import { useFavorites } from '../hooks/useFavorites';
 import { motion, AnimatePresence } from 'framer-motion';
+import { getAllBurgers } from '../services/burgers.service';
 
 type FilterType = 'all' | 'popular' | 'new' | 'favorites';
 
@@ -15,12 +15,43 @@ const Burgers: React.FC = () => {
   const [selectedBurger, setSelectedBurger] = useState<Burger | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   
-  // State for Filters and Search
+  const [burgers, setBurgers] = useState<Burger[]>([]);
+  const [loading, setLoading] = useState(true);
+  
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<FilterType>('all');
   
-  // Custom Hook for Favorites
   const { favorites, toggleFavorite, isFavorite } = useFavorites();
+
+  useEffect(() => {
+    const fetchBurgers = async () => {
+      try {
+        setLoading(true);
+        const burgersData = await getAllBurgers();
+        
+        // Mapeia os dados do Supabase para o tipo 'Burger' que os componentes esperam
+        const mappedBurgers = burgersData.map((b: any) => ({
+          id: b.id,
+          name: b.name,
+          slogan: b.subtitle || '',
+          description: b.description || '',
+          price: b.price_cents / 100,
+          images: b.image_url ? [b.image_url] : [],
+          isNew: b.is_new,
+          isBestSeller: b.is_top,
+        }));
+
+        setBurgers(mappedBurgers);
+      } catch (error) {
+        console.error("Erro ao buscar burgers:", error);
+        // Fallback: A lista de burgers ficará vazia.
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchBurgers();
+  }, []);
 
   const handleOpenModal = (burger: Burger) => {
     setSelectedBurger(burger);
@@ -32,10 +63,8 @@ const Burgers: React.FC = () => {
     setTimeout(() => setSelectedBurger(null), 300);
   };
 
-  // Filter Logic
   const filteredBurgers = useMemo(() => {
-    return BURGERS_CATALOG.filter(burger => {
-      // 1. Search Match
+    return burgers.filter(burger => {
       const searchLower = searchQuery.toLowerCase();
       const matchesSearch = 
         burger.name.toLowerCase().includes(searchLower) || 
@@ -44,7 +73,6 @@ const Burgers: React.FC = () => {
 
       if (!matchesSearch) return false;
 
-      // 2. Chip Filter Match
       if (activeFilter === 'all') return true;
       if (activeFilter === 'popular') return burger.isBestSeller;
       if (activeFilter === 'new') return burger.isNew;
@@ -52,7 +80,7 @@ const Burgers: React.FC = () => {
 
       return true;
     });
-  }, [searchQuery, activeFilter, favorites]);
+  }, [searchQuery, activeFilter, burgers, favorites]);
 
   const clearFilters = () => {
     setSearchQuery('');
@@ -65,7 +93,6 @@ const Burgers: React.FC = () => {
       {/* Header & Search */}
       <div className="sticky top-[60px] z-20 bg-slate-50/90 dark:bg-slate-950/90 backdrop-blur-md pb-2 -mx-4 px-4 pt-2">
         <div className="space-y-4 max-w-lg mx-auto">
-          {/* Title Row */}
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-hero-primary/10 flex items-center justify-center text-hero-primary">
               <UtensilsCrossed size={20} />
@@ -75,8 +102,6 @@ const Burgers: React.FC = () => {
               <p className="text-slate-500 font-medium text-xs">Escolha seu favorito</p>
             </div>
           </div>
-
-          {/* Search Bar */}
           <div className="relative">
             <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
               <Search size={18} />
@@ -89,8 +114,6 @@ const Burgers: React.FC = () => {
               className="w-full bg-white dark:bg-slate-900 border-2 border-slate-100 dark:border-slate-800 rounded-xl pl-10 pr-4 py-3 text-sm font-medium focus:border-hero-primary focus:outline-none transition-colors text-slate-800 dark:text-white placeholder:text-slate-400"
             />
           </div>
-
-          {/* Filter Chips */}
           <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
             {[
               { id: 'all', label: 'Todos' },
@@ -117,7 +140,11 @@ const Burgers: React.FC = () => {
 
       {/* Grid Content */}
       <div className="min-h-[40vh]">
-        {filteredBurgers.length > 0 ? (
+        {loading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="w-8 h-8 text-hero-primary animate-spin" />
+          </div>
+        ) : filteredBurgers.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <AnimatePresence mode="popLayout">
               {filteredBurgers.map((burger) => (
@@ -141,8 +168,6 @@ const Burgers: React.FC = () => {
                 </motion.div>
               ))}
             </AnimatePresence>
-
-            {/* Card "Em Breve" - Show only if explicitly 'all' and no search */}
             {activeFilter === 'all' && !searchQuery && (
               <Card className="border border-dashed border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/30 flex flex-col items-center justify-center text-center p-8 min-h-[300px] group relative overflow-hidden">
                 <div className="absolute inset-0 bg-slate-100/50 dark:bg-black/20 backdrop-blur-[2px] z-0" />
@@ -162,7 +187,6 @@ const Burgers: React.FC = () => {
             )}
           </div>
         ) : (
-          /* Empty State */
           <div className="flex flex-col items-center justify-center py-12 text-center">
             <div className="w-20 h-20 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center mb-4 text-slate-400">
               <FilterX size={32} />
@@ -178,7 +202,6 @@ const Burgers: React.FC = () => {
         )}
       </div>
 
-      {/* Modal de Detalhes */}
       <BurgerDetailsModal 
         burger={selectedBurger} 
         isOpen={isModalOpen} 
