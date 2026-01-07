@@ -5,6 +5,57 @@ import { User as SupabaseUser } from '@supabase/supabase-js';
 
 const normalizeCpf = (cpf: string) => (cpf ? cpf.replace(/[^\d]/g, '') : '');
 
+const generateCustomerId = (): string => {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let result = '';
+  for (let i = 0; i < 6; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return `BH-${result}`;
+};
+
+/**
+ * Garante que o usuário tenha um customer_id_public.
+ * Se já tiver, retorna. Se não, gera um único, salva e retorna.
+ */
+const ensureCustomerIdPublic = async (userId: string, currentId: string | null): Promise<string> => {
+  if (currentId) return currentId;
+
+  let newId = '';
+  let attempts = 0;
+  const maxAttempts = 10;
+
+  while (attempts < maxAttempts) {
+    attempts++;
+    newId = generateCustomerId();
+
+    // Verifica se já existe
+    const { data: existing } = await supabase
+      .from('client_profiles')
+      .select('user_id')
+      .eq('customer_id_public', newId)
+      .maybeSingle();
+
+    if (!existing) {
+      // Livre para usar, tenta atualizar
+      const { error: updateError } = await supabase
+        .from('client_profiles')
+        .update({ customer_id_public: newId })
+        .eq('user_id', userId);
+
+      if (!updateError) {
+        return newId;
+      } else {
+        console.warn(`Tentativa ${attempts}: Falha ao salvar ID gerado`, updateError);
+      }
+    }
+  }
+
+  // Fallback seguro para não travar o login em caso extremo
+  console.error('Falha crítica ao gerar customer_id_public único após várias tentativas.');
+  return 'BH-PENDING';
+};
+
 export const checkCpfExists = async (cpf: string): Promise<boolean> => {
   const normalizedCpf = normalizeCpf(cpf);
   if (!normalizedCpf) return false;
@@ -62,7 +113,7 @@ export const getFullUserProfile = async (authUser: SupabaseUser): Promise<AppUse
   // 2) Perfil do cliente é opcional (admin/staff podem não ter)
   const { data: clientRows, error: clientProfileError } = await supabase
     .from('client_profiles')
-    .select('display_name, hero_code, avatar_url, cpf')
+    .select('display_name, hero_code, avatar_url, cpf, customer_id_public')
     .eq('user_id', authUser.id)
     .limit(1);
 
@@ -75,6 +126,18 @@ export const getFullUserProfile = async (authUser: SupabaseUser): Promise<AppUse
 
   const clientProfileData = clientRows?.[0] ?? null;
 
+  // 3) Garante o ID Público (BH-XXXXXX)
+  let finalCustomerCode = 'N/A';
+  if (clientProfileData) {
+    try {
+      finalCustomerCode = await ensureCustomerIdPublic(authUser.id, clientProfileData.customer_id_public);
+    } catch (err) {
+      console.error('Erro ao garantir customer_id_public:', err);
+      // Fallback para o hero_code antigo ou N/A se der erro total
+      finalCustomerCode = clientProfileData.customer_id_public || clientProfileData.hero_code || 'N/A';
+    }
+  }
+
   const fullProfile: AppUser = {
     id: authUser.id,
     email: authUser.email || '',
@@ -86,7 +149,7 @@ export const getFullUserProfile = async (authUser: SupabaseUser): Promise<AppUse
       authUser.email?.split('@')[0] ||
       'Herói',
 
-    customerCode: clientProfileData?.hero_code || 'N/A',
+    customerCode: finalCustomerCode,
     avatarUrl: clientProfileData?.avatar_url || (authUser.user_metadata as any)?.avatar_url || null,
     cpf: clientProfileData?.cpf || '',
     whatsapp: '',
