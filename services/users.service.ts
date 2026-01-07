@@ -2,7 +2,6 @@ import { supabase } from '../lib/supabaseClient';
 import { User as AppUser, Role, HeroTheme } from '../types';
 import { User as SupabaseUser } from '@supabase/supabase-js';
 
-// Estrutura de retorno unificada para o perfil completo
 export interface FullUserProfile {
   profile: AppUser;
   settings: {
@@ -16,6 +15,12 @@ export interface FullUserProfile {
 }
 
 const normalizeCpf = (cpf: string) => (cpf ? cpf.replace(/[^\d]/g, '') : '');
+
+const normalizeRole = (input: any): Role => {
+  const r = String(input || '').toLowerCase();
+  if (r === 'admin' || r === 'staff' || r === 'client') return r;
+  return 'client';
+};
 
 export const checkCpfExists = async (cpf: string): Promise<boolean> => {
   const normalizedCpf = normalizeCpf(cpf);
@@ -54,21 +59,19 @@ export const getFullUserProfile = async (authUser: SupabaseUser): Promise<FullUs
   const [appUserResponse, clientProfileResponse, settingsResponse] = await Promise.all([
     supabase.from('app_users').select('role, is_active').eq('id', authUser.id).maybeSingle(),
     supabase.from('client_profiles').select('*').eq('user_id', authUser.id).maybeSingle(),
-    supabase.from('hero_card_settings').select('*').eq('user_id', authUser.id).maybeSingle()
+    supabase.from('hero_card_settings').select('*').eq('user_id', authUser.id).maybeSingle(),
   ]);
 
   if (appUserResponse.error) {
     console.error('CRÍTICO: erro ao buscar app_users:', appUserResponse.error);
     return null;
   }
-  
+
   const appUserData = appUserResponse.data;
   if (!appUserData) return null;
 
-  // FIX: Normalização forçada para lowercase para evitar conflitos de rota
-  const rawRole = appUserData.role || 'client';
-  const role = rawRole.toLowerCase() as Role;
-  
+  const role: Role = normalizeRole(appUserData.role);
+
   const clientProfileData = clientProfileResponse.data;
   const settingsData = settingsResponse.data;
 
@@ -76,12 +79,26 @@ export const getFullUserProfile = async (authUser: SupabaseUser): Promise<FullUs
     id: authUser.id,
     email: authUser.email || '',
     role,
-    name: clientProfileData?.display_name || (authUser.user_metadata as any)?.full_name || 'Herói',
-    customerCode: clientProfileData?.customer_id_public || clientProfileData?.hero_code || '',
-    avatarUrl: clientProfileData?.avatar_url || (authUser.user_metadata as any)?.avatar_url || null,
+
+    name:
+      clientProfileData?.display_name ||
+      (authUser.user_metadata as any)?.full_name ||
+      'Herói',
+
+    customerCode:
+      clientProfileData?.customer_id_public ||
+      clientProfileData?.hero_code ||
+      '',
+
+    avatarUrl:
+      clientProfileData?.avatar_url ||
+      (authUser.user_metadata as any)?.avatar_url ||
+      null,
+
     cpf: clientProfileData?.cpf || '',
-    whatsapp: '', 
-    birthDate: '', 
+    whatsapp: clientProfileData?.whatsapp || '',
+    birthDate: clientProfileData?.birthdate || '',
+
     heroTheme: (settingsData?.hero_theme as HeroTheme) || 'sombra-noturna',
   };
 
@@ -131,7 +148,7 @@ export const updateProfileName = async (userId: string, name: string) => {
 
 export const updateCardSettings = async (userId: string, settings: any) => {
   const dbPayload: any = {};
-  
+
   if (settings.templateId) dbPayload.card_template_id = settings.templateId;
   if (settings.fontFamily) dbPayload.font_style = settings.fontFamily;
   if (settings.fontColor) dbPayload.font_color = settings.fontColor;
@@ -152,7 +169,7 @@ export const getCardSettings = async (userId: string) => {
     .select('*')
     .eq('user_id', userId)
     .single();
-  
+
   if (error) return null;
   return data;
 };
