@@ -39,27 +39,21 @@ const Auth: React.FC = () => {
         if (!signInData.session) {
             throw new Error("Não foi possível iniciar a sessão.");
         }
-
-        // O SupabaseAuthProvider vai detectar a mudança de sessão e carregar o perfil.
-        // Mas podemos forçar uma verificação aqui para feedback visual mais rápido se necessário,
-        // ou apenas deixar o Provider lidar com isso. Vamos deixar o Provider lidar, 
-        // mas carregar o perfil aqui garante que temos os dados antes de redirecionar manualmente.
         
         const fullProfile = await getFullUserProfile(signInData.session.user);
         if (fullProfile) {
           login(fullProfile);
           redirectByRole(fullProfile.role);
         } else {
-          // Se falhar aqui, o AuthProvider tenta o fallback
-          navigate('/app');
+          // O SupabaseAuthProvider tem um fallback, mas podemos logar um erro aqui.
+          console.error("Falha ao carregar perfil no login, AuthProvider irá tentar recuperar.");
+          // Redireciona para uma página genérica, o ProtectedRoute fará o resto.
+          navigate('/app'); 
         }
 
       } else {
         // --- FLUXO DE CADASTRO ---
-        
-        // Passo 1: Validação Inicial (CPF)
         if (step === 1) {
-          // Normaliza e verifica CPF no banco
           const cpfExists = await checkCpfExists(data.cpf);
           if (cpfExists) {
             throw new Error('Este CPF já está cadastrado em nossa base.');
@@ -70,24 +64,20 @@ const Auth: React.FC = () => {
           return;
         }
         
-        // Passo 2: Finalização
         const fullUserData = { ...step1Data, ...data };
         
-        // 1. Criar usuário no Auth com Metadados
         const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
             email: fullUserData.email,
             password: fullUserData.password,
             options: {
               data: {
                 full_name: fullUserData.name,
-                // Podemos passar outros dados se tivermos triggers configurados para ler raw_user_meta_data
               }
             }
         });
 
         if (signUpError) throw signUpError;
         
-        // Verifica se o login foi automático (email confirmation OFF) ou pendente (ON)
         if (signUpData.user && !signUpData.session) {
             setLoading(false);
             alert("Cadastro realizado com sucesso! Verifique seu e-mail para confirmar a conta antes de entrar.");
@@ -99,8 +89,6 @@ const Auth: React.FC = () => {
              throw new Error('Erro ao estabelecer sessão após cadastro.');
         }
 
-        // 2. Chamar RPC para garantir a criação das tabelas relacionais (app_users, client_profiles)
-        // Isso é crucial para salvar o CPF e Nascimento que coletamos no formulário
         const { data: rpcData, error: rpcError } = await supabase.rpc('ensure_user_profile', {
             p_display_name: fullUserData.name,
             p_email: fullUserData.email,
@@ -110,23 +98,17 @@ const Auth: React.FC = () => {
 
         if (rpcError) {
             console.error("Erro na RPC ensure_user_profile:", rpcError);
-            // Não bloqueamos totalmente se a RPC falhar, pois o usuário já está criado no Auth,
-            // mas mostramos erro. O AuthProvider tentará corrigir depois.
         } else {
-             // Se RPC retornou erro de lógica (ex: CPF duplicado que passou na validação inicial)
              const result = Array.isArray(rpcData) ? rpcData[0] : rpcData;
              if (result && !result.ok) {
                 console.warn("Aviso do Banco de Dados:", result.message);
              }
         }
 
-        // 3. Carregar perfil completo e redirecionar
         const fullProfile = await getFullUserProfile(signUpData.session.user);
         
         if (fullProfile) {
             login(fullProfile);
-            // Atualiza whatsapp se necessário (não estava na RPC original)
-            // Se tivermos uma tabela para isso ou coluna no profile
         }
 
         navigate('/plans');
@@ -140,8 +122,9 @@ const Auth: React.FC = () => {
   };
 
   const redirectByRole = (role: string) => {
+    console.log(`Redirecting user with role: ${role}`);
     if (role === 'ADMIN') navigate('/admin');
-    else if (role === 'STAFF') navigate('/staff/validate');
+    else if (role === 'STAFF') navigate('/staff');
     else navigate('/app');
   };
 
