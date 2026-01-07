@@ -4,7 +4,7 @@ import { Button } from '../components/ui/Button';
 import { useAuthStore } from '../store/authStore';
 import { useThemeStore } from '../store/themeStore';
 import { useCardStore, CARD_TEMPLATES, FONT_OPTIONS, COLOR_OPTIONS } from '../store/cardStore';
-import { LogOut, Palette, Moon, Sun, Monitor, CreditCard, CheckCircle2, Type, Camera, Pencil, Check, X, TextQuote, Download } from 'lucide-react';
+import { LogOut, Palette, Moon, Sun, Monitor, CreditCard, CheckCircle2, Type, Camera, Pencil, Check, X, TextQuote, Download, Fingerprint } from 'lucide-react';
 import { HeroTheme, Subscription } from '../types';
 import { fakeApi } from '../lib/fakeApi';
 import HeroCard from '../components/HeroCard';
@@ -159,7 +159,7 @@ const Profile: React.FC = () => {
           />
         </div>
         
-        {/* Edição de Nome */}
+        {/* Edição de Nome e Exibição de Info */}
         <div className="mt-4 flex flex-col items-center w-full">
           {isEditingName ? (
              <div className="flex items-center justify-center gap-2 w-full max-w-[280px]">
@@ -188,7 +188,15 @@ const Profile: React.FC = () => {
               <Pencil size={14} className="text-slate-400 group-hover:text-hero-primary transition-colors" />
             </div>
           )}
-          <p className="text-slate-400 font-medium text-sm mt-1">{user?.email}</p>
+          <p className="text-slate-400 font-medium text-sm mt-1 mb-3">{user?.email}</p>
+          
+          {/* Exibição do ID do Cliente */}
+          <div className="bg-slate-50 dark:bg-slate-800/50 px-4 py-1.5 rounded-full border border-slate-100 dark:border-slate-800 flex items-center gap-2">
+            <Fingerprint size={14} className="text-hero-primary" />
+            <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">
+              ID: <span className="text-slate-800 dark:text-slate-200 select-all">{user?.customerCode || '—'}</span>
+            </p>
+          </div>
         </div>
       </div>
 
