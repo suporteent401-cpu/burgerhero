@@ -4,7 +4,7 @@ import { Button } from '../components/ui/Button';
 import { useAuthStore } from '../store/authStore';
 import { useThemeStore } from '../store/themeStore';
 import { useCardStore, FONT_OPTIONS, COLOR_OPTIONS } from '../store/cardStore';
-import { LogOut, Palette, Moon, Sun, Monitor, CreditCard, CheckCircle2, Type, Camera, Pencil, Check, X, TextQuote, Download, Fingerprint, Loader2, ShieldCheck, ShieldAlert, Upload } from 'lucide-react';
+import { LogOut, Palette, Moon, Sun, Monitor, CreditCard, CheckCircle2, Type, Camera, Pencil, Check, X, TextQuote, Download, Fingerprint, Loader2, ShieldCheck, ShieldAlert } from 'lucide-react';
 import { HeroTheme, Subscription } from '../types';
 import { fakeApi } from '../lib/fakeApi';
 import { supabase } from '../lib/supabaseClient';
@@ -36,10 +36,10 @@ const Profile: React.FC = () => {
   const [isSavingName, setIsSavingName] = useState(false);
   const [editName, setEditName] = useState(user?.name || '');
   
-  // Avatar Edit State
-  const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  // Avatar Manual Upload State
   const [previewAvatar, setPreviewAvatar] = useState<string | null>(null);
   const [selectedAvatarFile, setSelectedAvatarFile] = useState<File | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
 
   // Card Store hooks
   const { 
@@ -59,7 +59,7 @@ const Profile: React.FC = () => {
 
   const [sub, setSub] = useState<Subscription | null>(null);
 
-  // Carrega templates, assinatura e settings
+  // Initial Data Load
   useEffect(() => {
     if (user?.id) {
       templatesService.getActiveTemplates().then(dbTemplates => {
@@ -98,11 +98,21 @@ const Profile: React.FC = () => {
     }
   }, [user?.id, setAll, setHeroTheme, setMode, setTemplates]);
 
+  // Sync Edit Name
   useEffect(() => {
     if (!isEditingName && user?.name && user.name !== editName) {
       setEditName(user.name);
     }
   }, [user?.name, isEditingName, editName]);
+
+  // Cleanup ObjectURL
+  useEffect(() => {
+    return () => {
+      if (previewAvatar) {
+        URL.revokeObjectURL(previewAvatar);
+      }
+    };
+  }, [previewAvatar]);
 
   const saveSettingsToDb = async (newSettings: any) => {
     if (!user) return;
@@ -144,23 +154,40 @@ const Profile: React.FC = () => {
     saveSettingsToDb({ fontSize: size });
   };
 
+  // 1. Selecionar Arquivo (Apenas Preview)
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
-      const previewUrl = URL.createObjectURL(file);
-      setPreviewAvatar(previewUrl);
+      // Limpa anterior se existir
+      if (previewAvatar) URL.revokeObjectURL(previewAvatar);
+      
+      const objectUrl = URL.createObjectURL(file);
+      setPreviewAvatar(objectUrl);
       setSelectedAvatarFile(file);
     }
+    // Reseta input para permitir selecionar o mesmo arquivo novamente se quiser
+    event.target.value = '';
   };
 
-  const handleConfirmAvatar = async () => {
+  // 2. Cancelar Seleção
+  const handleCancelAvatar = (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    if (previewAvatar) URL.revokeObjectURL(previewAvatar);
+    setPreviewAvatar(null);
+    setSelectedAvatarFile(null);
+  };
+
+  // 3. Confirmar Upload (Ação Real)
+  const handleConfirmAvatar = async (e: React.MouseEvent) => {
+    e.stopPropagation(); // Importante!
     if (!user || !selectedAvatarFile) return;
 
     try {
-      setUploadingAvatar(true);
+      setIsUploading(true);
       const publicUrl = await uploadAvatar(user.id, selectedAvatarFile);
       
       if (publicUrl) {
+        // Atualiza banco
         const { error } = await supabase
           .from('client_profiles')
           .update({ avatar_url: publicUrl })
@@ -168,22 +195,17 @@ const Profile: React.FC = () => {
 
         if (error) throw error;
 
+        // Atualiza UI
         updateUser({ avatarUrl: publicUrl });
         alert('Foto atualizada com sucesso!');
         handleCancelAvatar();
       }
     } catch (err: any) {
-      console.error('Erro no upload:', err);
+      console.error('Erro no upload:', err.message);
       alert(`Erro ao enviar imagem: ${err.message || 'Falha no upload.'}`);
     } finally {
-      setUploadingAvatar(false);
+      setIsUploading(false);
     }
-  };
-
-  const handleCancelAvatar = () => {
-    setPreviewAvatar(null);
-    setSelectedAvatarFile(null);
-    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const handleSaveName = async () => {
@@ -255,50 +277,81 @@ const Profile: React.FC = () => {
       
       {/* CABEÇALHO */}
       <div className="flex flex-col items-center">
-        <div className="relative group cursor-pointer" onClick={() => !uploadingAvatar && fileInputRef.current?.click()}>
-          <div className="w-28 h-28 rounded-full border-4 border-white dark:border-slate-800 shadow-xl bg-slate-200 overflow-hidden relative">
-            {uploadingAvatar ? (
+        {/* Componente de Avatar com Lógica de Seleção */}
+        <div className="relative group">
+          <div 
+            className="w-28 h-28 rounded-full border-4 border-white dark:border-slate-800 shadow-xl bg-slate-200 overflow-hidden relative cursor-pointer"
+            onClick={(e) => {
+              // Só abre se não estiver fazendo upload e não tiver preview pendente
+              if (!isUploading && !previewAvatar) {
+                fileInputRef.current?.click();
+              }
+            }}
+          >
+            {isUploading ? (
               <div className="w-full h-full flex items-center justify-center bg-black/50">
                 <Loader2 className="animate-spin text-white" />
               </div>
             ) : (
-              <img src={previewAvatar || user?.avatarUrl || 'https://picsum.photos/seed/hero/200'} alt="Profile" className="w-full h-full object-cover" />
+              <img 
+                src={previewAvatar || user?.avatarUrl || 'https://picsum.photos/seed/hero/200'} 
+                alt="Profile" 
+                className={`w-full h-full object-cover transition-opacity ${isUploading ? 'opacity-50' : 'opacity-100'}`} 
+              />
+            )}
+            
+            {/* Overlay: Só mostra se não tiver preview pendente */}
+            {!previewAvatar && !isUploading && (
+              <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                 <Camera size={24} className="text-white" />
+              </div>
             )}
           </div>
-          {/* Overlay de Hover */}
-          {!previewAvatar && !uploadingAvatar && (
-            <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                <Camera size={24} className="text-white" />
-            </div>
-          )}
-          {/* Botão Flutuante (sempre visível) */}
-          {!previewAvatar && !uploadingAvatar && (
-            <button className="absolute bottom-0 right-0 bg-hero-primary text-white p-2 rounded-full shadow-lg hover:scale-110 transition-transform pointer-events-none">
-              <Camera size={16} />
-            </button>
-          )}
-          {/* Ações de Confirmação (Preview) */}
-          {previewAvatar && !uploadingAvatar && (
+
+          {/* Botões de Ação para Avatar (Estado de Preview) */}
+          {previewAvatar && !isUploading ? (
              <div className="absolute -bottom-10 left-1/2 -translate-x-1/2 flex gap-2 z-10 w-max bg-white dark:bg-slate-900 p-1.5 rounded-full shadow-lg border border-slate-100 dark:border-slate-800 animate-in fade-in slide-in-from-top-2">
                 <button 
-                  onClick={(e) => { e.stopPropagation(); handleConfirmAvatar(); }}
+                  onClick={handleConfirmAvatar}
                   className="bg-green-500 hover:bg-green-600 text-white p-2 rounded-full transition-colors"
                   title="Confirmar Foto"
                 >
                   <Check size={16} />
                 </button>
                 <button 
-                  onClick={(e) => { e.stopPropagation(); handleCancelAvatar(); }}
+                  onClick={handleCancelAvatar}
                   className="bg-red-500 hover:bg-red-600 text-white p-2 rounded-full transition-colors"
                   title="Cancelar"
                 >
                   <X size={16} />
                 </button>
              </div>
+          ) : (
+             // Ícone Padrão (Sem preview)
+             !isUploading && (
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  fileInputRef.current?.click();
+                }}
+                className="absolute bottom-0 right-0 bg-hero-primary text-white p-2 rounded-full shadow-lg hover:scale-110 transition-transform"
+              >
+                <Camera size={16} />
+              </button>
+             )
           )}
-          <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileChange} disabled={uploadingAvatar} />
+          
+          <input 
+            type="file" 
+            ref={fileInputRef} 
+            className="hidden" 
+            accept="image/*" 
+            onChange={handleFileChange} 
+            disabled={isUploading} 
+          />
         </div>
         
+        {/* Info do Usuário */}
         <div className="mt-8 flex flex-col items-center w-full">
           {isEditingName ? (
              <div className="flex items-center justify-center gap-2 w-full max-w-[280px]">

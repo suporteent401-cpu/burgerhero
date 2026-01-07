@@ -15,7 +15,7 @@ export const checkCpfExists = async (cpf: string): Promise<boolean> => {
     .limit(1);
 
   if (error) {
-    console.error('Erro ao verificar CPF:', error);
+    console.error('Erro ao verificar CPF:', error.message); // Log apenas da mensagem
     throw new Error('Não foi possível verificar o CPF. Tente novamente.');
   }
 
@@ -30,7 +30,7 @@ export const getUserProfileById = async (userId: string) => {
     .maybeSingle();
 
   if (error) {
-    console.error('Erro ao buscar perfil do cliente:', error);
+    console.error('Erro ao buscar perfil:', error.message);
     return null;
   }
 
@@ -45,7 +45,7 @@ export const getFullUserProfile = async (authUser: SupabaseUser): Promise<AppUse
   ]);
 
   if (appUserResponse.error) {
-    console.error('CRÍTICO: erro ao buscar app_users:', appUserResponse.error);
+    console.error('Erro app_users:', appUserResponse.error.message);
     return null;
   }
   
@@ -92,7 +92,7 @@ export const signUpAndCreateProfile = async (userData: any) => {
     password: userData.password,
   });
 
-  if (signInError) console.warn('Falha no login automático:', signInError);
+  if (signInError) console.warn('Login auto falhou:', signInError.message);
 
   await supabase.rpc('ensure_user_profile', {
     p_display_name: userData.name,
@@ -105,8 +105,6 @@ export const signUpAndCreateProfile = async (userData: any) => {
 };
 
 export const updateProfileName = async (userId: string, name: string) => {
-  console.log('[UsersService] Atualizando nome...', { userId, name });
-  
   const { data, error } = await supabase
     .from('client_profiles')
     .update({ display_name: name })
@@ -114,7 +112,7 @@ export const updateProfileName = async (userId: string, name: string) => {
     .select();
 
   if (error) {
-    console.error('[UsersService] Erro ao atualizar nome:', error);
+    console.error('Erro update nome:', error.message);
     throw error;
   }
   
@@ -124,13 +122,12 @@ export const updateProfileName = async (userId: string, name: string) => {
 // --- AVATAR ---
 
 export const uploadAvatar = async (userId: string, file: File): Promise<string | null> => {
-  console.log('[UsersService] Iniciando upload de avatar...', { userId, fileName: file.name });
+  // Evita logar o objeto File inteiro que pode causar stack overflow em alguns consoles
+  console.log(`[UsersService] Uploading avatar for ${userId}. Size: ${file.size}`);
   
-  // Cria um nome de arquivo único para evitar cache: uid/timestamp.ext
   const fileExt = file.name.split('.').pop();
   const fileName = `${userId}/${Date.now()}.${fileExt}`;
 
-  // 1. Upload
   const { error: uploadError } = await supabase.storage
     .from('avatars')
     .upload(fileName, file, { 
@@ -139,18 +136,16 @@ export const uploadAvatar = async (userId: string, file: File): Promise<string |
     });
 
   if (uploadError) {
-    console.error('[UsersService] Erro no upload:', uploadError);
+    console.error('Upload error details:', uploadError.message);
     throw new Error(`Falha no upload: ${uploadError.message}`);
   }
 
-  // 2. Get Public URL
   const { data } = supabase.storage.from('avatars').getPublicUrl(fileName);
   
   if (!data.publicUrl) {
      throw new Error('Falha ao obter URL pública do avatar.');
   }
 
-  console.log('[UsersService] Upload concluído. URL:', data.publicUrl);
   return data.publicUrl;
 };
 
@@ -184,8 +179,6 @@ export const getCardSettings = async (userId: string) => {
   return data;
 };
 
-// --- Tipos e Interfaces ---
-
 export interface PublicProfile {
   display_name: string;
   avatar_url: string | null;
@@ -197,7 +190,7 @@ export interface PublicProfile {
 export const getPublicProfileByCode = async (code: string): Promise<PublicProfile | null> => {
   const { data, error } = await supabase.rpc('get_public_profile_by_code', { p_code: code });
   if (error) {
-    console.error('Erro ao buscar perfil público:', error);
+    console.error('Erro public profile:', error.message);
     return null;
   }
   if (Array.isArray(data) && data.length > 0) return data[0] as PublicProfile;
