@@ -56,7 +56,6 @@ export const getFullUserProfile = async (authUser: SupabaseUser): Promise<AppUse
   const clientProfileData = clientProfileResponse.data;
   const settingsData = settingsResponse.data;
 
-  // Usa o tema salvo em settings, ou do perfil (se tivesse), ou default
   const savedTheme = settingsData?.hero_theme as any || 'sombra-noturna';
 
   const fullProfile: AppUser = {
@@ -67,61 +66,50 @@ export const getFullUserProfile = async (authUser: SupabaseUser): Promise<AppUse
     customerCode: clientProfileData?.customer_id_public || clientProfileData?.hero_code || '',
     avatarUrl: clientProfileData?.avatar_url || (authUser.user_metadata as any)?.avatar_url || null,
     cpf: clientProfileData?.cpf || '',
-    whatsapp: '', // Futuro: adicionar no client_profiles
-    birthDate: '', // Futuro
+    whatsapp: '', 
+    birthDate: '', 
     heroTheme: savedTheme,
   };
 
   return fullProfile;
 };
 
-export const signUpAndCreateProfile = async (userData: any) => {
-  const { data: authData, error: signUpError } = await supabase.auth.signUp({
-    email: userData.email,
-    password: userData.password,
-  });
+// --- NOVOS MÉTODOS DE AVATAR ---
 
-  if (signUpError) {
-    if (signUpError.message.includes('User already registered')) throw new Error('E-mail já cadastrado. Faça login.');
-    throw signUpError;
-  }
-
-  if (!authData.user) throw new Error('Não foi possível criar o usuário. Tente novamente.');
-
-  const { error: signInError } = await supabase.auth.signInWithPassword({
-    email: userData.email,
-    password: userData.password,
-  });
-
-  if (signInError) console.warn('Falha no login automático:', signInError);
-
-  await supabase.rpc('ensure_user_profile', {
-    p_display_name: userData.name,
-    p_email: userData.email,
-    p_cpf: userData.cpf,
-    p_birthdate: userData.birthDate || null,
-  });
-
-  return authData;
-};
-
-// --- NOVOS MÉTODOS ---
-
-export const uploadAvatar = async (userId: string, file: File): Promise<string | null> => {
+export const uploadAndSyncAvatar = async (userId: string, file: File): Promise<string | null> => {
   const fileExt = file.name.split('.').pop();
+  // Usamos timestamp para evitar cache do navegador ao sobrescrever
   const fileName = `${userId}/${Date.now()}.${fileExt}`;
 
+  // 1. Upload para o Storage
   const { error: uploadError } = await supabase.storage
     .from('avatars')
-    .upload(fileName, file, { upsert: true });
+    .upload(fileName, file, { 
+      upsert: true,
+      contentType: file.type 
+    });
 
   if (uploadError) {
-    console.error('Erro no upload:', uploadError);
+    console.error('Erro no upload Storage:', uploadError);
     throw uploadError;
   }
 
-  const { data } = supabase.storage.from('avatars').getPublicUrl(fileName);
-  return data.publicUrl;
+  // 2. Pega a URL pública
+  const { data: publicUrlData } = supabase.storage.from('avatars').getPublicUrl(fileName);
+  const publicUrl = publicUrlData.publicUrl;
+
+  // 3. Sincroniza com a tabela de perfis
+  const { error: dbError } = await supabase
+    .from('client_profiles')
+    .update({ avatar_url: publicUrl })
+    .eq('user_id', userId);
+
+  if (dbError) {
+    console.error('Erro ao salvar URL no perfil:', dbError);
+    throw dbError;
+  }
+
+  return publicUrl;
 };
 
 export const updateProfileName = async (userId: string, name: string) => {
@@ -134,15 +122,12 @@ export const updateProfileName = async (userId: string, name: string) => {
 };
 
 export const updateCardSettings = async (userId: string, settings: any) => {
-  // Mapeia os campos do store para o DB
   const dbPayload: any = {};
   
   if (settings.templateId) dbPayload.card_template_id = settings.templateId;
   if (settings.fontFamily) dbPayload.font_style = settings.fontFamily;
   if (settings.fontColor) dbPayload.font_color = settings.fontColor;
   if (settings.fontSize) dbPayload.font_size_px = settings.fontSize;
-  
-  // Mapeamento explícito para garantir sync
   if (settings.heroTheme) dbPayload.hero_theme = settings.heroTheme;
   if (settings.mode) dbPayload.theme_mode = settings.mode;
 
@@ -163,8 +148,6 @@ export const getCardSettings = async (userId: string) => {
   if (error) return null;
   return data;
 };
-
-// --- Tipos e Interfaces ---
 
 export interface PublicProfile {
   display_name: string;
