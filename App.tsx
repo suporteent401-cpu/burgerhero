@@ -1,4 +1,3 @@
-// /App.tsx
 import React, { useEffect } from 'react';
 import { HashRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { useAuthStore } from './store/authStore';
@@ -30,24 +29,22 @@ import StaffHome from './app/StaffHome';
 import StaffValidate from './app/StaffValidate';
 import Debug from './app/Debug';
 
-type AllowedRole = 'client' | 'staff' | 'admin';
-
+// 🔒 Proteção por papel
 const ProtectedRoute = ({
   children,
   allowedRoles,
 }: {
   children?: React.ReactNode;
-  allowedRoles?: AllowedRole[];
+  allowedRoles?: Array<'CLIENT' | 'STAFF' | 'ADMIN'>;
 }) => {
-  const isAuthed = useAuthStore((state) => state.isAuthed);
-  const user = useAuthStore((state) => state.user);
+  const { isAuthed, user } = useAuthStore();
 
-  if (!isAuthed || !user) return <Navigate to="/auth" replace />;
+  if (!isAuthed) return <Navigate to="/auth" replace />;
+  if (!user) return <Navigate to="/auth" replace />;
 
   if (allowedRoles && !allowedRoles.includes(user.role)) {
-    // Redirect consistente pelo role real do usuário
-    if (user.role === 'admin') return <Navigate to="/admin" replace />;
-    if (user.role === 'staff') return <Navigate to="/staff" replace />;
+    if (user.role === 'ADMIN') return <Navigate to="/admin" replace />;
+    if (user.role === 'STAFF') return <Navigate to="/staff" replace />;
     return <Navigate to="/app" replace />;
   }
 
@@ -55,7 +52,7 @@ const ProtectedRoute = ({
 };
 
 const App: React.FC = () => {
-  const applyTheme = useThemeStore((state) => state.applyTheme);
+  const applyTheme = useThemeStore(state => state.applyTheme);
 
   useEffect(() => {
     applyTheme();
@@ -66,18 +63,25 @@ const App: React.FC = () => {
       <SupabaseAuthProvider>
         <HashRouter>
           <Routes>
-            {/* Public */}
+            {/* Público */}
             <Route path="/" element={<Landing />} />
             <Route path="/auth" element={<Auth />} />
             <Route path="/plans" element={<Plans />} />
-            <Route path="/checkout" element={<Checkout />} />
+            <Route
+              path="/checkout"
+              element={
+                <ProtectedRoute allowedRoles={['CLIENT']}>
+                  <Checkout />
+                </ProtectedRoute>
+              }
+            />
             <Route path="/debug" element={<Debug />} />
 
-            {/* Client App */}
+            {/* Cliente */}
             <Route
               path="/app"
               element={
-                <ProtectedRoute allowedRoles={['client']}>
+                <ProtectedRoute allowedRoles={['CLIENT']}>
                   <ClientLayout />
                 </ProtectedRoute>
               }
@@ -89,11 +93,11 @@ const App: React.FC = () => {
               <Route path="profile" element={<Profile />} />
             </Route>
 
-            {/* Admin Panel */}
+            {/* Admin */}
             <Route
               path="/admin"
               element={
-                <ProtectedRoute allowedRoles={['admin']}>
+                <ProtectedRoute allowedRoles={['ADMIN']}>
                   <AdminLayout />
                 </ProtectedRoute>
               }
@@ -105,11 +109,11 @@ const App: React.FC = () => {
               <Route path="coupons" element={<AdminCoupons />} />
             </Route>
 
-            {/* Staff Area */}
+            {/* Staff */}
             <Route
               path="/staff"
               element={
-                <ProtectedRoute allowedRoles={['staff', 'admin']}>
+                <ProtectedRoute allowedRoles={['STAFF', 'ADMIN']}>
                   <StaffLayout />
                 </ProtectedRoute>
               }

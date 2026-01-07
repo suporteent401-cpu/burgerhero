@@ -1,56 +1,70 @@
-import React, { useMemo, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Card, CardBody, CardHeader } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
 import { CheckCircle2, CreditCard, QrCode } from "lucide-react";
 import { subscriptionsService } from "../services/subscriptions.service";
-
-type CheckoutState = {
-  planSlug?: string;
-  planName?: string;
-  price?: number;
-};
 
 const formatBRL = (value: number) =>
   value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
 const Checkout: React.FC = () => {
   const navigate = useNavigate();
-  const location = useLocation();
 
-  const state = (location.state || {}) as CheckoutState;
-
-  const plan = useMemo(() => {
-    const planSlug = state.planSlug || "vingador";
-    const planName = state.planName || "Plano Vingador";
-    const price = typeof state.price === "number" ? state.price : 49.9;
-    return { planSlug, planName, price };
-  }, [state.planName, state.planSlug, state.price]);
-
+  const [plan, setPlan] = useState<{ planSlug: string; planName: string; price: number } | null>(null);
   const [method, setMethod] = useState<"card" | "pix">("card");
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string>("");
 
+  useEffect(() => {
+    const pendingPlanJSON = localStorage.getItem('pending_plan');
+    if (!pendingPlanJSON) {
+      navigate('/plans', { replace: true });
+      return;
+    }
+    
+    try {
+      const pendingPlan = JSON.parse(pendingPlanJSON);
+      setPlan({
+        planSlug: pendingPlan.planId,
+        planName: pendingPlan.planName,
+        price: pendingPlan.priceCents / 100,
+      });
+    } catch (e) {
+      console.error("Falha ao parsear o plano pendente", e);
+      localStorage.removeItem('pending_plan');
+      navigate('/plans', { replace: true });
+    }
+  }, [navigate]);
+
   const handleFinish = async () => {
+    if (!plan) return;
+
     setErrorMsg("");
     setLoading(true);
 
     try {
-      // 1) Atualiza status baseado em vencimento (boa prática)
       await subscriptionsService.refreshMyStatus();
-
-      // 2) MOCK: considera o pagamento aprovado e ativa por 30 dias
       await subscriptionsService.activateMock(plan.planSlug, 30);
-
-      // 3) Vai pro app e deixa o usuário “ativo”
+      
+      localStorage.removeItem('pending_plan');
       navigate("/app", { replace: true });
-    } catch (err: any) {
+    } catch (err: any)
+    {
       console.error(err);
       setErrorMsg(err?.message || "Não foi possível finalizar a assinatura.");
     } finally {
       setLoading(false);
     }
   };
+
+  if (!plan) {
+    return (
+      <div className="min-h-[calc(100vh-40px)] flex items-center justify-center">
+        <div className="w-8 h-8 border-4 border-hero-primary border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-[calc(100vh-40px)] flex items-start justify-center px-4 py-8">
@@ -139,8 +153,9 @@ const Checkout: React.FC = () => {
           className="w-full py-4 rounded-2xl"
           onClick={handleFinish}
           disabled={loading}
+          isLoading={loading}
         >
-          {loading ? "Ativando..." : "Finalizar Assinatura"}
+          {loading ? "Ativando..." : `Finalizar Assinatura - ${formatBRL(plan.price)}`}
         </Button>
 
         <div className="text-center text-xs text-slate-400">

@@ -22,6 +22,19 @@ const Auth: React.FC = () => {
   const { register, handleSubmit, watch, formState: { errors } } = useForm();
   const password = watch('password');
 
+  const redirectByRole = (role: string) => {
+    const pendingPlanJSON = localStorage.getItem('pending_plan');
+    if (pendingPlanJSON) {
+      navigate('/checkout', { replace: true });
+      return;
+    }
+
+    console.log(`Redirecting user with role: ${role}`);
+    if (role === 'ADMIN') navigate('/admin');
+    else if (role === 'STAFF') navigate('/staff');
+    else navigate('/app');
+  };
+
   const onSubmit = async (data: any) => {
     setError('');
     setLoading(true);
@@ -45,9 +58,7 @@ const Auth: React.FC = () => {
           login(fullProfile);
           redirectByRole(fullProfile.role);
         } else {
-          // O SupabaseAuthProvider tem um fallback, mas podemos logar um erro aqui.
           console.error("Falha ao carregar perfil no login, AuthProvider irá tentar recuperar.");
-          // Redireciona para uma página genérica, o ProtectedRoute fará o resto.
           navigate('/app'); 
         }
 
@@ -109,9 +120,11 @@ const Auth: React.FC = () => {
         
         if (fullProfile) {
             login(fullProfile);
+            redirectByRole(fullProfile.role);
+        } else {
+            // Fallback if profile is not ready, redirect to a safe place
+            navigate('/app');
         }
-
-        navigate('/plans');
       }
     } catch (err: any) {
       console.error("AUTH_ERROR", err);
@@ -119,13 +132,6 @@ const Auth: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
-
-  const redirectByRole = (role: string) => {
-    console.log(`Redirecting user with role: ${role}`);
-    if (role === 'ADMIN') navigate('/admin');
-    else if (role === 'STAFF') navigate('/staff');
-    else navigate('/app');
   };
 
   return (

@@ -5,14 +5,31 @@ import { CheckCircle2, ChevronLeft, ShieldCheck } from 'lucide-react';
 import { fakeApi } from '../lib/fakeApi';
 import { Plan } from '../types';
 import { motion } from 'framer-motion';
+import { useAuthStore } from '../store/authStore';
 
 const Plans: React.FC = () => {
   const [plans, setPlans] = useState<Plan[]>([]);
   const navigate = useNavigate();
+  const isAuthed = useAuthStore(state => state.isAuthed);
 
   useEffect(() => {
     fakeApi.listPlans().then(setPlans);
   }, []);
+
+  const handleSelectPlan = (plan: Plan) => {
+    const planData = {
+      planId: plan.id,
+      planName: plan.name,
+      priceCents: plan.priceCents,
+    };
+    localStorage.setItem('pending_plan', JSON.stringify(planData));
+
+    if (isAuthed) {
+      navigate('/checkout');
+    } else {
+      navigate('/auth');
+    }
+  };
 
   return (
     <div className="min-h-screen bg-slate-50 py-12 px-4">
@@ -67,7 +84,7 @@ const Plans: React.FC = () => {
                 </div>
 
                 <Button 
-                  onClick={() => navigate(`/checkout?planId=${plan.id}`)} 
+                  onClick={() => handleSelectPlan(plan)} 
                   className="w-full" 
                   size="lg"
                   variant="primary"
