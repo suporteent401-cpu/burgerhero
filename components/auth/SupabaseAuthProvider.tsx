@@ -4,76 +4,94 @@ import { useAuthStore } from '../../store/authStore';
 import { useThemeStore } from '../../store/themeStore';
 import { useCardStore } from '../../store/cardStore';
 import { getFullUserProfile } from '../../services/users.service';
+import type { Role } from '../../types';
 
 interface AuthProviderProps {
   children: React.ReactNode;
 }
 
+const normalizeRole = (input: any): Role => {
+  const r = String(input || '').toLowerCase();
+  if (r === 'admin' || r === 'staff' || r === 'client') return r;
+  return 'client';
+};
+
 export const SupabaseAuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const login = useAuthStore((s) => s.login);
   const logout = useAuthStore((s) => s.logout);
   const setLoading = useAuthStore((s) => s.setLoading);
-  
-  // Ref para evitar execução dupla em React Strict Mode e controlar inicialização
+
+  // Evita execução dupla no Strict Mode
   const isInitializingRef = useRef(false);
 
   useEffect(() => {
     if (isInitializingRef.current) return;
     isInitializingRef.current = true;
 
+    const applySettings = (settings: any) => {
+      useThemeStore.getState().setHeroTheme(settings.heroTheme);
+      useThemeStore.getState().setMode(settings.mode);
+      useCardStore.getState().setAll({
+        templateId: settings.cardTemplateId || undefined,
+        font: settings.fontStyle,
+        color: settings.fontColor,
+        fontSize: settings.fontSize,
+      });
+      useThemeStore.getState().applyTheme();
+    };
+
     const initAuth = async () => {
+      setLoading(true);
+
       try {
-        // 1. Verificação ativa da sessão atual
-        const { data: { session }, error } = await supabase.auth.getSession();
+        const {
+          data: { session },
+          error,
+        } = await supabase.auth.getSession();
 
         if (error) {
-          console.error("Erro ao verificar sessão inicial:", error);
-          if (error.message.includes('Invalid Refresh Token')) {
-             await supabase.auth.signOut();
+          console.error('Erro ao verificar sessão inicial:', error);
+          if (error.message?.includes('Invalid Refresh Token')) {
+            await supabase.auth.signOut();
           }
-          logout(); // Garante estado limpo e isLoading = false
+          logout();
           return;
         }
 
         if (!session?.user) {
-          logout(); // Sem sessão = deslogado e isLoading = false
+          logout();
           return;
         }
 
-        // 2. Se tem sessão, carrega o perfil
-        const fullUserData = await getFullUserProfile(session.user);
+        const full = await getFullUserProfile(session.user);
 
-        if (fullUserData) {
-          const { profile, settings } = fullUserData;
-          
-          // Carrega preferências antes de liberar o login
-          useThemeStore.getState().setHeroTheme(settings.heroTheme);
-          useThemeStore.getState().setMode(settings.mode);
-          useCardStore.getState().setAll({
-            templateId: settings.cardTemplateId || undefined,
-            font: settings.fontStyle,
-            color: settings.fontColor,
-            fontSize: settings.fontSize,
-          });
-          useThemeStore.getState().applyTheme();
-
-          login(profile); // Loga e isLoading = false
-        } else {
+        if (!full) {
           console.error('Perfil não encontrado para usuário autenticado.');
           await supabase.auth.signOut();
           logout();
+          return;
         }
+
+        // Garante role válida
+        const safeProfile = { ...full.profile, role: normalizeRole(full.profile.role) };
+
+        applySettings(full.settings);
+        login(safeProfile);
       } catch (err) {
-        console.error("Exceção na inicialização da autenticação:", err);
+        console.error('Exceção na inicialização da autenticação:', err);
         logout();
+      } finally {
+        // Se login/logout já setou isLoading=false, aqui só garante
+        setLoading(false);
       }
     };
 
     initAuth();
 
-    // 3. Listener para eventos futuros (ex: logout em outra aba, expiração de token)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      // Ignora INITIAL_SESSION pois já tratamos manualmente no initAuth para maior controle
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
+      // Já tratamos manualmente a inicialização
       if (event === 'INITIAL_SESSION') return;
 
       if (event === 'SIGNED_OUT') {
@@ -81,18 +99,30 @@ export const SupabaseAuthProvider: React.FC<AuthProviderProps> = ({ children }) 
         return;
       }
 
-      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-        if (session?.user) {
-          // Em eventos de refresh, apenas garantimos que o usuário continue logado
-          // Não precisamos recarregar todo o perfil se já estivermos logados, 
-          // mas para segurança, podemos atualizar se necessário.
-          // Aqui, simplificamos para evitar loops: se já está logado, segue.
+      // SIGNED_IN / TOKEN_REFRESHED
+      if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session?.user) {
+        try {
+          // Se já tiver usuário no store, não precisa reload completo sempre
           const currentUser = useAuthStore.getState().user;
-          if (!currentUser) {
-             // Se o store perdeu o usuário mas o supabase diz que logou, recarrega
-             const fullData = await getFullUserProfile(session.user);
-             if (fullData) login(fullData.profile);
+          if (currentUser) return;
+
+          setLoading(true);
+          const full = await getFullUserProfile(session.user);
+          if (!full) {
+            await supabase.auth.signOut();
+            logout();
+            return;
           }
+
+          const safeProfile = { ...full.profile, role: normalizeRole(full.profile.role) };
+
+          applySettings(full.settings);
+          login(safeProfile);
+        } catch (e) {
+          console.error('Erro ao processar mudança de auth state:', e);
+          logout();
+        } finally {
+          setLoading(false);
         }
       }
     });
