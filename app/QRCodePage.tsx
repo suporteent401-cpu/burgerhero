@@ -3,22 +3,20 @@ import { QRCodeSVG } from 'qrcode.react';
 import { Button } from '../components/ui/Button';
 import { useAuthStore } from '../store/authStore';
 import { useCardStore } from '../store/cardStore';
-import { Maximize2, Copy, Check, Sun, Smartphone, AlertCircle } from 'lucide-react';
+import { Maximize2, Copy, Check, Sun, Smartphone, AlertCircle, Loader2 } from 'lucide-react';
 import { Modal } from '../components/ui/Modal';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
 
 const QRCodePage: React.FC = () => {
-  const user = useAuthStore(state => state.user);
+  const { user, isLoading } = useAuthStore(state => ({ user: state.user, isLoading: state.isLoading }));
   const { getSelectedTemplate } = useCardStore();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [copied, setCopied] = useState(false);
 
   const template = getSelectedTemplate();
-
   const customerCode = user?.customerCode;
   
-  // Monta URL pública de forma robusta, lidando com diferentes base paths.
   const qrUrl = customerCode 
     ? new URL(`#/public/client/${customerCode}`, window.location.href).href
     : '';
@@ -31,6 +29,17 @@ const QRCodePage: React.FC = () => {
     }
   };
 
+  // 1. Exibe o loader enquanto a autenticação inicial está em andamento
+  if (isLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20">
+        <Loader2 className="w-10 h-10 text-hero-primary animate-spin" />
+        <p className="mt-4 text-sm font-medium text-slate-500">Carregando sua identidade...</p>
+      </div>
+    );
+  }
+
+  // 2. Após o carregamento, verifica se o código existe. Se não, mostra o erro.
   if (!customerCode) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-center text-slate-500">
@@ -47,6 +56,7 @@ const QRCodePage: React.FC = () => {
     );
   }
 
+  // 3. Se tudo estiver certo, renderiza a página
   return (
     <div className="space-y-6">
       <div className="text-center mb-2">
@@ -54,29 +64,21 @@ const QRCodePage: React.FC = () => {
         <p className="text-slate-500 text-sm font-medium">Apresente para resgatar benefícios</p>
       </div>
 
-      {/* Ticket Container */}
       <motion.div 
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
         className="relative max-w-sm mx-auto"
       >
-        {/* Glow Effect */}
         <div className="absolute inset-0 bg-hero-primary/20 blur-3xl rounded-full -z-10"></div>
-
         <div className="bg-white dark:bg-slate-900 rounded-3xl overflow-hidden shadow-2xl border border-slate-100 dark:border-slate-800">
-          
-          {/* Top Banner / Header do Ticket com Imagem do Card */}
           <div className="h-32 relative overflow-hidden">
-             {/* Imagem de Fundo do Template */}
              <img 
                src={template.imageUrl} 
                alt="Card Background" 
                className="absolute inset-0 w-full h-full object-cover scale-[1.35]"
              />
-             {/* Overlay Escuro para Contraste */}
              <div className="absolute inset-0 bg-black/30"></div>
-             
              <div className="absolute top-4 left-0 right-0 flex justify-center z-10">
                 <div className="bg-black/30 backdrop-blur-md px-3 py-1 rounded-full flex items-center gap-2 border border-white/20">
                    <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
@@ -84,37 +86,25 @@ const QRCodePage: React.FC = () => {
                 </div>
              </div>
           </div>
-
-          {/* Avatar e Conteúdo */}
           <div className="px-8 pb-8 -mt-12 flex flex-col items-center relative z-10">
-            {/* Avatar */}
             <div className="w-24 h-24 rounded-full border-[5px] border-white dark:border-slate-900 bg-slate-200 overflow-hidden shadow-lg mb-4">
                <img src={user?.avatarUrl || `https://picsum.photos/seed/${user?.id}/100`} alt="User" className="w-full h-full object-cover" />
             </div>
-
-            {/* Nome */}
             <h3 className="text-xl font-black text-slate-800 dark:text-white text-center leading-tight mb-1">{user?.name}</h3>
             <p className="text-sm font-medium text-slate-400 mb-6">{user?.email}</p>
-
-            {/* QR Code Box */}
             <div 
               className="bg-white p-4 rounded-2xl shadow-inner border border-slate-100 cursor-pointer hover:scale-105 transition-transform duration-300"
               onClick={() => setIsModalOpen(true)}
             >
               <QRCodeSVG value={qrUrl} size={180} level="H" includeMargin />
             </div>
-            
             <p className="mt-3 text-[10px] text-slate-400 font-bold uppercase tracking-widest flex items-center gap-1">
               <Sun size={12} /> Aumente o brilho da tela
             </p>
-
-            {/* Separator Dashed */}
             <div className="w-full my-6 border-t-2 border-dashed border-slate-200 dark:border-slate-800 relative">
                <div className="absolute -left-12 -top-3 w-6 h-6 bg-slate-50 dark:bg-slate-950 rounded-full"></div>
                <div className="absolute -right-12 -top-3 w-6 h-6 bg-slate-50 dark:bg-slate-950 rounded-full"></div>
             </div>
-
-            {/* ID Section */}
             <div className="w-full">
               <p className="text-center text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2">ID do Cliente</p>
               <div 
@@ -134,24 +124,18 @@ const QRCodePage: React.FC = () => {
             </div>
           </div>
         </div>
-
-        {/* Action Button */}
         <div className="mt-4">
           <Button variant="secondary" className="w-full dark:bg-slate-800 dark:text-white" onClick={() => setIsModalOpen(true)}>
              <Maximize2 size={18} className="mr-2" /> Expandir QR Code
           </Button>
         </div>
       </motion.div>
-
-      {/* Dicas Finais */}
       <div className="max-w-sm mx-auto text-center space-y-2 pb-6">
          <div className="flex items-center justify-center gap-2 text-xs text-slate-400">
             <Smartphone size={14} />
             <span>Aproxime do leitor no balcão</span>
          </div>
       </div>
-
-      {/* Modal Fullscreen */}
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="QR Code" size="default">
         <div className="flex flex-col items-center space-y-8 py-8">
           <div className="p-6 bg-white rounded-3xl shadow-2xl">
