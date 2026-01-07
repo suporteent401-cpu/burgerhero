@@ -1,20 +1,30 @@
 import { supabase } from '../lib/supabaseClient';
 
 /**
- * Valida um voucher através do QR Token ou Hero Code.
- * Esta função chama uma RPC (Remote Procedure Call) no Supabase.
+ * Valida e resgata um voucher através do QR Token ou Hero Code usando uma RPC.
  */
-export const validateVoucher = async (qrToken?: string, heroCode?: string) => {
-  const params: any = {};
+export const validateVoucher = async (qrToken?: string, heroCode?: string, restaurantId?: string) => {
+  const params: any = {
+    p_restaurant_id: restaurantId || null
+  };
   if (qrToken) params.p_qr_token = qrToken;
   if (heroCode) params.p_hero_code = heroCode;
 
+  // A RPC 'redeem_voucher' retorna um array com um único objeto de resultado.
   const { data, error } = await supabase.rpc('redeem_voucher', params);
 
   if (error) {
-    console.error('Erro ao validar voucher via RPC:', error);
-    throw error;
+    console.error('Erro ao chamar RPC redeem_voucher:', error);
+    // Retorna um erro estruturado para a UI tratar.
+    return [{ 
+      ok: false, 
+      message: `Erro de comunicação: ${error.message}`,
+      user_id: null,
+      voucher_id: null,
+      status: null
+    }];
   }
+  
   return data;
 };
 

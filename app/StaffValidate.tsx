@@ -4,44 +4,72 @@ import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Modal } from '../components/ui/Modal';
 import { Search, QrCode, ShieldCheck, ShieldAlert, CheckCircle, Award } from 'lucide-react';
-import { fakeApi } from '../lib/fakeApi';
 import { User } from '../types';
 import QrScanner from '../components/QrScanner';
+import { validateVoucher } from '../services/redemption.service';
+import { getUserProfileById } from '../services/users.service';
 
 const StaffValidate: React.FC = () => {
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<{ success: boolean; message: string; user?: User } | null>(null);
   const [isScannerOpen, setIsScannerOpen] = useState(false);
-  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   const handleValidate = useCallback(async (val: string) => {
     if (!val) return;
     setLoading(true);
     setResult(null);
-    await new Promise(r => setTimeout(r, 500)); // Simulate network delay
-    const res = await fakeApi.staffValidateByPayload(val);
-    setResult(res);
+
+    let rpcResult;
+    try {
+      const isQrData = val.trim().startsWith('{') && val.trim().endsWith('}');
+      const qrToken = isQrData ? val : undefined;
+      const heroCode = isQrData ? undefined : val;
+      
+      const data = await validateVoucher(qrToken, heroCode);
+      rpcResult = data[0];
+
+    } catch (error: any) {
+      setResult({ success: false, message: error.message || 'Ocorreu um erro inesperado.' });
+      setLoading(false);
+      return;
+    }
+
+    if (!rpcResult) {
+      setResult({ success: false, message: 'Resposta inválida do servidor.' });
+      setLoading(false);
+      return;
+    }
+
+    let userProfile: User | null = null;
+    if (rpcResult.user_id) {
+      const profileData = await getUserProfileById(rpcResult.user_id);
+      if (profileData) {
+        userProfile = {
+          id: profileData.user_id,
+          name: profileData.display_name,
+          customerCode: profileData.hero_code,
+          avatarUrl: profileData.avatar_url,
+          email: profileData.email || '',
+          cpf: '', whatsapp: '', birthDate: '', role: 'CLIENT', heroTheme: 'sombra-noturna',
+        };
+      }
+    }
+    
+    setResult({
+      success: rpcResult.ok,
+      message: rpcResult.message,
+      user: userProfile || undefined,
+    });
+
     setLoading(false);
   }, []);
 
   const handleScanSuccess = useCallback((decodedText: string) => {
     setIsScannerOpen(false);
-    setQuery(decodedText);
+    setQuery(''); // Limpa o campo após o scan
     handleValidate(decodedText);
   }, [handleValidate]);
-
-  const confirmRedeem = async () => {
-    if (!result?.user) return;
-    try {
-      await fakeApi.redeemMonthlyBurger(result.user.id);
-      setFeedback({ type: 'success', message: 'Resgate realizado com sucesso!' });
-      setResult(null);
-      setQuery('');
-    } catch (e: any) {
-      setFeedback({ type: 'error', message: e.message || 'Ocorreu um erro desconhecido.' });
-    }
-  };
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col p-4 pt-12">
@@ -68,17 +96,17 @@ const StaffValidate: React.FC = () => {
               <div className="relative flex justify-center text-xs uppercase"><span className="bg-white px-2 text-slate-400 font-bold">Ou</span></div>
             </div>
 
-            <div className="flex gap-2">
+            <form onSubmit={(e) => { e.preventDefault(); handleValidate(query); }} className="flex gap-2">
               <Input 
                 placeholder="Buscar por CPF ou Código HE..." 
                 value={query} 
                 onChange={e => setQuery(e.target.value)}
                 className="rounded-2xl"
               />
-              <Button variant="secondary" onClick={() => handleValidate(query)} isLoading={loading} className="rounded-2xl">
+              <Button type="submit" variant="secondary" isLoading={loading} className="rounded-2xl">
                 <Search size={20} />
               </Button>
-            </div>
+            </form>
           </CardBody>
         </Card>
 
@@ -107,7 +135,7 @@ const StaffValidate: React.FC = () => {
 
               <div>
                 <h3 className={`text-2xl font-black ${result.success ? 'text-green-700' : 'text-red-700'}`}>
-                  {result.success ? 'APTO PARA RESGATE' : 'NÃO APTO'}
+                  {result.success ? 'RESGATE CONFIRMADO' : 'FALHA NO RESGATE'}
                 </h3>
                 <p className="font-bold text-slate-500">{result.message}</p>
               </div>
@@ -115,19 +143,13 @@ const StaffValidate: React.FC = () => {
               {result.user && (
                 <div className="w-full bg-slate-50 p-4 rounded-2xl flex items-center gap-4 text-left">
                   <div className="w-12 h-12 bg-slate-200 rounded-xl overflow-hidden">
-                    <img src={result.user.avatarUrl || `https://picsum.photos/seed/${result.user.id}/100`} alt="" />
+                    <img src={result.user.avatarUrl || `https://picsum.photos/seed/${result.user.id}/100`} alt={result.user.name} />
                   </div>
                   <div>
                     <p className="text-sm font-black">{result.user.name}</p>
                     <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{result.user.customerCode}</p>
                   </div>
                 </div>
-              )}
-
-              {result.success && (
-                <Button className="w-full bg-green-500 hover:bg-green-600" size="lg" onClick={confirmRedeem}>
-                   <CheckCircle size={20} className="mr-2" /> Confirmar Resgate
-                </Button>
               )}
               
               <Button variant="ghost" onClick={() => setResult(null)}>Fechar</Button>
@@ -144,24 +166,6 @@ const StaffValidate: React.FC = () => {
               Usar digitação manual
             </Button>
           </div>
-        </div>
-      </Modal>
-
-      <Modal isOpen={feedback !== null} onClose={() => setFeedback(null)} title={feedback?.type === 'success' ? 'Operação Concluída' : 'Atenção'}>
-        <div className="flex flex-col items-center text-center p-4 space-y-4">
-          {feedback?.type === 'success' ? (
-            <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center">
-              <CheckCircle size={32} />
-            </div>
-          ) : (
-            <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center">
-              <ShieldAlert size={32} />
-            </div>
-          )}
-          <p className="text-lg font-bold text-slate-800">{feedback?.message}</p>
-          <Button onClick={() => setFeedback(null)} className="w-full !mt-6">
-            OK
-          </Button>
         </div>
       </Modal>
     </div>
