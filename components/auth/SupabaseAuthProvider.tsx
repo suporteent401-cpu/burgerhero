@@ -16,6 +16,11 @@ const normalizeRole = (input: any): Role => {
   return 'client';
 };
 
+const generateCustomerCode = () => {
+  const random = Math.random().toString(36).substring(2, 8).toUpperCase();
+  return `BH-${random}`;
+};
+
 export const SupabaseAuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const login = useAuthStore((s) => s.login);
   const logout = useAuthStore((s) => s.logout);
@@ -38,6 +43,54 @@ export const SupabaseAuthProvider: React.FC<AuthProviderProps> = ({ children }) 
         fontSize: settings.fontSize,
       });
       useThemeStore.getState().applyTheme();
+    };
+
+    /**
+     * Garante que o usuário autenticado tenha customerCode.
+     * IMPORTANTE:
+     * - Aqui eu atualizo direto no Supabase.
+     * - Ajuste o nome da coluna se no seu banco for `customer_code` ao invés de `customerCode`.
+     */
+    const ensureCustomerCode = async (profile: any) => {
+      // Se já tem, beleza
+      if (profile?.customerCode) return profile;
+
+      const newCode = generateCustomerCode();
+
+      // ⚠️ ATENÇÃO: escolha 1 dos campos abaixo conforme sua tabela.
+      // Se a coluna no banco for snake_case: use { customer_code: newCode }
+      // Se for camelCase (menos comum): use { customerCode: newCode }
+      //
+      // Eu vou tentar snake_case primeiro, e se falhar, tento camelCase.
+      // (Assim evita ficar travado sem saber o nome exato.)
+      let updated = false;
+
+      // tentativa 1: snake_case
+      {
+        const { error } = await supabase
+          .from('profiles')
+          .update({ customer_code: newCode })
+          .eq('id', profile.id);
+
+        if (!error) updated = true;
+      }
+
+      // tentativa 2: camelCase (fallback)
+      if (!updated) {
+        const { error } = await supabase
+          .from('profiles')
+          .update({ customerCode: newCode })
+          .eq('id', profile.id);
+
+        if (error) {
+          console.error('Falha ao gerar customerCode no profile:', error);
+          // Não joga logout por isso; só retorna o profile como está.
+          return profile;
+        }
+      }
+
+      // Atualiza o objeto em memória para o app já enxergar agora
+      return { ...profile, customerCode: newCode };
     };
 
     const initAuth = async () => {
@@ -73,7 +126,10 @@ export const SupabaseAuthProvider: React.FC<AuthProviderProps> = ({ children }) 
         }
 
         // Garante role válida
-        const safeProfile = { ...full.profile, role: normalizeRole(full.profile.role) };
+        let safeProfile = { ...full.profile, role: normalizeRole(full.profile.role) };
+
+        // ✅ Garante customerCode
+        safeProfile = await ensureCustomerCode(safeProfile);
 
         applySettings(full.settings);
         login(safeProfile);
@@ -81,7 +137,6 @@ export const SupabaseAuthProvider: React.FC<AuthProviderProps> = ({ children }) 
         console.error('Exceção na inicialização da autenticação:', err);
         logout();
       } finally {
-        // Se login/logout já setou isLoading=false, aqui só garante
         setLoading(false);
       }
     };
@@ -102,11 +157,24 @@ export const SupabaseAuthProvider: React.FC<AuthProviderProps> = ({ children }) 
       // SIGNED_IN / TOKEN_REFRESHED
       if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session?.user) {
         try {
-          // Se já tiver usuário no store, não precisa reload completo sempre
+          // Se já tiver usuário no store, normalmente não precisa reload
+          // MAS: se não tiver customerCode ainda, a gente garante aqui.
           const currentUser = useAuthStore.getState().user;
-          if (currentUser) return;
+
+          // Se já existe user e já tem customerCode, não faz nada
+          if (currentUser?.id && currentUser?.customerCode) return;
 
           setLoading(true);
+
+          // Se já existe user no store, tenta garantir code sem refazer tudo
+          if (currentUser?.id && !currentUser.customerCode) {
+            const ensured = await ensureCustomerCode(currentUser);
+            // login() aqui serve como "refresh" do store do auth
+            login({ ...ensured, role: normalizeRole(ensured.role) });
+            return;
+          }
+
+          // Se não tem user no store, carrega completo
           const full = await getFullUserProfile(session.user);
           if (!full) {
             await supabase.auth.signOut();
@@ -114,7 +182,8 @@ export const SupabaseAuthProvider: React.FC<AuthProviderProps> = ({ children }) 
             return;
           }
 
-          const safeProfile = { ...full.profile, role: normalizeRole(full.profile.role) };
+          let safeProfile = { ...full.profile, role: normalizeRole(full.profile.role) };
+          safeProfile = await ensureCustomerCode(safeProfile);
 
           applySettings(full.settings);
           login(safeProfile);
