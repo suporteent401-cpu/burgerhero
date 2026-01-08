@@ -1,25 +1,22 @@
 import { supabase } from '../lib/supabaseClient';
 
 /**
- * Helpers: range do mês atual (início inclusive, próximo mês exclusive)
+ * Mês atual em formato date (primeiro dia do mês)
+ * Ex: 2026-01-01
  */
-const getMonthRange = () => {
+const getCurrentMonthDate = () => {
   const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
-  const end = new Date(now.getFullYear(), now.getMonth() + 1, 1, 0, 0, 0, 0);
-
-  return {
-    startISO: start.toISOString(),
-    endISO: end.toISOString(),
-  };
+  const monthDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0, 0));
+  // month_date é "date" no banco, então usamos YYYY-MM-DD
+  return monthDate.toISOString().slice(0, 10);
 };
 
 /**
  * Busca o voucher do mês atual para um usuário.
- * (agora realmente filtra pelo mês atual)
+ * Regra correta: pelo month_date do monthly_drop (não por created_at do voucher).
  */
 export const getCurrentVoucher = async (userId: string) => {
-  const { startISO, endISO } = getMonthRange();
+  const monthDate = getCurrentMonthDate();
 
   const { data, error } = await supabase
     .from('vouchers')
@@ -29,20 +26,18 @@ export const getCurrentVoucher = async (userId: string) => {
       monthly_drop:monthly_drops (
         *,
         burger:burgers(*)
-      )
+      ),
+      voucher_redemptions:voucher_redemptions(*)
     `
     )
     .eq('user_id', userId)
-    // ✅ FILTRO DO MÊS ATUAL
-    .gte('created_at', startISO)
-    .lt('created_at', endISO)
+    .eq('monthly_drop.month_date', monthDate)
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle();
 
   if (error) {
     console.error('Erro ao buscar voucher atual:', error);
-    // Não lançar erro se for "nenhuma linha"
     if ((error as any).code !== 'PGRST116') {
       throw error;
     }
@@ -57,7 +52,13 @@ export const getCurrentVoucher = async (userId: string) => {
 export const getVoucherHistory = async (userId: string) => {
   const { data, error } = await supabase
     .from('vouchers')
-    .select('*')
+    .select(
+      `
+      *,
+      monthly_drop:monthly_drops(*),
+      voucher_redemptions:voucher_redemptions(*)
+    `
+    )
     .eq('user_id', userId)
     .order('created_at', { ascending: false });
 
