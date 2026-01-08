@@ -1,10 +1,83 @@
 import { supabase } from '../lib/supabaseClient';
 import { Plan } from '../types';
 
+/**
+ * PlansService
+ * - NÃO quebra chamadas existentes: expõe listAllPlans(), listActivePlans(), createPlan(), updatePlan().
+ * - Mantém mapeamento consistente para o formato usado pelo Admin (camelCase).
+ */
+
+type DbPlanRow = {
+  id: string;
+  name: string;
+  price_cents: number;
+  description?: string | null;
+  benefits?: string[] | null;
+  image_url?: string | null;
+  is_active?: boolean | null;
+  created_at?: string | null;
+  subscriber_count?: number | null;
+  popularity?: number | null;
+};
+
+const mapDbToPlan = (p: DbPlanRow): Plan => {
+  return {
+    id: p.id,
+    name: p.name,
+    priceCents: p.price_cents ?? 0,
+    description: p.description || '',
+    benefits: Array.isArray(p.benefits) ? p.benefits : [],
+    imageUrl: p.image_url || '',
+    active: Boolean(p.is_active),
+    subscriberCount: Number(p.subscriber_count ?? 0),
+    popularity: Number(p.popularity ?? 0),
+
+    // snake_case opcionais (compat)
+    price_cents: p.price_cents,
+    image_url: p.image_url || '',
+    is_active: Boolean(p.is_active),
+    created_at: p.created_at || undefined,
+    subscriber_count: p.subscriber_count ?? undefined,
+    popularity_db: p.popularity ?? undefined,
+  } as any;
+};
+
+const mapPlanToDbPayload = (plan: Partial<Plan>) => {
+  const payload: any = {};
+
+  if (typeof plan.name === 'string') payload.name = plan.name;
+  if (typeof (plan as any).priceCents === 'number') payload.price_cents = (plan as any).priceCents;
+  if (typeof (plan as any).description === 'string') payload.description = (plan as any).description;
+  if (Array.isArray((plan as any).benefits)) payload.benefits = (plan as any).benefits;
+  if (typeof (plan as any).imageUrl === 'string') payload.image_url = (plan as any).imageUrl;
+  if (typeof (plan as any).active === 'boolean') payload.is_active = (plan as any).active;
+
+  // compat: alguns pontos do app enviam is_active direto
+  if (typeof (plan as any).is_active === 'boolean') payload.is_active = (plan as any).is_active;
+
+  return payload;
+};
+
 export const plansService = {
   /**
-   * Lista apenas planos marcados como ativos no banco de dados.
-   * Ordena por preço para manter a hierarquia visual.
+   * Lista TODOS os planos (ativos e inativos) — usado no Admin.
+   */
+  async listAllPlans(): Promise<Plan[]> {
+    const { data, error } = await supabase
+      .from('plans')
+      .select('*')
+      .order('price_cents', { ascending: true });
+
+    if (error) {
+      console.error('[PlansService] Erro ao listar TODOS os planos:', error);
+      return [];
+    }
+
+    return (data || []).map(mapDbToPlan);
+  },
+
+  /**
+   * Lista apenas planos ativos — usado no /plans público.
    */
   async listActivePlans(): Promise<Plan[]> {
     const { data, error } = await supabase
@@ -14,18 +87,52 @@ export const plansService = {
       .order('price_cents', { ascending: true });
 
     if (error) {
-      console.error('[PlansService] Erro ao listar planos:', error);
+      console.error('[PlansService] Erro ao listar planos ativos:', error);
       return [];
     }
 
-    return (data || []).map(p => ({
-      id: p.id,
-      name: p.name,
-      priceCents: p.price_cents,
-      description: p.description || '',
-      benefits: p.benefits || [],
-      imageUrl: p.image_url || '',
-      active: p.is_active,
-    })) as Plan[];
-  }
+    return (data || []).map(mapDbToPlan);
+  },
+
+  /**
+   * Cria um plano.
+   */
+  async createPlan(plan: Partial<Plan>): Promise<Plan | null> {
+    const payload = mapPlanToDbPayload(plan);
+
+    const { data, error } = await supabase
+      .from('plans')
+      .insert(payload)
+      .select('*')
+      .single();
+
+    if (error) {
+      console.error('[PlansService] Erro ao criar plano:', error);
+      throw error;
+    }
+
+    return data ? mapDbToPlan(data as any) : null;
+  },
+
+  /**
+   * Atualiza um plano.
+   */
+  async updatePlan(planId: string, updates: Partial<Plan>): Promise<Plan | null> {
+    const payload = mapPlanToDbPayload(updates);
+    if (!planId) throw new Error('planId é obrigatório');
+
+    const { data, error } = await supabase
+      .from('plans')
+      .update(payload)
+      .eq('id', planId)
+      .select('*')
+      .single();
+
+    if (error) {
+      console.error('[PlansService] Erro ao atualizar plano:', error);
+      throw error;
+    }
+
+    return data ? mapDbToPlan(data as any) : null;
+  },
 };
