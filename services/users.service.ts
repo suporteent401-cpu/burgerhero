@@ -22,108 +22,12 @@ const normalizeRole = (input: any): Role => {
   return 'client';
 };
 
-// ✅ Gerador de código do herói (customer_id_public)
-// 8 chars alfanumérico uppercase, ex: A7K2M9QX
-const generateCustomerCode = (len = 8): string => {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // evita 0/O/1/I (melhor leitura)
-  let out = '';
-
-  // Browser crypto (melhor)
-  const hasCrypto =
-    typeof window !== 'undefined' &&
-    typeof window.crypto !== 'undefined' &&
-    typeof window.crypto.getRandomValues === 'function';
-
-  if (hasCrypto) {
-    const buf = new Uint8Array(len);
-    window.crypto.getRandomValues(buf);
-    for (let i = 0; i < len; i++) out += chars[buf[i] % chars.length];
-    return out;
-  }
-
-  // Fallback
-  for (let i = 0; i < len; i++) {
-    out += chars[Math.floor(Math.random() * chars.length)];
-  }
+const generateHeroCode = () => {
+  // Ex: BH-7K2P9D
+  const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+  let out = 'BH-';
+  for (let i = 0; i < 6; i++) out += chars[Math.floor(Math.random() * chars.length)];
   return out;
-};
-
-// ✅ Garante que exista um user_profile no banco.
-// Se não existir, cria com upsert e gera customer_id_public.
-// Se existir sem código, complementa.
-const ensureUserProfileRow = async (authUser: SupabaseUser) => {
-  const userId = authUser.id;
-  const email = authUser.email || '';
-  const fullName =
-    (authUser.user_metadata as any)?.full_name ||
-    (authUser.user_metadata as any)?.name ||
-    'Herói';
-  const avatarUrl = (authUser.user_metadata as any)?.avatar_url || null;
-
-  // 1) tenta ler
-  const { data: existing, error: existingErr } = await supabase
-    .from('user_profiles')
-    .select('*')
-    .eq('user_id', userId)
-    .maybeSingle();
-
-  if (existingErr) {
-    console.warn('Aviso: erro ao buscar user_profiles (ensure).', existingErr);
-    // continua mesmo assim (vai tentar upsert)
-  }
-
-  // Se existe e já tem código, só retorna
-  if (existing && (existing.customer_id_public || existing.hero_code)) {
-    return existing;
-  }
-
-  // 2) faz upsert (cria ou complementa)
-  // Tentativas em caso de conflito de unique (se houver)
-  const maxTries = 5;
-  let lastError: any = null;
-
-  for (let attempt = 1; attempt <= maxTries; attempt++) {
-    const customerIdPublic = existing?.customer_id_public || generateCustomerCode(8);
-
-    const payload: any = {
-      user_id: userId,
-      email,
-      display_name: existing?.display_name || fullName,
-      avatar_url: existing?.avatar_url || avatarUrl,
-      customer_id_public: customerIdPublic,
-    };
-
-    const { error: upsertErr } = await supabase
-      .from('user_profiles')
-      .upsert(payload, { onConflict: 'user_id' });
-
-    if (!upsertErr) {
-      const { data: reloaded, error: reloadErr } = await supabase
-        .from('user_profiles')
-        .select('*')
-        .eq('user_id', userId)
-        .maybeSingle();
-
-      if (reloadErr) {
-        console.warn('Aviso: erro ao recarregar user_profiles após upsert.', reloadErr);
-      }
-
-      return reloaded || existing || null;
-    }
-
-    lastError = upsertErr;
-
-    // Se for conflito (unique), tenta outro código
-    // (Supabase geralmente usa code "23505" para unique_violation)
-    const code = (upsertErr as any)?.code;
-    if (code === '23505') continue;
-
-    // Se for outro erro, não adianta tentar várias vezes
-    break;
-  }
-
-  console.error('CRÍTICO: falha ao garantir user_profiles.', lastError);
-  return existing || null;
 };
 
 export const checkCpfExists = async (cpf: string): Promise<boolean> => {
@@ -160,10 +64,6 @@ export const getUserProfileById = async (userId: string) => {
 };
 
 export const getFullUserProfile = async (authUser: SupabaseUser): Promise<FullUserProfile | null> => {
-  // ✅ PRIMEIRO: garante que exista user_profiles e que tenha código
-  // (isso resolve: ID não aparece, QR não aparece, "identidade não encontrada")
-  const ensuredProfile = await ensureUserProfileRow(authUser);
-
   const [appUserResponse, userProfileResponse, settingsResponse] = await Promise.all([
     supabase.from('app_users').select('role, is_active').eq('id', authUser.id).maybeSingle(),
     supabase.from('user_profiles').select('*').eq('user_id', authUser.id).maybeSingle(),
@@ -180,8 +80,7 @@ export const getFullUserProfile = async (authUser: SupabaseUser): Promise<FullUs
 
   const role: Role = normalizeRole(appUserData.role);
 
-  // se a leitura normal falhar, usa o ensuredProfile como fallback
-  const userProfileData = userProfileResponse.data || ensuredProfile;
+  const userProfileData = userProfileResponse.data;
   const settingsData = settingsResponse.data;
 
   const profile: AppUser = {
@@ -223,37 +122,99 @@ export const getFullUserProfile = async (authUser: SupabaseUser): Promise<FullUs
   return { profile, settings };
 };
 
+// ✅ garante que existe um perfil (RPC já existe no seu projeto)
+export const ensureProfileExistsForEmail = async (email: string) => {
+  try {
+    if (!email) return;
+    await supabase.rpc('ensure_user_profile_login', { p_email: email });
+  } catch (e) {
+    console.warn('ensure_user_profile_login falhou:', e);
+  }
+};
+
+// ✅ garante que existe um código de herói (customer_id_public / hero_code)
+export const ensureHeroIdentity = async (userId: string): Promise<string | null> => {
+  const profile = await getUserProfileById(userId);
+  const existing = profile?.customer_id_public || profile?.hero_code;
+  if (existing) return existing;
+
+  // tenta gerar e garantir unicidade
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const code = generateHeroCode();
+
+    // checa colisão
+    const { data: collision, error: colErr } = await supabase
+      .from('user_profiles')
+      .select('user_id')
+      .or(`customer_id_public.eq.${code},hero_code.eq.${code}`)
+      .limit(1);
+
+    if (colErr) {
+      console.warn('Falha ao checar colisão de código:', colErr);
+      // segue mesmo assim, mas pode falhar na atualização se tiver unique constraint
+    }
+
+    if (Array.isArray(collision) && collision.length > 0) continue;
+
+    // salva
+    const { error } = await supabase
+      .from('user_profiles')
+      .upsert(
+        { user_id: userId, customer_id_public: code, hero_code: code },
+        { onConflict: 'user_id' }
+      );
+
+    if (!error) return code;
+
+    console.error('Falha ao salvar hero code:', error);
+  }
+
+  return null;
+};
+
 // Função apenas de upload (retorna URL)
 export const uploadAvatarFile = async (userId: string, file: File): Promise<string> => {
-  const fileExt = file.name.split('.').pop();
+  const fileExt = file.name.split('.').pop() || 'jpg';
   const fileName = `${userId}/${Date.now()}.${fileExt}`;
 
   const { error: uploadError } = await supabase.storage
     .from('avatars')
-    .upload(fileName, file, { upsert: true, contentType: file.type });
+    .upload(fileName, file, {
+      upsert: true,
+      contentType: file.type || 'image/jpeg',
+      cacheControl: '3600',
+    });
 
-  if (uploadError) throw uploadError;
+  if (uploadError) {
+    console.error('UPLOAD_AVATAR_ERROR:', uploadError);
+    throw new Error(uploadError.message || 'Falha no upload do avatar');
+  }
 
   const { data: publicUrlData } = supabase.storage.from('avatars').getPublicUrl(fileName);
   return publicUrlData.publicUrl;
 };
 
-// ✅ Função unificada de atualização de perfil (nome + avatar)
-// Agora é UPSERT (cria linha se não existir)
+// ✅ Função unificada de atualização de perfil (upsert é mais resiliente)
 export const updateUserProfile = async (
   userId: string,
-  updates: { display_name?: string; avatar_url?: string; cpf?: string; whatsapp?: string; birthdate?: string | null; email?: string }
+  updates: {
+    display_name?: string;
+    avatar_url?: string;
+    customer_id_public?: string;
+    hero_code?: string;
+  }
 ) => {
-  const payload: any = { user_id: userId, ...updates };
-
   const { error } = await supabase
     .from('user_profiles')
-    .upsert(payload, { onConflict: 'user_id' });
+    .upsert({ user_id: userId, ...updates }, { onConflict: 'user_id' });
 
-  if (error) throw error;
+  if (error) {
+    console.error('UPDATE_PROFILE_ERROR:', error);
+    throw new Error(error.message || 'Falha ao salvar perfil no banco');
+  }
 };
 
-// Mantida para compatibilidade (mas agora usa as funções acima)
+// Mantida para compatibilidade
 export const uploadAndSyncAvatar = async (userId: string, file: File): Promise<string | null> => {
   const publicUrl = await uploadAvatarFile(userId, file);
   await updateUserProfile(userId, { avatar_url: publicUrl });
