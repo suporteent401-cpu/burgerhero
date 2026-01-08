@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
-import { fakeApi } from '../../lib/fakeApi';
+import { plansService } from '../../services/plans.service';
 import { Plan } from '../../types';
 
 interface AdminUserFiltersProps {
@@ -34,7 +34,8 @@ export const AdminUserFilters: React.FC<AdminUserFiltersProps> = ({ isOpen, onCl
   const [plans, setPlans] = useState<Plan[]>([]);
 
   useEffect(() => {
-    fakeApi.adminListAllPlans().then(setPlans);
+    // Substituindo fakeApi por plansService
+    plansService.listAllPlans().then(setPlans);
   }, []);
 
   useEffect(() => {
