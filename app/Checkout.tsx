@@ -6,17 +6,14 @@ import { CheckCircle2, CreditCard, QrCode } from "lucide-react";
 import { subscriptionMockService } from "../services/subscriptionMock.service";
 import { useAuthStore } from "../store/authStore";
 
-// ✅ IMPORT: tenta ativar também no banco (mock no Supabase)
-import { subscriptionsService } from "../services/subscriptions.service";
-
 const formatBRL = (value: number) =>
   value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
 const Checkout: React.FC = () => {
   const navigate = useNavigate();
-  const user = useAuthStore((state) => state.user);
+  const user = useAuthStore(state => state.user);
 
-  const [plan, setPlan] = useState<{ id: string; name: string; priceCents: number } | null>(null);
+  const [plan, setPlan] = useState<{ planSlug: string; name: string; priceCents: number } | null>(null);
   const [method, setMethod] = useState<"card" | "pix">("card");
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string>("");
@@ -25,45 +22,33 @@ const Checkout: React.FC = () => {
     const pendingPlan = subscriptionMockService.getPendingPlan();
 
     if (!pendingPlan) {
-      navigate("/plans", { replace: true });
+      navigate('/plans', { replace: true });
       return;
     }
 
-    // Se não estiver logado, manda pro login (evita assinar sem user.id)
-    if (!user?.id) {
-      navigate("/login", { replace: true });
-      return;
-    }
-
-    setPlan(pendingPlan);
-  }, [navigate, user?.id]);
+    // compat com seu formato antigo
+    setPlan({
+      planSlug: pendingPlan.planSlug,
+      name: pendingPlan.name || "Plano BurgerHero",
+      priceCents: pendingPlan.priceCents || 0,
+    });
+  }, [navigate]);
 
   const handleFinish = async () => {
-    if (!plan || !user?.id) return;
+    if (!plan || !user) return;
 
     setErrorMsg("");
     setLoading(true);
 
     try {
       // Simula processamento
-      await new Promise((r) => setTimeout(r, 800));
+      await new Promise(r => setTimeout(r, 600));
 
-      // ✅ 1) Tenta ativar no BANCO (se RPC/serviço existir e estiver ok)
-      // (Se falhar, não impede o fluxo mock; só loga)
-      try {
-        // 30 dias de período (ajuste se quiser)
-        await subscriptionsService.activateMock(plan.id, 30);
-      } catch (dbErr) {
-        console.warn("Não foi possível ativar no banco (seguindo com mock local).", dbErr);
-      }
+      // ✅ ativa assinatura no banco (RPC) + grava localStorage
+      await subscriptionMockService.activate(plan.planSlug, user.id, 30);
 
-      // ✅ 2) Ativa a assinatura Mock (persiste no localStorage)
-      subscriptionMockService.setActiveSubscription(user.id, plan);
-
-      // ✅ 3) Limpa o plano pendente
+      // limpa pendência e vai pro app
       subscriptionMockService.clearPendingPlan();
-
-      // ✅ 4) Redireciona para a home
       navigate("/app", { replace: true });
     } catch (err: any) {
       console.error(err);
@@ -107,7 +92,7 @@ const Checkout: React.FC = () => {
 
             <div className="mt-4 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
               <CheckCircle2 size={14} className="text-emerald-500" />
-              Checkout em modo de demonstração (MOCK).
+              Checkout em modo de demonstração (MOCK + RPC Supabase).
             </div>
           </CardBody>
         </Card>
@@ -132,11 +117,7 @@ const Checkout: React.FC = () => {
                 <CreditCard size={18} />
                 <span className="font-bold">Cartão de Crédito</span>
               </div>
-              <div
-                className={`w-2 h-2 rounded-full ${
-                  method === "card" ? "bg-hero-primary" : "bg-slate-300"
-                }`}
-              />
+              <div className={`w-2 h-2 rounded-full ${method === "card" ? "bg-hero-primary" : "bg-slate-300"}`} />
             </button>
 
             <button
@@ -152,11 +133,7 @@ const Checkout: React.FC = () => {
                 <QrCode size={18} />
                 <span className="font-bold">PIX Automático</span>
               </div>
-              <div
-                className={`w-2 h-2 rounded-full ${
-                  method === "pix" ? "bg-hero-primary" : "bg-slate-300"
-                }`}
-              />
+              <div className={`w-2 h-2 rounded-full ${method === "pix" ? "bg-hero-primary" : "bg-slate-300"}`} />
             </button>
           </CardBody>
         </Card>
