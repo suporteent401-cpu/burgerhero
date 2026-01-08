@@ -1,19 +1,18 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardBody } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { useAuthStore } from '../store/authStore';
-import { Subscription } from '../types';
-import { QrCode, Lock, CheckCircle2, Calendar, Utensils } from 'lucide-react';
+import { QrCode, Lock, CheckCircle2, Calendar, Utensils, Loader2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { getCurrentVoucher, getVoucherHistory } from '../services/voucher.service';
-import { getSubscriptionStatus } from '../services/clientHome.service';
+import { subscriptionMockService } from '../services/subscriptionMock.service';
 
 const Voucher: React.FC = () => {
   const user = useAuthStore((state) => state.user);
   const navigate = useNavigate();
 
-  const [sub, setSub] = useState<Subscription | null>(null);
+  const [isSubActive, setIsSubActive] = useState<boolean>(false);
   const [currentVoucher, setCurrentVoucher] = useState<any | null>(null);
   const [history, setHistory] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -27,25 +26,18 @@ const Voucher: React.FC = () => {
     if (!user?.id) return;
 
     const fetchData = async () => {
+      setLoading(true);
       try {
-        const [voucherData, subData, historyData] = await Promise.all([
+        const [voucherData, historyData, activeSub] = await Promise.all([
           getCurrentVoucher(user.id),
-          getSubscriptionStatus(user.id),
           getVoucherHistory(user.id),
+          subscriptionMockService.getActiveSubscription(user.id),
         ]);
 
         setCurrentVoucher(voucherData);
 
-        // normaliza para o tipo Subscription que você já usa no app
-        if (subData) {
-          setSub({
-            status: subData.status, // "ACTIVE" | "INACTIVE"
-            currentPeriodStart: subData.currentPeriodStart || null,
-            currentPeriodEnd: subData.currentPeriodEnd || null,
-          } as any);
-        } else {
-          setSub({ status: 'INACTIVE' } as any);
-        }
+        // assinatura ativa de forma consistente com o resto do app
+        setIsSubActive(!!activeSub && activeSub.status === 'active');
 
         const pastVouchers = historyData.filter((v) => v.id !== voucherData?.id);
         setHistory(pastVouchers.slice(0, 2));
@@ -59,25 +51,39 @@ const Voucher: React.FC = () => {
     fetchData();
   }, [user?.id]);
 
+  const hasVoucherThisMonth = !!currentVoucher;
+
+  const isRedeemed = useMemo(() => {
+    // 1) se existir redeemed_at, já foi
+    if (currentVoucher?.redeemed_at) return true;
+
+    // 2) se existir registro em voucher_redemptions, já foi
+    const redemptions = currentVoucher?.voucher_redemptions;
+    if (Array.isArray(redemptions) && redemptions.length > 0) return true;
+
+    return false;
+  }, [currentVoucher]);
+
+  // ✅ Regra certa:
+  // apto = assinatura ativa + existe voucher do mês + não resgatado
+  const isEligible = isSubActive && hasVoucherThisMonth && !isRedeemed;
+
+  // imagem/nome do burger do mês (se não tiver drop ainda, cai em placeholder)
+  const burgerImage =
+    currentVoucher?.monthly_drop?.burger?.image_url ||
+    'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80';
+
+  const burgerName = currentVoucher?.monthly_drop?.burger?.name;
+  const burgerDescription = currentVoucher?.monthly_drop?.burger?.description;
+
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] text-slate-400 gap-4">
-        <div className="w-8 h-8 border-4 border-hero-primary border-t-transparent rounded-full animate-spin"></div>
+        <Loader2 className="w-8 h-8 text-hero-primary animate-spin" />
         <p className="text-sm font-medium animate-pulse">Sincronizando satélites...</p>
       </div>
     );
   }
-
-  const rawStatus = String(sub?.status || '').toLowerCase();
-  const isActive = rawStatus === 'active' || rawStatus === 'ACTIVE'.toLowerCase(); // cobre "ACTIVE"
-  const isRedeemed = currentVoucher?.status === 'redeemed';
-  const isEligible = isActive && currentVoucher?.status === 'available';
-
-  const burgerImage =
-    currentVoucher?.monthly_drop?.burger?.image_url ||
-    'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80';
-  const burgerName = currentVoucher?.monthly_drop?.burger?.name;
-  const burgerDescription = currentVoucher?.monthly_drop?.burger?.description;
 
   return (
     <div className="space-y-6 pb-10">
@@ -109,6 +115,7 @@ const Voucher: React.FC = () => {
           <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent"></div>
         </div>
 
+        {/* Badge */}
         <div className="absolute top-3 right-3">
           {isRedeemed ? (
             <div className="bg-slate-900/80 backdrop-blur-md text-white px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest border border-white/20 flex items-center gap-1.5">
@@ -118,9 +125,13 @@ const Voucher: React.FC = () => {
             <div className="bg-hero-primary text-white px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest shadow-lg shadow-hero-primary/40 animate-pulse">
               Disponível
             </div>
-          ) : (
+          ) : !isSubActive ? (
             <div className="bg-red-500/90 backdrop-blur-md text-white px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest flex items-center gap-1.5">
               <Lock size={12} /> Bloqueado
+            </div>
+          ) : (
+            <div className="bg-slate-900/70 backdrop-blur-md text-white px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest border border-white/20">
+              Em breve
             </div>
           )}
         </div>
@@ -133,14 +144,21 @@ const Voucher: React.FC = () => {
             <h3 className="text-2xl font-black text-white leading-tight mb-1">
               {isRedeemed ? 'Missão Cumprida' : burgerName || 'Drop Indisponível'}
             </h3>
+
             <p className="text-slate-300 text-xs max-w-sm line-clamp-2 leading-relaxed">
               {isRedeemed
-                ? `Você saboreou este drop épico em ${new Date(currentVoucher!.redeemed_at!).toLocaleDateString()}.`
+                ? `Você resgatou este drop em ${new Date(
+                    currentVoucher?.redeemed_at ||
+                      currentVoucher?.voucher_redemptions?.[0]?.created_at ||
+                      new Date().toISOString()
+                  ).toLocaleDateString()}.`
                 : isEligible && burgerDescription
                 ? burgerDescription
-                : isActive
+                : isSubActive && !hasVoucherThisMonth
                 ? 'Seu plano está ativo. Aguardando liberação do drop.'
-                : 'Sua assinatura está inativa ou o drop ainda não foi liberado.'}
+                : !isSubActive
+                ? 'Sua assinatura está inativa. Reative para liberar o benefício.'
+                : 'Aguardando liberação do drop.'}
             </p>
           </div>
 
@@ -159,12 +177,19 @@ const Voucher: React.FC = () => {
               >
                 Já Utilizado
               </Button>
-            ) : (
+            ) : !isSubActive ? (
               <Button
                 onClick={() => navigate('/plans')}
                 className="w-full bg-red-600 hover:bg-red-700 text-white border-none h-10 rounded-xl shadow-lg shadow-red-900/20 text-xs font-bold"
               >
                 Reativar Assinatura
+              </Button>
+            ) : (
+              <Button
+                disabled
+                className="w-full bg-slate-800/50 text-slate-300 border border-slate-700 h-10 rounded-xl cursor-not-allowed text-xs font-bold"
+              >
+                Aguardando Drop
               </Button>
             )}
           </div>
@@ -196,7 +221,9 @@ const Voucher: React.FC = () => {
                       <p className="text-xs font-bold text-slate-700 dark:text-slate-300">
                         Resgate de {new Date(voucher.created_at).toLocaleString('pt-BR', { month: 'long' })}
                       </p>
-                      <p className="text-xs text-slate-400 dark:text-slate-500 capitalize">{voucher.status}</p>
+                      <p className="text-xs text-slate-400 dark:text-slate-500 capitalize">
+                        {String(voucher.status || 'registrado')}
+                      </p>
                     </div>
                   </div>
                 </div>
