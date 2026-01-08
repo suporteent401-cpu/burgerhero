@@ -8,17 +8,15 @@ interface AuthState {
   isAuthed: boolean;
   isLoading: boolean;
 
-  // ✅ Persist hidratado
+  // ✅ evita telas com estado “meio hidratado”
   hasHydrated: boolean;
 
   login: (user: User) => void;
   logout: () => void;
-
   setUser: (user: User | null) => void;
-  updateUser: (user: Partial<User>) => void;
 
+  updateUser: (user: Partial<User>) => void;
   setLoading: (loading: boolean) => void;
-  setHasHydrated: (hydrated: boolean) => void;
 
   // ✅ Recarrega do banco e corrige customerCode/avatar/name se o store estiver faltando
   refreshUserFromDb: (userId: string) => Promise<void>;
@@ -34,7 +32,6 @@ export const useAuthStore = create<AuthState>()(
 
       login: (user) => set({ user, isAuthed: true, isLoading: false }),
       logout: () => set({ user: null, isAuthed: false, isLoading: false }),
-
       setUser: (user) => set({ user }),
 
       updateUser: (data) =>
@@ -43,7 +40,6 @@ export const useAuthStore = create<AuthState>()(
         })),
 
       setLoading: (loading) => set({ isLoading: loading }),
-      setHasHydrated: (hydrated) => set({ hasHydrated: hydrated }),
 
       refreshUserFromDb: async (userId: string) => {
         try {
@@ -81,7 +77,7 @@ export const useAuthStore = create<AuthState>()(
             }));
           }
         } catch (e) {
-          console.warn('[authStore] refreshUserFromDb falhou (seguindo).', e);
+          console.warn('refreshUserFromDb falhou (seguindo sem travar).', e);
         }
       },
     }),
@@ -90,8 +86,16 @@ export const useAuthStore = create<AuthState>()(
       partialize: (state) => ({ user: state.user, isAuthed: state.isAuthed }),
       onRehydrateStorage: () => (state, error) => {
         if (error) console.error('Erro ao rehidratar authStore:', error);
-        state?.setHasHydrated(true);
-        state?.setLoading(false);
+
+        // ✅ marca hidratação finalizada do persist
+        if (state) {
+          state.setLoading(false);
+          // não muta state direto; faz set via Zustand
+          // (como persist não expõe set aqui, vamos usar create getState)
+          try {
+            useAuthStore.setState({ hasHydrated: true });
+          } catch {}
+        }
       },
     }
   )
