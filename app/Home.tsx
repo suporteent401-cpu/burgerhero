@@ -63,8 +63,8 @@ const Home: React.FC = () => {
           <h2 className="text-2xl font-black text-slate-800 dark:text-white">Olá, {user?.name.split(' ')[0]}!</h2>
           <p className="text-slate-500 dark:text-slate-400 text-xs font-bold mt-1">
             Status: 
-            <span className={`ml-1 ${isActive ? 'text-green-500 dark:text-green-400' : 'text-red-500 dark:text-red-400'}`}>
-              {isActive ? '● Ativo' : '● Inativo'}
+            <span className={`ml-1 ${isActive ? 'text-green-500 dark:text-green-400' : 'text-slate-500'}`}>
+              {isActive ? '● Ativo' : '● Visitante'}
             </span>
           </p>
         </div>
@@ -83,6 +83,7 @@ const Home: React.FC = () => {
           memberSince={sub?.currentPeriodStart}
           fontFamily={selectedFont}
           textColor={selectedColor}
+          isActive={isActive}
         />
       </div>
 
@@ -107,8 +108,8 @@ const Home: React.FC = () => {
         <Card>
           <CardBody className="p-4">
             <p className="text-slate-400 dark:text-slate-500 text-[10px] font-black uppercase tracking-wider mb-1">Burger do Mês</p>
-            <p className={`font-bold text-sm ${benefit?.burgerRedeemed ? 'text-amber-500' : 'text-green-500 dark:text-green-400'}`}>
-              {benefit?.burgerRedeemed ? 'Resgatado' : 'Disponível'}
+            <p className={`font-bold text-sm ${benefit?.burgerRedeemed ? 'text-amber-500' : isActive ? 'text-green-500 dark:text-green-400' : 'text-slate-400'}`}>
+              {benefit?.burgerRedeemed ? 'Resgatado' : isActive ? 'Disponível' : 'Bloqueado'}
             </p>
           </CardBody>
         </Card>

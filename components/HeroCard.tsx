@@ -9,6 +9,7 @@ interface HeroCardProps {
   fontFamily?: string;
   textColor?: string;
   fontSize?: number;
+  isActive?: boolean;
 }
 
 const HeroCard = React.forwardRef<HTMLDivElement, HeroCardProps>(({ 
@@ -17,7 +18,8 @@ const HeroCard = React.forwardRef<HTMLDivElement, HeroCardProps>(({
   className = '',
   fontFamily = 'Inter, sans-serif',
   textColor = '#FFFFFF',
-  fontSize = 22
+  fontSize = 22,
+  isActive = false
 }, ref) => {
   return (
     <div ref={ref} className={`w-full max-w-[420px] mx-auto ${className}`}>
@@ -65,7 +67,7 @@ const HeroCard = React.forwardRef<HTMLDivElement, HeroCardProps>(({
               fontSize: `${fontSize * 0.6}px`
             }}
           >
-            ID: {user?.customerCode || '—'}
+            {isActive ? `ID: ${user?.customerCode || '—'}` : 'Visitante'}
           </p>
         </div>
 
