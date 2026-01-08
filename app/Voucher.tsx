@@ -3,18 +3,16 @@ import { useNavigate } from 'react-router-dom';
 import { Card, CardBody } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { useAuthStore } from '../store/authStore';
-import { Subscription } from '../types';
 import { QrCode, Lock, CheckCircle2, Calendar, Utensils } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { getCurrentVoucher, getVoucherHistory } from '../services/voucher.service';
-import { getSubscriptionStatus } from '../services/clientHome.service';
 import { subscriptionMockService } from '../services/subscriptionMock.service';
 
 const Voucher: React.FC = () => {
   const user = useAuthStore(state => state.user);
   const navigate = useNavigate();
 
-  const [sub, setSub] = useState<Subscription | null>(null);
+  const [isActive, setIsActive] = useState(false);
   const [currentVoucher, setCurrentVoucher] = useState<any | null>(null);
   const [history, setHistory] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -25,39 +23,30 @@ const Voucher: React.FC = () => {
   const currentYear = currentDate.getFullYear();
 
   useEffect(() => {
-    if (user?.id) {
-      const fetchData = async () => {
-        try {
-          // ✅ Subscription: mock primeiro
-          const mockSub = subscriptionMockService.getActiveSubscription(user.id);
-          if (mockSub?.status === 'active') {
-            setSub({
-              status: 'active',
-              currentPeriodStart: mockSub.startedAt,
-              currentPeriodEnd: mockSub.nextBillingDate,
-            } as any);
-          } else {
-            const subData = await getSubscriptionStatus(user.id);
-            setSub(subData);
-          }
+    if (!user?.id) return;
 
-          const [voucherData, historyData] = await Promise.all([
-            getCurrentVoucher(user.id),
-            getVoucherHistory(user.id)
-          ]);
+    const fetchData = async () => {
+      setLoading(true);
+      try {
+        const [voucherData, historyData, activeSub] = await Promise.all([
+          getCurrentVoucher(user.id),
+          getVoucherHistory(user.id),
+          subscriptionMockService.getActiveSubscription(user.id),
+        ]);
 
-          setCurrentVoucher(voucherData);
+        setIsActive(!!activeSub);
+        setCurrentVoucher(voucherData);
 
-          const pastVouchers = (historyData || []).filter((v: any) => v.id !== voucherData?.id);
-          setHistory(pastVouchers.slice(0, 2));
-        } catch (error) {
-          console.error('Erro ao buscar dados do voucher:', error);
-        } finally {
-          setLoading(false);
-        }
-      };
-      fetchData();
-    }
+        const pastVouchers = historyData.filter(v => v.id !== voucherData?.id);
+        setHistory(pastVouchers.slice(0, 2));
+      } catch (error) {
+        console.error("Erro ao buscar dados do voucher:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
   }, [user?.id]);
 
   if (loading) return (
@@ -67,19 +56,18 @@ const Voucher: React.FC = () => {
     </div>
   );
 
-  const isActive = sub?.status === 'ACTIVE' || sub?.status === 'active';
   const isRedeemed = currentVoucher?.status === 'redeemed';
   const isEligible = isActive && currentVoucher?.status === 'available';
 
   const burgerImage =
     currentVoucher?.monthly_drop?.burger?.image_url ||
     "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80";
-
   const burgerName = currentVoucher?.monthly_drop?.burger?.name;
   const burgerDescription = currentVoucher?.monthly_drop?.burger?.description;
 
   return (
     <div className="space-y-6 pb-10">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-black text-slate-800 dark:text-white">Drops Mensal</h2>
@@ -89,6 +77,7 @@ const Voucher: React.FC = () => {
         </div>
       </div>
 
+      {/* Main Voucher Card */}
       <motion.div
         initial={{ opacity: 0, scale: 0.98 }}
         animate={{ opacity: 1, scale: 1 }}
@@ -99,9 +88,7 @@ const Voucher: React.FC = () => {
           <img
             src={burgerImage}
             alt="Burger of the Month"
-            className={`w-full h-full object-cover transition-transform duration-700 ${
-              isEligible ? 'group-hover:scale-110' : 'grayscale opacity-40'
-            }`}
+            className={`w-full h-full object-cover transition-transform duration-700 ${isEligible ? 'group-hover:scale-110' : 'grayscale opacity-40'}`}
           />
           <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent"></div>
         </div>
@@ -132,13 +119,10 @@ const Voucher: React.FC = () => {
             </h3>
             <p className="text-slate-300 text-xs max-w-sm line-clamp-2 leading-relaxed">
               {isRedeemed
-                ? `Você saboreou este drop em ${new Date(currentVoucher!.redeemed_at!).toLocaleDateString()}.`
+                ? `Você saboreou este drop épico em ${new Date(currentVoucher!.redeemed_at!).toLocaleDateString()}.`
                 : isEligible && burgerDescription
                   ? burgerDescription
-                  : isActive
-                    ? 'Sua assinatura está ativa, mas o drop ainda não foi liberado.'
-                    : 'Sua assinatura está inativa ou o drop ainda não foi liberado.'
-              }
+                  : 'Sua assinatura está inativa ou o drop ainda não foi liberado.'}
             </p>
           </div>
 
@@ -169,12 +153,13 @@ const Voucher: React.FC = () => {
         </div>
       </motion.div>
 
+      {/* History Timeline */}
       <div className="space-y-4">
         <h3 className="text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest pl-2">Histórico</h3>
 
         <Card className="border-none shadow-none bg-transparent">
           <CardBody className="p-0 space-y-4">
-            {(history || []).map((voucher, i) => (
+            {history.map((voucher) => (
               <div key={voucher.id} className="relative pl-8 before:absolute before:left-[11px] before:top-8 before:bottom-[-16px] before:w-[2px] before:bg-slate-200 dark:before:bg-slate-800 last:before:hidden">
                 <div className="absolute left-0 top-1 w-6 h-6 rounded-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center z-10">
                   <div className="w-1.5 h-1.5 rounded-full bg-slate-400"></div>
