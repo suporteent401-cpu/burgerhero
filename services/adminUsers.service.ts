@@ -16,44 +16,53 @@ export const adminUsersService = {
   async listUsers(params: { page: number; search: string; limit: number; filters?: any }) {
     const { page, search, limit, filters } = params;
     
-    // Chama a RPC 'admin_list_users' que faz o JOIN entre app_users, user_profiles e subscriptions
+    // Normaliza filtros para lowercase para bater com a RPC (active, client, admin...)
+    const statusFilter = filters?.status ? String(filters.status).toLowerCase() : null;
+    const roleFilter = filters?.role ? String(filters.role).toLowerCase() : null;
+
+    console.log('[AdminUsers] Fetching with:', { page, search, statusFilter, roleFilter });
+
     const { data, error } = await supabase.rpc('admin_list_users', {
       p_page: page,
-      p_search: search,
+      p_search: search || '',
       p_limit: limit,
-      p_status: filters?.status || null,
-      p_role: filters?.role || null
+      p_status: statusFilter,
+      p_role: roleFilter
     });
 
     if (error) {
-      console.error('Erro ao listar usuários:', error);
+      console.error('[AdminUsers] RPC Error:', error);
       throw error;
     }
 
-    // Mapeamento exato dos campos retornados pela RPC
-    const users: AdminUserListItem[] = (data || []).map((u: any) => ({
+    if (!data || !Array.isArray(data)) {
+      return { data: [], total: 0, totalPages: 0 };
+    }
+
+    // Mapeamento defensivo: aceita variações de snake_case ou alias que o Postgres possa retornar
+    const users: AdminUserListItem[] = data.map((u: any) => ({
       id: u.id,
-      name: u.display_name || 'Usuário sem nome',
+      name: u.display_name || 'Sem nome',
       email: u.email,
       role: u.role,
       avatarUrl: u.avatar_url,
       customerCode: u.hero_code || '---',
-      subscriptionStatus: u.subscription_status, // Pode ser null se não tiver assinatura
-      nextBillingDate: u.next_billing_date // Timestamp ou null
+      // Tenta pegar pelo nome definido no TYPE ou pelo alias interno da query
+      subscriptionStatus: u.subscription_status || u.sub_status || null,
+      nextBillingDate: u.next_billing_date || u.next_billing_at || null
     }));
 
-    // A RPC retorna o total_count em todas as linhas (window function)
-    const total = data?.[0]?.total_count || 0;
+    // O total_count vem repetido em todas as linhas
+    const total = data.length > 0 ? Number(data[0].total_count) : 0;
 
     return {
       data: users,
-      total: Number(total),
-      totalPages: Math.ceil(Number(total) / limit)
+      total: total,
+      totalPages: Math.ceil(total / limit)
     };
   },
 
   async getUserDetails(userId: string) {
-    // 1. Dados do perfil (Tabela user_profiles)
     const { data: profile, error: profileError } = await supabase
       .from('user_profiles')
       .select('*')
@@ -61,24 +70,21 @@ export const adminUsersService = {
       .single();
 
     if (profileError || !profile) {
-      throw new Error('Perfil de usuário não encontrado.');
+      throw new Error('Perfil não encontrado.');
     }
 
-    // 2. Dados de sistema (Tabela app_users) para pegar a role
     const { data: appUser } = await supabase
       .from('app_users')
       .select('role')
       .eq('id', userId)
-      .single();
+      .maybeSingle();
 
-    // 3. Assinatura e Plano (Tabela subscriptions + join com plans)
     const { data: sub } = await supabase
       .from('subscriptions')
       .select('*, plan:plans(*)')
       .eq('user_id', userId)
       .maybeSingle();
 
-    // 4. Histórico de Vouchers (Últimos 5 resgates)
     const { data: redemptions } = await supabase
       .from('voucher_redemptions')
       .select('*')
@@ -91,7 +97,7 @@ export const adminUsersService = {
       name: profile.display_name,
       email: profile.email,
       cpf: profile.cpf,
-      customerCode: profile.hero_code,
+      customerCode: profile.hero_code || profile.customer_id_public,
       avatarUrl: profile.avatar_url,
       role: (appUser?.role as any) || 'client',
       whatsapp: profile.whatsapp,
