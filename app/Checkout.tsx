@@ -6,6 +6,7 @@ import { CheckCircle2, CreditCard, QrCode } from "lucide-react";
 import { subscriptionMockService } from "../services/subscriptionMock.service";
 import { useAuthStore } from "../store/authStore";
 import { subscriptionsService } from "../services/subscriptions.service";
+import { supabase } from "../lib/supabaseClient";
 
 const formatBRL = (value: number) =>
   value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -47,13 +48,25 @@ const Checkout: React.FC = () => {
 
       await subscriptionsService.activateMock(planSlug, 30);
 
-      // ✅ 2) (opcional) mantém seu mock local também, mas agora o "oficial" é o banco
+      // ✅ 2) GARANTE VOUCHER IMEDIATAMENTE (RPC)
+      // Dispara a criação do voucher do mês já que a assinatura acabou de ficar ativa
+      const { error: rpcError } = await supabase.rpc('ensure_voucher_for_user', { 
+        p_user_id: user.id, 
+        p_force: true 
+      });
+
+      if (rpcError) {
+        console.warn("Aviso: Falha ao garantir voucher automático:", rpcError);
+        // Não bloqueia o fluxo, pois o usuário já pagou/ativou
+      }
+
+      // ✅ 3) (opcional) mantém seu mock local também, mas agora o "oficial" é o banco
       subscriptionMockService.setActiveSubscription(user.id, plan);
 
-      // ✅ 3) limpa o plano pendente
+      // ✅ 4) limpa o plano pendente
       subscriptionMockService.clearPendingPlan();
 
-      // ✅ 4) vai pra home
+      // ✅ 5) vai pra home
       navigate("/app", { replace: true });
     } catch (err: any) {
       console.error(err);
