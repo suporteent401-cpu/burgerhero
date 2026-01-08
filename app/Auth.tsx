@@ -21,6 +21,8 @@ const normalizeRole = (input: any): Role => {
   return 'client';
 };
 
+const normalizeCpf = (cpf: string) => (cpf ? cpf.replace(/[^\d]/g, '') : '');
+
 const Auth: React.FC = () => {
   const [isLogin, setIsLogin] = useState(true);
   const [step, setStep] = useState(1);
@@ -30,7 +32,13 @@ const Auth: React.FC = () => {
   const navigate = useNavigate();
   const login = useAuthStore((state) => state.login);
 
-  const { register, handleSubmit, watch, formState: { errors } } = useForm();
+  const {
+    register,
+    handleSubmit,
+    watch,
+    formState: { errors },
+  } = useForm();
+
   const password = watch('password');
 
   const applySettingsAndLoadTemplates = async (settings: any) => {
@@ -66,6 +74,32 @@ const Auth: React.FC = () => {
     else navigate('/app', { replace: true });
   };
 
+  const ensureBootstrap = async (payload: {
+    name: string;
+    email: string;
+    cpf: string;
+    birthDate?: string | null;
+    whatsapp?: string | null;
+  }) => {
+    const cpf = normalizeCpf(payload.cpf);
+
+    const { data, error } = await supabase.rpc('ensure_user_bootstrap', {
+      p_display_name: payload.name,
+      p_email: payload.email,
+      p_cpf: cpf,
+      p_birthdate: payload.birthDate ? payload.birthDate : null,
+      p_whatsapp: payload.whatsapp ? payload.whatsapp : null,
+    });
+
+    if (error) {
+      console.error('RPC ensure_user_bootstrap falhou:', error);
+      return { ok: false, message: error.message };
+    }
+
+    const result = Array.isArray(data) ? data[0] : data;
+    return result || { ok: true };
+  };
+
   const onSubmit = async (data: any) => {
     setError('');
     setLoading(true);
@@ -79,9 +113,7 @@ const Auth: React.FC = () => {
 
         if (authError) {
           throw new Error(
-            authError.message === 'Invalid login credentials'
-              ? 'Credenciais inválidas.'
-              : authError.message
+            authError.message === 'Invalid login credentials' ? 'Credenciais inválidas.' : authError.message
           );
         }
 
@@ -89,7 +121,20 @@ const Auth: React.FC = () => {
           throw new Error('Não foi possível iniciar a sessão.');
         }
 
-        const full = await getFullUserProfile(signInData.session.user);
+        // 1) tenta carregar perfil normalmente
+        let full = await getFullUserProfile(signInData.session.user);
+
+        // 2) se falhar (muito comum em usuário novo), roda bootstrap e tenta de novo
+        if (!full) {
+          console.warn('Falha ao carregar perfil no login. Tentando bootstrap...');
+          await ensureBootstrap({
+            name: (signInData.session.user.user_metadata as any)?.full_name || 'Hero',
+            email: signInData.session.user.email || data.email,
+            cpf: '00000000000', // fallback seguro: NÃO deve acontecer; ideal é CPF existir em user_profiles.
+          });
+
+          full = await getFullUserProfile(signInData.session.user);
+        }
 
         if (full) {
           const role = normalizeRole(full.profile.role);
@@ -99,73 +144,79 @@ const Auth: React.FC = () => {
 
           login(safeProfile);
           handlePostAuthRedirect(role);
-        } else {
-          console.warn('Falha ao carregar perfil no login. AuthProvider vai tentar recuperar.');
-          navigate('/app', { replace: true });
+          return;
         }
+
+        // Se ainda assim não veio, manda pro app e o provider tenta
+        navigate('/app', { replace: true });
+        return;
+      }
+
+      // --- CADASTRO ---
+      if (step === 1) {
+        const cpfExists = await checkCpfExists(data.cpf);
+        if (cpfExists) throw new Error('Este CPF já está cadastrado em nossa base.');
+
+        setStep1Data({
+          name: data.name,
+          cpf: normalizeCpf(data.cpf),
+        });
+        setStep(2);
+        setLoading(false);
+        return;
+      }
+
+      const fullUserData = {
+        ...step1Data,
+        ...data,
+        cpf: normalizeCpf(step1Data?.cpf || data.cpf),
+      };
+
+      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+        email: fullUserData.email,
+        password: fullUserData.password,
+        options: { data: { full_name: fullUserData.name } },
+      });
+
+      if (signUpError) throw signUpError;
+
+      // Se exigir confirmação de e-mail, não vem session
+      if (signUpData.user && !signUpData.session) {
+        setLoading(false);
+        alert('Cadastro realizado com sucesso! Verifique seu e-mail para confirmar a conta antes de entrar.');
+        setIsLogin(true);
+        return;
+      }
+
+      if (!signUpData.session) {
+        throw new Error('Erro ao estabelecer sessão após cadastro.');
+      }
+
+      // ✅ Bootstrap garantido no banco (app_users + user_profiles)
+      const boot = await ensureBootstrap({
+        name: fullUserData.name,
+        email: fullUserData.email,
+        cpf: fullUserData.cpf,
+        birthDate: fullUserData.birthDate || null,
+        whatsapp: fullUserData.whatsapp || null,
+      });
+
+      if (!boot?.ok) {
+        console.warn('Bootstrap retornou alerta:', boot?.message);
+      }
+
+      const full = await getFullUserProfile(signUpData.session.user);
+
+      if (full) {
+        const role = normalizeRole(full.profile.role);
+        const safeProfile = { ...full.profile, role };
+
+        await applySettingsAndLoadTemplates(full.settings);
+
+        login(safeProfile);
+        handlePostAuthRedirect(role);
       } else {
-        // --- CADASTRO ---
-        if (step === 1) {
-          const cpfExists = await checkCpfExists(data.cpf);
-          if (cpfExists) throw new Error('Este CPF já está cadastrado em nossa base.');
-
-          setStep1Data(data);
-          setStep(2);
-          setLoading(false);
-          return;
-        }
-
-        const fullUserData = { ...step1Data, ...data };
-
-        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-          email: fullUserData.email,
-          password: fullUserData.password,
-          options: { data: { full_name: fullUserData.name } },
-        });
-
-        if (signUpError) throw signUpError;
-
-        if (signUpData.user && !signUpData.session) {
-          setLoading(false);
-          alert('Cadastro realizado com sucesso! Verifique seu e-mail para confirmar a conta antes de entrar.');
-          setIsLogin(true);
-          return;
-        }
-
-        if (!signUpData.session) {
-          throw new Error('Erro ao estabelecer sessão após cadastro.');
-        }
-
-        // Mantém sua RPC (ok), mas mesmo que falhe o getFullUserProfile vai garantir o perfil
-        const { data: rpcData, error: rpcError } = await supabase.rpc('ensure_user_profile', {
-          p_display_name: fullUserData.name,
-          p_email: fullUserData.email,
-          p_cpf: fullUserData.cpf,
-          p_birthdate: fullUserData.birthDate || null,
-        });
-
-        if (rpcError) {
-          console.error('Erro na RPC ensure_user_profile:', rpcError);
-        } else {
-          const result = Array.isArray(rpcData) ? rpcData[0] : rpcData;
-          if (result && !result.ok) {
-            console.warn('Aviso do Banco de Dados:', result.message);
-          }
-        }
-
-        const full = await getFullUserProfile(signUpData.session.user);
-
-        if (full) {
-          const role = normalizeRole(full.profile.role);
-          const safeProfile = { ...full.profile, role };
-
-          await applySettingsAndLoadTemplates(full.settings);
-
-          login(safeProfile);
-          handlePostAuthRedirect(role);
-        } else {
-          navigate('/app', { replace: true });
-        }
+        navigate('/app', { replace: true });
       }
     } catch (err: any) {
       console.error('AUTH_ERROR', err);
@@ -263,9 +314,7 @@ const Auth: React.FC = () => {
                         {...register('password', { required: true, minLength: 6 })}
                       />
                       {errors.password && (
-                        <p className="text-red-500 text-xs -mt-2 ml-1">
-                          A senha deve ter no mínimo 6 caracteres.
-                        </p>
+                        <p className="text-red-500 text-xs -mt-2 ml-1">A senha deve ter no mínimo 6 caracteres.</p>
                       )}
                       <Input
                         label="Confirmar Senha"
@@ -284,9 +333,7 @@ const Auth: React.FC = () => {
                       )}
                       <div className="flex items-start gap-2 pt-2">
                         <input type="checkbox" className="mt-1" {...register('terms', { required: true })} />
-                        <label className="text-xs text-slate-500">
-                          Aceito os termos e condições de uso da BurgerHero.
-                        </label>
+                        <label className="text-xs text-slate-500">Aceito os termos e condições de uso da BurgerHero.</label>
                       </div>
                     </>
                   )}
