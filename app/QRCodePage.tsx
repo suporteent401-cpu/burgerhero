@@ -5,7 +5,17 @@ import { useAuthStore } from '../store/authStore';
 import { useCardStore } from '../store/cardStore';
 import { getSubscriptionStatus } from '../services/clientHome.service';
 import { subscriptionMockService } from '../services/subscriptionMock.service';
-import { Maximize2, Copy, Check, Sun, Smartphone, AlertCircle, Loader2, ShieldCheck, ShieldAlert } from 'lucide-react';
+import {
+  Maximize2,
+  Copy,
+  Check,
+  Sun,
+  Smartphone,
+  AlertCircle,
+  Loader2,
+  ShieldCheck,
+  ShieldAlert,
+} from 'lucide-react';
 import { Modal } from '../components/ui/Modal';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
@@ -25,18 +35,21 @@ const QRCodePage: React.FC = () => {
     if (user?.id) {
       const checkStatus = async () => {
         try {
-          // Verifica mock primeiro, depois banco
+          // Mock primeiro, depois banco
           const mockSub = subscriptionMockService.getActiveSubscription(user.id);
           if (mockSub && mockSub.status === 'active') {
             setSubStatus('active');
-          } else {
-            const data = await getSubscriptionStatus(user.id);
-            setSubStatus(data?.status === 'ACTIVE' ? 'active' : 'inactive');
+            return;
           }
+
+          const data = await getSubscriptionStatus(user.id);
+          const isDbActive = data?.status === 'active' || data?.status === 'ACTIVE';
+          setSubStatus(isDbActive ? 'active' : 'inactive');
         } catch (e) {
           setSubStatus('inactive');
         }
       };
+
       checkStatus();
     }
   }, [user?.id]);
@@ -50,9 +63,11 @@ const QRCodePage: React.FC = () => {
 
   const qrUrl = useMemo(() => {
     if (!customerCode) return '';
-    // Gera a URL absoluta para a rota pública
-    const baseUrl = window.location.origin + window.location.pathname;
-    return `${baseUrl}#/public/client/${customerCode}`;
+
+    // ✅ hash router correto:
+    // Sempre gera: https://seu-dominio/#/public/client/CODIGO
+    const origin = window.location.origin;
+    return `${origin}/#/public/client/${customerCode}`;
   }, [customerCode]);
 
   const handleCopy = async () => {
@@ -107,16 +122,28 @@ const QRCodePage: React.FC = () => {
         className="relative max-w-sm mx-auto"
       >
         {/* Glow Effect */}
-        <div className={`absolute inset-0 blur-3xl rounded-full -z-10 opacity-30 ${isActive ? 'bg-green-500' : 'bg-hero-primary'}`}></div>
+        <div
+          className={`absolute inset-0 blur-3xl rounded-full -z-10 opacity-30 ${
+            isActive ? 'bg-green-500' : 'bg-hero-primary'
+          }`}
+        ></div>
 
         <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] overflow-hidden shadow-2xl border border-slate-100 dark:border-slate-800">
           {/* Top Banner */}
           <div className="h-32 relative overflow-hidden">
-            <img src={templateImageUrl} alt="Bg" className="absolute inset-0 w-full h-full object-cover scale-125" />
+            <img
+              src={templateImageUrl}
+              alt="Bg"
+              className="absolute inset-0 w-full h-full object-cover scale-125"
+            />
             <div className="absolute inset-0 bg-black/40"></div>
-            
+
             <div className="absolute top-4 inset-x-0 flex justify-center">
-              <div className={`px-3 py-1 rounded-full backdrop-blur-md border border-white/20 flex items-center gap-2 ${isActive ? 'bg-green-500/30' : 'bg-slate-500/30'}`}>
+              <div
+                className={`px-3 py-1 rounded-full backdrop-blur-md border border-white/20 flex items-center gap-2 ${
+                  isActive ? 'bg-green-500/30' : 'bg-slate-500/30'
+                }`}
+              >
                 <div className={`w-2 h-2 rounded-full ${isActive ? 'bg-green-400 animate-pulse' : 'bg-slate-400'}`}></div>
                 <span className="text-[10px] font-black text-white uppercase tracking-widest">
                   {isActive ? 'Assinatura Ativa' : 'Assinatura Inativa'}
@@ -128,33 +155,39 @@ const QRCodePage: React.FC = () => {
           <div className="px-8 pb-8 -mt-12 flex flex-col items-center relative z-10">
             {/* Avatar */}
             <div className="w-24 h-24 rounded-full border-[6px] border-white dark:border-slate-900 bg-slate-200 overflow-hidden shadow-xl mb-4">
-              <img src={user.avatarUrl || `https://picsum.photos/seed/${user.id}/100`} alt="User" className="w-full h-full object-cover" />
+              <img
+                src={user.avatarUrl || `https://picsum.photos/seed/${user.id}/100`}
+                alt="User"
+                className="w-full h-full object-cover"
+              />
             </div>
 
-            <h3 className="text-xl font-black text-slate-800 dark:text-white mb-6">
-              {user.name}
-            </h3>
+            <h3 className="text-xl font-black text-slate-800 dark:text-white mb-6">{user.name}</h3>
 
             {/* QR Code Container */}
-            <div 
+            <div
               className="bg-white p-5 rounded-3xl shadow-inner border border-slate-100 relative group cursor-pointer"
               onClick={() => setIsModalOpen(true)}
             >
-              <QRCodeSVG 
-                value={qrUrl} 
-                size={180} 
-                level="H" 
+              <QRCodeSVG
+                value={qrUrl}
+                size={180}
+                level="H"
                 includeMargin={false}
-                imageSettings={isActive ? {
-                  src: "https://ik.imagekit.io/lflb43qwh/Heros/images.jpg",
-                  x: undefined,
-                  y: undefined,
-                  height: 40,
-                  width: 40,
-                  excavate: true,
-                } : undefined}
+                imageSettings={
+                  isActive
+                    ? {
+                        src: 'https://ik.imagekit.io/lflb43qwh/Heros/images.jpg',
+                        x: undefined,
+                        y: undefined,
+                        height: 40,
+                        width: 40,
+                        excavate: true,
+                      }
+                    : undefined
+                }
               />
-              
+
               {!isActive && (
                 <div className="absolute inset-0 bg-white/80 backdrop-blur-[1px] rounded-3xl flex flex-col items-center justify-center p-4 text-center">
                   <ShieldAlert className="text-red-500 mb-2" size={32} />
@@ -171,7 +204,9 @@ const QRCodePage: React.FC = () => {
 
             {/* Manual Code */}
             <div className="w-full">
-              <p className="text-center text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2">ID do Herói</p>
+              <p className="text-center text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2">
+                ID do Herói
+              </p>
               <div
                 onClick={handleCopy}
                 className="bg-slate-50 dark:bg-slate-800 p-3 rounded-2xl flex items-center justify-between cursor-pointer active:scale-95 transition-all"
@@ -179,7 +214,11 @@ const QRCodePage: React.FC = () => {
                 <span className="font-mono font-bold text-lg text-slate-700 dark:text-slate-200 tracking-widest pl-2">
                   {customerCode}
                 </span>
-                <div className={`p-2 rounded-xl ${copied ? 'bg-green-500 text-white' : 'bg-white dark:bg-slate-700 text-slate-400'}`}>
+                <div
+                  className={`p-2 rounded-xl ${
+                    copied ? 'bg-green-500 text-white' : 'bg-white dark:bg-slate-700 text-slate-400'
+                  }`}
+                >
                   {copied ? <Check size={18} /> : <Copy size={18} />}
                 </div>
               </div>
@@ -188,9 +227,14 @@ const QRCodePage: React.FC = () => {
         </div>
 
         <div className="mt-6 flex flex-col gap-3">
-          <Button variant="secondary" className="w-full py-4 rounded-2xl dark:bg-slate-800" onClick={() => setIsModalOpen(true)}>
+          <Button
+            variant="secondary"
+            className="w-full py-4 rounded-2xl dark:bg-slate-800"
+            onClick={() => setIsModalOpen(true)}
+          >
             <Maximize2 size={18} className="mr-2" /> Tela Cheia
           </Button>
+
           {!isActive && (
             <Link to="/plans">
               <Button className="w-full py-4 rounded-2xl bg-red-500 hover:bg-red-600">
