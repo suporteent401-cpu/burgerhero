@@ -40,14 +40,23 @@ export interface Subscription {
 }
 
 export interface Plan {
+  // Formato usado na UI/Admin (camelCase)
   id: string;
   name: string;
-  price_cents: number;
+  priceCents: number;
   description: string;
   benefits: string[];
-  image_url: string;
-  is_active: boolean;
+  imageUrl: string;
+  active: boolean;
+  subscriberCount: number;
+  popularity: number;
+
+  // Campos do banco (snake_case) opcionais — mantidos por compatibilidade
+  // (evita quebrar telas/serviços que ainda referenciam o formato do banco)
+  price_cents?: number;
+  image_url?: string;
+  is_active?: boolean;
   created_at?: string;
   subscriber_count?: number;
-  popularity?: number;
+  popularity_db?: number;
 }
