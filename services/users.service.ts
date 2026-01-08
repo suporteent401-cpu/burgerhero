@@ -22,13 +22,6 @@ const normalizeRole = (input: any): Role => {
   return 'client';
 };
 
-const generateHeroCode = () => {
-  const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
-  let out = 'BH-';
-  for (let i = 0; i < 6; i++) out += chars[Math.floor(Math.random() * chars.length)];
-  return out;
-};
-
 export const checkCpfExists = async (cpf: string): Promise<boolean> => {
   const normalizedCpf = normalizeCpf(cpf);
   if (!normalizedCpf) return false;
@@ -89,6 +82,7 @@ export const getFullUserProfile = async (authUser: SupabaseUser): Promise<FullUs
 
     name: userProfileData?.display_name || (authUser.user_metadata as any)?.full_name || 'Herói',
 
+    // prioridade: customer_id_public (código público), depois hero_code
     customerCode: userProfileData?.customer_id_public || userProfileData?.hero_code || '',
 
     avatarUrl: userProfileData?.avatar_url || (authUser.user_metadata as any)?.avatar_url || null,
@@ -122,36 +116,19 @@ export const ensureProfileExistsForEmail = async (email: string) => {
   }
 };
 
-// ✅ garante que existe um código de herói (customer_id_public / hero_code)
-export const ensureHeroIdentity = async (userId: string): Promise<string | null> => {
-  const profile: any = await getUserProfileById(userId);
-  const existing = profile?.customer_id_public || profile?.hero_code;
-  if (existing) return existing;
-
-  for (let attempt = 0; attempt < 8; attempt++) {
-    const code = generateHeroCode();
-
-    const { data: collision, error: colErr } = await supabase
-      .from('user_profiles')
-      .select('user_id')
-      .or(`customer_id_public.eq.${code},hero_code.eq.${code}`)
-      .limit(1);
-
-    if (colErr) console.warn('Falha ao checar colisão de código:', colErr);
-    if (Array.isArray(collision) && collision.length > 0) continue;
-
-    // ⚠️ aqui sim é upsert, mas COMPLETO o suficiente pra não violar NOT NULL
-    const { error } = await supabase
-      .from('user_profiles')
-      .update({ customer_id_public: code, hero_code: code })
-      .eq('user_id', userId);
-
-    if (!error) return code;
-
-    console.error('Falha ao salvar hero code:', error);
+// ✅ fonte da verdade: banco gera e fixa o código
+export const ensureHeroIdentity = async (): Promise<string | null> => {
+  try {
+    const { data, error } = await supabase.rpc('ensure_hero_identity');
+    if (error) {
+      console.error('ensure_hero_identity RPC error:', error);
+      return null;
+    }
+    return (data as any) || null;
+  } catch (e) {
+    console.error('ensureHeroIdentity fatal:', e);
+    return null;
   }
-
-  return null;
 };
 
 // Função apenas de upload (retorna URL)
@@ -176,11 +153,7 @@ export const uploadAvatarFile = async (userId: string, file: File): Promise<stri
   return publicUrlData.publicUrl;
 };
 
-/**
- * ✅ ATENÇÃO:
- * Para NÃO quebrar hero_code NOT NULL, aqui é UPDATE (não upsert).
- * Pressupõe que o registro já existe (se não existir, AuthProvider/RPC cria).
- */
+// ✅ atualização de perfil: garante identidade antes (pra não cair em “visitante”)
 export const updateUserProfile = async (
   userId: string,
   updates: {
@@ -188,12 +161,17 @@ export const updateUserProfile = async (
     avatar_url?: string;
     whatsapp?: string;
     birthdate?: string;
+    cpf?: string;
   }
 ) => {
-  // garante identidade antes de qualquer update, pra não ficar "visitante"
-  await ensureHeroIdentity(userId);
+  // garante que o banco criou/fixou o código antes de mexer no perfil
+  await ensureHeroIdentity();
 
-  const { error } = await supabase.from('user_profiles').update(updates).eq('user_id', userId);
+  // normaliza cpf se vier
+  const payload: any = { ...updates };
+  if (payload.cpf) payload.cpf = normalizeCpf(payload.cpf);
+
+  const { error } = await supabase.from('user_profiles').update(payload).eq('user_id', userId);
 
   if (error) {
     console.error('UPDATE_PROFILE_ERROR:', error);
@@ -201,7 +179,6 @@ export const updateUserProfile = async (
   }
 };
 
-// Mantida para compatibilidade
 export const uploadAndSyncAvatar = async (userId: string, file: File): Promise<string | null> => {
   const publicUrl = await uploadAvatarFile(userId, file);
   await updateUserProfile(userId, { avatar_url: publicUrl });
