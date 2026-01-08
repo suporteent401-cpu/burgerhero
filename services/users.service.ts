@@ -114,7 +114,8 @@ export const getFullUserProfile = async (authUser: SupabaseUser): Promise<FullUs
   return { profile, settings };
 };
 
-export const uploadAndSyncAvatar = async (userId: string, file: File): Promise<string | null> => {
+// Função apenas de upload (retorna URL)
+export const uploadAvatarFile = async (userId: string, file: File): Promise<string> => {
   const fileExt = file.name.split('.').pop();
   const fileName = `${userId}/${Date.now()}.${fileExt}`;
 
@@ -125,25 +126,28 @@ export const uploadAndSyncAvatar = async (userId: string, file: File): Promise<s
   if (uploadError) throw uploadError;
 
   const { data: publicUrlData } = supabase.storage.from('avatars').getPublicUrl(fileName);
-  const publicUrl = publicUrlData.publicUrl;
+  return publicUrlData.publicUrl;
+};
 
-  const { error: dbError } = await supabase
+// Função unificada de atualização de perfil (nome + avatar)
+export const updateUserProfile = async (userId: string, updates: { display_name?: string; avatar_url?: string }) => {
+  const { error } = await supabase
     .from('user_profiles')
-    .update({ avatar_url: publicUrl })
+    .update(updates)
     .eq('user_id', userId);
 
-  if (dbError) throw dbError;
+  if (error) throw error;
+};
 
+// Mantida para compatibilidade (mas agora usa as funções acima)
+export const uploadAndSyncAvatar = async (userId: string, file: File): Promise<string | null> => {
+  const publicUrl = await uploadAvatarFile(userId, file);
+  await updateUserProfile(userId, { avatar_url: publicUrl });
   return publicUrl;
 };
 
 export const updateProfileName = async (userId: string, name: string) => {
-  const { error } = await supabase
-    .from('user_profiles')
-    .update({ display_name: name })
-    .eq('user_id', userId);
-
-  if (error) throw error;
+  await updateUserProfile(userId, { display_name: name });
 };
 
 export const updateCardSettings = async (userId: string, settings: any) => {

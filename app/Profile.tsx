@@ -1,26 +1,25 @@
 import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { Card, CardBody, CardHeader } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
+import { Input } from '../components/ui/Input';
 import { useAuthStore } from '../store/authStore';
 import { useThemeStore } from '../store/themeStore';
 import { useCardStore, FONT_OPTIONS, COLOR_OPTIONS } from '../store/cardStore';
 import {
   LogOut, Palette, Moon, Sun, Monitor, CreditCard, CheckCircle2,
-  Camera, Pencil, Check, X, Download, Fingerprint,
-  Loader2, Save, RotateCcw, AlertTriangle, User as UserIcon
+  Camera, Download, Fingerprint, Loader2, Save, RotateCcw,
+  AlertTriangle, User as UserIcon
 } from 'lucide-react';
-import { HeroTheme, Subscription } from '../types';
+import { HeroTheme } from '../types';
 import { supabase } from '../lib/supabaseClient';
 import {
-  updateProfileName,
-  uploadAndSyncAvatar,
+  updateUserProfile,
+  uploadAvatarFile,
   updateCardSettings
 } from '../services/users.service';
 import { templatesService } from '../services/templates.service';
 import HeroCard from '../components/HeroCard';
 import { toPng } from 'html-to-image';
-import { subscriptionMockService } from '../services/subscriptionMock.service';
-import { getSubscriptionStatus } from '../services/clientHome.service';
 import { useNavigate } from 'react-router-dom';
 
 const Profile: React.FC = () => {
@@ -45,15 +44,24 @@ const Profile: React.FC = () => {
     availableTemplates
   } = useCardStore();
 
-  // Local State
+  // --- ESTADO DE IDENTIDADE (Nome e Foto) ---
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const cardRef = useRef<HTMLDivElement>(null);
-  const [isEditingName, setIsEditingName] = useState(false);
-  const [editName, setEditName] = useState(user?.name || '');
-  const [isSavingName, setIsSavingName] = useState(false);
-  const [uploadingAvatar, setUploadingAvatar] = useState(false);
-  const [sub, setSub] = useState<Subscription | null>(null);
+  const [identityName, setIdentityName] = useState(user?.name || '');
+  const [identityAvatarPreview, setIdentityAvatarPreview] = useState(user?.avatarUrl || '');
+  const [identityAvatarFile, setIdentityAvatarFile] = useState<File | null>(null);
+  const [isSavingIdentity, setIsSavingIdentity] = useState(false);
+  const [identitySuccess, setIdentitySuccess] = useState(false);
 
+  // Detecta mudanças na identidade para habilitar botão salvar
+  const hasIdentityChanges = useMemo(() => {
+    if (!user) return false;
+    const nameChanged = identityName.trim() !== user.name;
+    const avatarChanged = !!identityAvatarFile;
+    return nameChanged || avatarChanged;
+  }, [identityName, identityAvatarFile, user]);
+
+  // --- ESTADO DE CONFIGURAÇÕES DO CARTÃO ---
+  const cardRef = useRef<HTMLDivElement>(null);
   interface DraftSettings {
     templateId: string;
     fontFamily: string;
@@ -66,37 +74,18 @@ const Profile: React.FC = () => {
   const [draft, setDraft] = useState<DraftSettings | null>(null);
   const [lastSavedState, setLastSavedState] = useState<DraftSettings | null>(null);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
-  const [saveSuccess, setSaveSuccess] = useState(false);
+  const [settingsSuccess, setSettingsSuccess] = useState(false);
 
-  // Efeito para buscar templates e inicializar o estado de rascunho (draft)
+  // Inicialização
   useEffect(() => {
     if (!user?.id) return;
 
-    // Templates
+    // Carrega templates
     templatesService.getActiveTemplates().then(dbTemplates => {
       setTemplates(templatesService.mapToStoreFormat(dbTemplates));
     });
 
-    // Subscription
-    (async () => {
-      try {
-        const mockSub = subscriptionMockService.getActiveSubscription(user.id);
-        if (mockSub?.status === 'active') {
-          setSub({
-            status: 'active',
-            currentPeriodStart: mockSub.startedAt,
-            currentPeriodEnd: mockSub.nextBillingDate,
-          });
-        } else {
-          const supaSub = await getSubscriptionStatus(user.id);
-          setSub(supaSub);
-        }
-      } catch (e) {
-        console.error('Falha ao buscar subscription no Profile', e);
-      }
-    })();
-
-    // Inicializa o rascunho com os dados dos stores globais
+    // Inicializa rascunho de configurações
     const initialState: DraftSettings = {
       templateId: selectedTemplateId || (availableTemplates[0]?.id ?? ''),
       fontFamily: selectedFont,
@@ -107,22 +96,75 @@ const Profile: React.FC = () => {
     };
     setDraft(initialState);
     setLastSavedState(initialState);
-    setEditName(user.name);
+
+    // Inicializa inputs de identidade
+    setIdentityName(user.name);
+    setIdentityAvatarPreview(user.avatarUrl || '');
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
 
-  const hasUnsavedChanges = useMemo(() => {
+  const hasSettingsChanges = useMemo(() => {
     if (!draft || !lastSavedState) return false;
     return JSON.stringify(draft) !== JSON.stringify(lastSavedState);
   }, [draft, lastSavedState]);
+
+  // --- HANDLERS IDENTIDADE ---
+
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      setIdentityAvatarFile(file);
+      const reader = new FileReader();
+      reader.onload = (e) => setIdentityAvatarPreview(e.target?.result as string);
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleSaveIdentity = async () => {
+    if (!user) return;
+    setIsSavingIdentity(true);
+    setIdentitySuccess(false);
+
+    try {
+      let finalAvatarUrl = user.avatarUrl;
+
+      // 1. Upload da imagem se houver novo arquivo
+      if (identityAvatarFile) {
+        finalAvatarUrl = await uploadAvatarFile(user.id, identityAvatarFile);
+      }
+
+      // 2. Atualiza banco de dados com Nome e URL
+      await updateUserProfile(user.id, {
+        display_name: identityName,
+        avatar_url: finalAvatarUrl || undefined
+      });
+
+      // 3. Atualiza estado global (Zustand)
+      updateUser({
+        name: identityName,
+        avatarUrl: finalAvatarUrl
+      });
+
+      setIdentityAvatarFile(null); // Limpa arquivo pendente
+      setIdentitySuccess(true);
+      setTimeout(() => setIdentitySuccess(false), 3000);
+    } catch (error) {
+      console.error('Erro ao salvar identidade:', error);
+      alert('Erro ao salvar alterações. Verifique sua conexão.');
+    } finally {
+      setIsSavingIdentity(false);
+    }
+  };
+
+  // --- HANDLERS CONFIGURAÇÕES ---
 
   const updateDraft = (key: keyof DraftSettings, value: any) => {
     if (!draft) return;
     const newDraft = { ...draft, [key]: value };
     setDraft(newDraft);
 
-    // Aplica temas visualmente enquanto edita
+    // Aplica temas visualmente em tempo real
     if (key === 'heroTheme') setHeroTheme(value);
     if (key === 'mode') setMode(value);
   };
@@ -142,8 +184,6 @@ const Profile: React.FC = () => {
       });
 
       setLastSavedState(draft);
-
-      // Sincroniza o estado global permanentemente
       useCardStore.getState().setAll({
         templateId: draft.templateId,
         font: draft.fontFamily,
@@ -151,74 +191,21 @@ const Profile: React.FC = () => {
         fontSize: draft.fontSize
       });
 
-      setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 3000);
+      setSettingsSuccess(true);
+      setTimeout(() => setSettingsSuccess(false), 3000);
     } catch (e) {
       console.error(e);
-      alert("Erro ao salvar configurações. Verifique sua conexão.");
+      alert("Erro ao salvar configurações.");
     } finally {
       setIsSavingSettings(false);
     }
   };
 
-  const handleCancelChanges = () => {
+  const handleCancelSettings = () => {
     if (!lastSavedState) return;
     setDraft(lastSavedState);
     setHeroTheme(lastSavedState.heroTheme);
     setMode(lastSavedState.mode);
-  };
-
-  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file && user) {
-      // Preview imediato
-      const reader = new FileReader();
-      reader.onload = (e) => updateUser({ avatarUrl: e.target?.result as string });
-      reader.readAsDataURL(file);
-
-      setUploadingAvatar(true);
-      try {
-        const finalUrl = await uploadAndSyncAvatar(user.id, file);
-        if (finalUrl) {
-          // Atualiza com a URL final do servidor para garantir persistência
-          updateUser({ avatarUrl: finalUrl });
-        }
-      } catch (err) {
-        console.error(err);
-        alert('Erro ao enviar imagem. Tente novamente.');
-      } finally {
-        setUploadingAvatar(false);
-      }
-    }
-  };
-
-  const handleSaveName = async () => {
-    if (!user || !editName.trim()) return;
-    
-    const newName = editName.trim();
-    if (newName === user.name) {
-      setIsEditingName(false);
-      return;
-    }
-
-    setIsSavingName(true);
-    const oldName = user.name;
-    
-    // Otimista
-    updateUser({ name: newName });
-    setIsEditingName(false);
-
-    try {
-      await updateProfileName(user.id, newName);
-    } catch (err) {
-      console.error(err);
-      // Reverte em caso de erro
-      updateUser({ name: oldName });
-      setEditName(oldName);
-      alert('Não foi possível salvar o nome. Tente novamente.');
-    } finally {
-      setIsSavingName(false);
-    }
   };
 
   const handleExportCard = () => {
@@ -255,128 +242,90 @@ const Profile: React.FC = () => {
     return (
       <div className="p-10 text-center">
         <Loader2 className="animate-spin mx-auto text-hero-primary" />
-        <p className="text-slate-500 text-sm mt-2">Carregando seu QG...</p>
+        <p className="text-slate-500 text-sm mt-2">Carregando perfil...</p>
       </div>
     );
   }
 
   return (
     <div className="space-y-6 pb-10">
-      {hasUnsavedChanges && (
-        <div className="sticky top-[70px] z-30 bg-amber-500 p-3 rounded-2xl shadow-lg flex items-center justify-between text-white animate-in slide-in-from-top-4">
-          <div className="flex items-center gap-2">
-            <AlertTriangle size={16} /> <span className="text-xs font-bold">Alterações pendentes</span>
+      
+      {/* 1. CARTÃO MINHA IDENTIDADE (NOME + FOTO) */}
+      <Card>
+        <CardHeader className="flex items-center justify-between">
+          <div className="flex items-center gap-2 font-black text-xs uppercase tracking-widest text-slate-400">
+            <UserIcon size={14} /> Minha Identidade
           </div>
-          <div className="flex gap-2">
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={handleCancelChanges}
-              className="text-white hover:bg-white/20 h-8"
-              disabled={isSavingSettings}
-            >
-              <RotateCcw size={14} />
-            </Button>
-            <Button
-              size="sm"
-              onClick={handleSaveSettings}
-              isLoading={isSavingSettings}
-              className="h-8 bg-white text-amber-700 shadow-sm border-none hover:bg-amber-50"
-            >
-              <Save size={14} className="mr-1.5" /> Salvar
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {/* Profile Header Section */}
-      <div className="flex flex-col items-center">
-        <div
-          className="relative group cursor-pointer"
-          onClick={() => !uploadingAvatar && fileInputRef.current?.click()}
-        >
-          <div className={`w-28 h-28 rounded-full border-4 border-white dark:border-slate-800 shadow-xl bg-slate-200 overflow-hidden relative transition-all ${uploadingAvatar ? 'opacity-50' : ''}`}>
-            {uploadingAvatar && (
-              <div className="absolute inset-0 flex items-center justify-center bg-black/40 z-10 backdrop-blur-sm">
-                <Loader2 className="animate-spin text-white" size={32} />
-              </div>
-            )}
-            <img
-              src={user?.avatarUrl || 'https://picsum.photos/seed/hero/200'}
-              alt="Profile"
-              className="w-full h-full object-cover"
-            />
-          </div>
-
-          <div className="absolute inset-0 bg-black/30 rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
-            <Camera size={24} className="text-white" />
-          </div>
-
-          <input
-            type="file"
-            ref={fileInputRef}
-            className="hidden"
-            accept="image/*"
-            onChange={handleFileChange}
-            disabled={uploadingAvatar}
-          />
-        </div>
-
-        <div className="mt-4 flex flex-col items-center w-full max-w-xs">
-          {isEditingName ? (
-            <div className="flex items-center gap-2 w-full justify-center animate-in fade-in">
-              <input
-                className="bg-transparent border-b-2 border-hero-primary text-xl font-black text-center dark:text-white outline-none w-full min-w-[150px]"
-                value={editName}
-                onChange={e => setEditName(e.target.value)}
-                autoFocus
-                onKeyDown={(e) => e.key === 'Enter' && handleSaveName()}
-              />
-              <button 
-                onClick={handleSaveName} 
-                disabled={isSavingName}
-                className="p-1.5 bg-green-100 text-green-600 rounded-full hover:bg-green-200 transition-colors disabled:opacity-50"
-              >
-                {isSavingName ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
-              </button>
-              <button 
-                onClick={() => { setIsEditingName(false); setEditName(user?.name || ''); }} 
-                className="p-1.5 bg-red-100 text-red-600 rounded-full hover:bg-red-200 transition-colors"
-                disabled={isSavingName}
-              >
-                <X size={16} />
-              </button>
-            </div>
-          ) : (
-            <div 
-              className="flex items-center gap-2 cursor-pointer group hover:bg-slate-100 dark:hover:bg-slate-800 px-3 py-1 rounded-lg transition-colors" 
-              onClick={() => setIsEditingName(true)}
-            >
-              <h2 className="text-xl font-black dark:text-white">{user?.name}</h2>
-              <span className="text-slate-400 group-hover:text-hero-primary transition-colors">
-                <Pencil size={14} />
-              </span>
-            </div>
+          {identitySuccess && (
+            <span className="text-xs font-bold text-green-600 flex items-center gap-1 animate-in fade-in">
+              <CheckCircle2 size={12} /> Salvo
+            </span>
           )}
+        </CardHeader>
+        
+        <CardBody className="p-6">
+          <div className="flex flex-col items-center gap-6">
+            <div
+              className="relative group cursor-pointer"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <div className="w-28 h-28 rounded-full border-4 border-slate-100 dark:border-slate-800 shadow-lg bg-slate-200 overflow-hidden relative">
+                <img
+                  src={identityAvatarPreview || 'https://picsum.photos/seed/hero/200'}
+                  alt="Profile"
+                  className="w-full h-full object-cover"
+                />
+              </div>
+              <div className="absolute inset-0 bg-black/40 rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                <Camera size={24} className="text-white" />
+              </div>
+              <input
+                type="file"
+                ref={fileInputRef}
+                className="hidden"
+                accept="image/*"
+                onChange={handleFileChange}
+              />
+            </div>
 
-          <p className="text-slate-400 text-sm mt-1 mb-3">{user?.email}</p>
+            <div className="w-full space-y-4">
+               <Input 
+                 label="Nome de Herói"
+                 value={identityName}
+                 onChange={(e) => setIdentityName(e.target.value)}
+                 placeholder="Seu nome público"
+               />
+               
+               <div className="bg-slate-50 dark:bg-slate-800 px-4 py-2 rounded-xl flex items-center gap-3 border border-slate-100 dark:border-slate-700">
+                 <div className="p-2 bg-slate-200 dark:bg-slate-700 rounded-full text-slate-500">
+                    <Fingerprint size={16} />
+                 </div>
+                 <div>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase">Código de Identificação</p>
+                    <p className="font-mono font-bold text-slate-700 dark:text-slate-200">{user?.customerCode}</p>
+                 </div>
+               </div>
 
-          <div className="bg-slate-50 dark:bg-slate-800 px-4 py-1.5 rounded-full flex items-center gap-2 border border-slate-100 dark:border-slate-700">
-            <Fingerprint size={14} className="text-hero-primary" />
-            <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">
-              ID: {user?.customerCode}
-            </p>
+               <Button 
+                 onClick={handleSaveIdentity} 
+                 className="w-full"
+                 disabled={!hasIdentityChanges || isSavingIdentity}
+                 isLoading={isSavingIdentity}
+               >
+                 {isSavingIdentity ? 'Salvando...' : 'Salvar Dados'}
+               </Button>
+            </div>
           </div>
-        </div>
-      </div>
+        </CardBody>
+      </Card>
 
-      {/* Editor do Cartão */}
+      {/* 2. EDITOR DO CARTÃO */}
       <Card>
         <CardHeader className="flex justify-between items-center">
           <div className="flex items-center gap-2 font-black text-xs uppercase tracking-widest text-slate-400">
             <CreditCard size={14} /> Editor do Cartão
           </div>
-          {saveSuccess && (
+          {settingsSuccess && (
             <span className="text-xs font-bold text-green-600 flex items-center gap-1 animate-in fade-in">
               <CheckCircle2 size={12} /> Salvo
             </span>
@@ -444,17 +393,25 @@ const Profile: React.FC = () => {
 
             <HeroCard
               ref={cardRef}
-              user={user} // Usa user atual (com nome/avatar atualizado)
+              // Usa o NOME e AVATAR do estado local (prévia) se tiver alterado, senão usa do user
+              user={{ ...user!, name: identityName, avatarUrl: identityAvatarPreview || null }} 
               imageUrl={availableTemplates.find(t => t.id === draft.templateId)?.imageUrl || ''}
               fontFamily={draft.fontFamily}
               textColor={draft.fontColor}
               fontSize={draft.fontSize}
             />
           </div>
+
+          {hasSettingsChanges && (
+             <div className="flex gap-2 animate-in fade-in pt-4 border-t border-slate-100">
+               <Button variant="outline" onClick={handleCancelSettings} className="flex-1">Cancelar</Button>
+               <Button onClick={handleSaveSettings} isLoading={isSavingSettings} className="flex-1">Salvar Aparência</Button>
+             </div>
+          )}
         </CardBody>
       </Card>
 
-      {/* Tema e Modo */}
+      {/* 3. TEMA E MODO */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Card>
           <CardHeader>
@@ -498,7 +455,18 @@ const Profile: React.FC = () => {
         </Card>
       </div>
 
-      <Button variant="danger" className="w-full py-4 rounded-2xl" onClick={handleLogout}>
+      {hasSettingsChanges && (
+         <div className="sticky bottom-20 z-30 mx-auto max-w-sm">
+            <div className="bg-slate-800 text-white p-4 rounded-2xl shadow-xl flex items-center justify-between gap-4 animate-in slide-in-from-bottom-4">
+              <span className="text-sm font-bold">Alterações de tema pendentes</span>
+              <Button size="sm" onClick={handleSaveSettings} isLoading={isSavingSettings} className="bg-white text-slate-900 hover:bg-slate-100">
+                 Salvar Tudo
+              </Button>
+            </div>
+         </div>
+      )}
+
+      <Button variant="danger" className="w-full py-4 rounded-2xl mt-8" onClick={handleLogout}>
         <LogOut size={20} className="mr-2" /> Encerrar Sessão
       </Button>
     </div>
