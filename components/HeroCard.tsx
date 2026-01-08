@@ -21,6 +21,9 @@ const HeroCard = React.forwardRef<HTMLDivElement, HeroCardProps>(({
   fontSize = 22,
   isActive = false
 }, ref) => {
+  // O código do cliente deve vir do objeto user populado pelo Supabase
+  const displayId = user?.customerCode || '—';
+
   return (
     <div ref={ref} className={`w-full max-w-[420px] mx-auto ${className}`}>
       {/* Container Principal */}
@@ -49,26 +52,29 @@ const HeroCard = React.forwardRef<HTMLDivElement, HeroCardProps>(({
           style={{ color: textColor }}
         >
           <p 
-            className="tracking-wide drop-shadow-md truncate"
+            className="tracking-wide drop-shadow-md truncate font-bold"
             style={{ 
               fontFamily: fontFamily, 
-              fontWeight: 400,
               fontSize: `${fontSize}px`,
               lineHeight: 1.2
             }}
           >
-            {user?.name || 'Visitante'}
+            {user?.name || 'Identidade Secreta'}
           </p>
-          <p 
-            className="tracking-widest drop-shadow-md mt-0.5 opacity-90"
-            style={{ 
-              fontFamily: fontFamily, 
-              fontWeight: 500,
-              fontSize: `${fontSize * 0.6}px`
-            }}
-          >
-            {isActive ? `ID: ${user?.customerCode || '—'}` : 'Visitante'}
-          </p>
+          <div className="flex items-center gap-2 mt-1">
+             <p 
+               className="tracking-widest drop-shadow-md opacity-90 font-mono font-black"
+               style={{ 
+                 fontFamily: fontFamily, 
+                 fontSize: `${fontSize * 0.65}px`
+               }}
+             >
+               ID: {displayId}
+             </p>
+             {isActive && (
+                <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" title="Herói Ativo"></div>
+             )}
+          </div>
         </div>
 
       </div>

@@ -1,51 +1,42 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../components/ui/Button';
-import { CheckCircle2, ChevronLeft, ShieldCheck } from 'lucide-react';
+import { CheckCircle2, ChevronLeft, ShieldCheck, Loader2 } from 'lucide-react';
 import type { Plan } from '../types';
 import { motion } from 'framer-motion';
 import { useAuthStore } from '../store/authStore';
 import { subscriptionMockService } from '../services/subscriptionMock.service';
+import { plansService } from '../services/plans.service';
 
 const Plans: React.FC = () => {
   const navigate = useNavigate();
   const isAuthed = useAuthStore((state) => state.isAuthed);
+  const [plans, setPlans] = useState<Plan[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  // ✅ Fonte temporária (sem fakeApi)
-  // Quando tiver tabela/plans no Supabase, trocamos isso por um service.
-  const plans = useMemo<Plan[]>(() => {
-    return [
-      {
-        id: 'p-1',
-        name: 'Plano Justiceiro',
-        priceCents: 2990,
-        description: '1 burger clássico por mês + 10% de desconto em extras.',
-        benefits: ['1 Burger do Mês', '10% de desconto adicional', 'Fila prioritária'],
-        imageUrl: '',
-        active: true,
-      },
-      {
-        id: 'p-2',
-        name: 'Plano Vingador',
-        priceCents: 4990,
-        description: '1 burger gourmet por mês + batata + 15% de desconto.',
-        benefits: ['1 Burger Gourmet do Mês', 'Batata Média Inclusa', '15% de desconto adicional', 'Brinde surpresa'],
-        imageUrl: '',
-        active: true,
-      },
-    ].filter((p) => p.active);
+  useEffect(() => {
+    const fetchPlans = async () => {
+      try {
+        setLoading(true);
+        const data = await plansService.listActivePlans();
+        setPlans(data);
+      } catch (err) {
+        console.error('Erro ao carregar planos:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchPlans();
   }, []);
 
   const handleSelectPlan = (plan: Plan) => {
     try {
-      // 1) Salva o plano escolhido no storage persistente mock
       subscriptionMockService.setPendingPlan({
         id: plan.id,
         name: plan.name,
         priceCents: plan.priceCents,
       });
 
-      // 2) Decide o destino baseado na autenticação
       if (isAuthed) navigate('/checkout');
       else navigate('/auth');
     } catch (err) {
@@ -91,45 +82,51 @@ const Plans: React.FC = () => {
           </motion.p>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
-          {plans.map((plan, index) => (
-            <motion.div
-              key={plan.id}
-              initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: 0.2 + index * 0.1 }}
-              className="relative rounded-3xl overflow-hidden shadow-xl transition-all duration-300 hover:scale-[1.02]"
-            >
-              <div className="p-8 bg-slate-900 text-white">
-                <h3 className="text-2xl font-black mb-2">{plan.name}</h3>
-                <p className="mb-8 h-10 text-slate-400">{plan.description}</p>
+        {loading ? (
+          <div className="flex justify-center items-center py-20">
+            <Loader2 className="w-12 h-12 text-hero-primary animate-spin" />
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
+            {plans.map((plan, index) => (
+              <motion.div
+                key={plan.id}
+                initial={{ opacity: 0, y: 30 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, delay: 0.2 + index * 0.1 }}
+                className="relative rounded-3xl overflow-hidden shadow-xl transition-all duration-300 hover:scale-[1.02]"
+              >
+                <div className="p-8 bg-slate-900 text-white">
+                  <h3 className="text-2xl font-black mb-2">{plan.name}</h3>
+                  <p className="mb-8 h-10 text-slate-400 text-sm line-clamp-2">{plan.description}</p>
 
-                <div className="mb-8">
-                  <span className="text-5xl font-black">
-                    R$ {(plan.priceCents / 100).toFixed(2).replace('.', ',')}
-                  </span>
-                  <span className="ml-1 font-bold text-slate-400">/mês</span>
+                  <div className="mb-8">
+                    <span className="text-5xl font-black">
+                      R$ {(plan.priceCents / 100).toFixed(2).replace('.', ',')}
+                    </span>
+                    <span className="ml-1 font-bold text-slate-400">/mês</span>
+                  </div>
+
+                  <Button onClick={() => handleSelectPlan(plan)} className="w-full" size="lg" variant="primary">
+                    Assinar Agora
+                  </Button>
                 </div>
 
-                <Button onClick={() => handleSelectPlan(plan)} className="w-full" size="lg" variant="primary">
-                  Assinar Agora
-                </Button>
-              </div>
-
-              <div className="p-8 bg-slate-800 text-white">
-                <p className="font-bold mb-4 text-sm">O que está incluso:</p>
-                <ul className="space-y-3">
-                  {plan.benefits.map((b, i) => (
-                    <li key={i} className="flex items-center gap-3 text-sm font-medium">
-                      <CheckCircle2 size={18} className="text-hero-primary flex-shrink-0" />
-                      <span>{b}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </motion.div>
-          ))}
-        </div>
+                <div className="p-8 bg-slate-800 text-white">
+                  <p className="font-bold mb-4 text-sm">O que está incluso:</p>
+                  <ul className="space-y-3">
+                    {plan.benefits.map((b, i) => (
+                      <li key={i} className="flex items-center gap-3 text-sm font-medium text-slate-200">
+                        <CheckCircle2 size={18} className="text-hero-primary flex-shrink-0" />
+                        <span>{b}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        )}
 
         <div className="mt-16 text-center flex items-center justify-center gap-3 text-slate-400 font-medium text-sm">
           <ShieldCheck size={18} />
