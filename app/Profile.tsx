@@ -8,7 +8,7 @@ import { useCardStore, FONT_OPTIONS, COLOR_OPTIONS } from '../store/cardStore';
 import {
   LogOut, Palette, Moon, Sun, Monitor, CreditCard, CheckCircle2,
   Camera, Pencil, Check, X, Download, Fingerprint,
-  Loader2, Save, RotateCcw, AlertTriangle, User as UserIcon
+  Loader2, Save, RotateCcw, AlertTriangle
 } from 'lucide-react';
 import { HeroTheme, Subscription } from '../types';
 import { supabase } from '../lib/supabaseClient';
@@ -28,6 +28,8 @@ const Profile: React.FC = () => {
   const user = useAuthStore(state => state.user);
   const updateUser = useAuthStore(state => state.updateUser);
   const logout = useAuthStore(state => state.logout);
+  const refreshUserFromDb = useAuthStore(state => state.refreshUserFromDb);
+
   const navigate = useNavigate();
 
   // Global Themes
@@ -73,6 +75,9 @@ const Profile: React.FC = () => {
   useEffect(() => {
     if (!user?.id) return;
 
+    // ✅ Auto-reparo: garante que customerCode/avatar/name venham do banco caso faltem no store
+    refreshUserFromDb(user.id);
+
     // Templates
     templatesService.getActiveTemplates().then(dbTemplates => {
       setTemplates(templatesService.mapToStoreFormat(dbTemplates));
@@ -112,6 +117,13 @@ const Profile: React.FC = () => {
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
+
+  // Mantém o input de edição atualizado se user.name mudar por refreshUserFromDb
+  useEffect(() => {
+    if (user?.name && !isEditingName) {
+      setEditName(user.name);
+    }
+  }, [user?.name, isEditingName]);
 
   const hasUnsavedChanges = useMemo(() => {
     if (!draft || !lastSavedState) return false;
@@ -172,7 +184,7 @@ const Profile: React.FC = () => {
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file && user) {
-      // Preview imediato
+      // Preview imediato (otimista)
       const reader = new FileReader();
       reader.onload = (e) => updateUser({ avatarUrl: e.target?.result as string });
       reader.readAsDataURL(file);
@@ -183,10 +195,15 @@ const Profile: React.FC = () => {
         if (finalUrl) {
           // Atualiza com a URL final do servidor para garantir persistência
           updateUser({ avatarUrl: finalUrl });
+
+          // ✅ reforça sincronização (principalmente se perfil ainda não existia e foi criado via upsert)
+          await refreshUserFromDb(user.id);
         }
       } catch (err) {
         console.error(err);
         alert('Erro ao enviar imagem. Tente novamente.');
+        // (opcional) recarrega do banco para voltar ao estado anterior
+        await refreshUserFromDb(user.id);
       } finally {
         setUploadingAvatar(false);
       }
@@ -195,7 +212,7 @@ const Profile: React.FC = () => {
 
   const handleSaveName = async () => {
     if (!user || !editName.trim()) return;
-    
+
     const newName = editName.trim();
     if (newName === user.name) {
       setIsEditingName(false);
@@ -204,13 +221,16 @@ const Profile: React.FC = () => {
 
     setIsSavingName(true);
     const oldName = user.name;
-    
+
     // Otimista
     updateUser({ name: newName });
     setIsEditingName(false);
 
     try {
       await updateProfileName(user.id, newName);
+
+      // ✅ reforça sincronização
+      await refreshUserFromDb(user.id);
     } catch (err) {
       console.error(err);
       // Reverte em caso de erro
@@ -224,13 +244,12 @@ const Profile: React.FC = () => {
 
   const handleExportCard = () => {
     if (cardRef.current === null) return;
-    toPng(cardRef.current, { cacheBust: true, pixelRatio: 2 })
-      .then((url) => {
-        const a = document.createElement('a');
-        a.download = `hero-card.png`;
-        a.href = url;
-        a.click();
-      });
+    toPng(cardRef.current, { cacheBust: true, pixelRatio: 2 }).then((url) => {
+      const a = document.createElement('a');
+      a.download = `hero-card.png`;
+      a.href = url;
+      a.click();
+    });
   };
 
   const handleLogout = async () => {
@@ -335,15 +354,15 @@ const Profile: React.FC = () => {
                 autoFocus
                 onKeyDown={(e) => e.key === 'Enter' && handleSaveName()}
               />
-              <button 
-                onClick={handleSaveName} 
+              <button
+                onClick={handleSaveName}
                 disabled={isSavingName}
                 className="p-1.5 bg-green-100 text-green-600 rounded-full hover:bg-green-200 transition-colors disabled:opacity-50"
               >
                 {isSavingName ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
               </button>
-              <button 
-                onClick={() => { setIsEditingName(false); setEditName(user?.name || ''); }} 
+              <button
+                onClick={() => { setIsEditingName(false); setEditName(user?.name || ''); }}
                 className="p-1.5 bg-red-100 text-red-600 rounded-full hover:bg-red-200 transition-colors"
                 disabled={isSavingName}
               >
@@ -351,8 +370,8 @@ const Profile: React.FC = () => {
               </button>
             </div>
           ) : (
-            <div 
-              className="flex items-center gap-2 cursor-pointer group hover:bg-slate-100 dark:hover:bg-slate-800 px-3 py-1 rounded-lg transition-colors" 
+            <div
+              className="flex items-center gap-2 cursor-pointer group hover:bg-slate-100 dark:hover:bg-slate-800 px-3 py-1 rounded-lg transition-colors"
               onClick={() => setIsEditingName(true)}
             >
               <h2 className="text-xl font-black dark:text-white">{user?.name}</h2>
@@ -367,7 +386,7 @@ const Profile: React.FC = () => {
           <div className={`bg-slate-50 dark:bg-slate-800 px-4 py-1.5 rounded-full flex items-center gap-2 border border-slate-100 dark:border-slate-700 ${!isActive && 'opacity-50'}`}>
             <Fingerprint size={14} className="text-hero-primary" />
             <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">
-              {isActive ? `ID: ${user?.customerCode}` : 'Visitante'}
+              {isActive ? `ID: ${user?.customerCode || '—'}` : 'Visitante'}
             </p>
           </div>
         </div>
@@ -442,7 +461,7 @@ const Profile: React.FC = () => {
 
             <HeroCard
               ref={cardRef}
-              user={user} // Usa user atual (com nome/avatar atualizado)
+              user={user}
               imageUrl={availableTemplates.find(t => t.id === draft.templateId)?.imageUrl || ''}
               fontFamily={draft.fontFamily}
               textColor={draft.fontColor}
