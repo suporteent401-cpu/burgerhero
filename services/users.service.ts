@@ -112,7 +112,6 @@ export const getFullUserProfile = async (authUser: SupabaseUser): Promise<FullUs
   return { profile, settings };
 };
 
-// ✅ garante que existe um perfil (RPC já existe no seu projeto)
 export const ensureProfileExistsForEmail = async (email: string) => {
   try {
     if (!email) return;
@@ -122,47 +121,69 @@ export const ensureProfileExistsForEmail = async (email: string) => {
   }
 };
 
-// ✅ garante que existe um código de herói (customer_id_public / hero_code)
+/**
+ * Garante que o usuário tenha um Hero Code (e Customer ID) fixo.
+ * Se o perfil não existir, retorna NULL (não gera código falso).
+ */
 export const ensureHeroIdentity = async (userId: string): Promise<string | null> => {
-  const profile: any = await getUserProfileById(userId);
-  const existing = profile?.customer_id_public || profile?.hero_code;
+  // 1. Verifica se já existe perfil e código
+  const { data: profile, error: fetchError } = await supabase
+    .from('user_profiles')
+    .select('hero_code, customer_id_public')
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (fetchError) {
+    console.error('Erro ao buscar identidade:', fetchError);
+    return null;
+  }
+
+  // Se não tem perfil, não podemos gerar código (precisa de CPF no cadastro)
+  if (!profile) {
+    console.warn('Perfil de usuário não encontrado. Impossível gerar identidade.');
+    return null;
+  }
+
+  // Se já tem código, retorna o existente
+  const existing = profile.customer_id_public || profile.hero_code;
   if (existing) return existing;
 
-  for (let attempt = 0; attempt < 8; attempt++) {
+  // 2. Tenta gerar e salvar um novo código
+  for (let attempt = 0; attempt < 5; attempt++) {
     const code = generateHeroCode();
 
-    const { data: collision, error: colErr } = await supabase
+    // Verifica colisão
+    const { count } = await supabase
       .from('user_profiles')
-      .select('user_id')
-      .or(`customer_id_public.eq.${code},hero_code.eq.${code}`)
-      .limit(1);
+      .select('user_id', { count: 'exact', head: true })
+      .or(`customer_id_public.eq.${code},hero_code.eq.${code}`);
 
-    if (colErr) console.warn('Falha ao checar colisão de código:', colErr);
-    if (Array.isArray(collision) && collision.length > 0) continue;
+    if (count && count > 0) continue; // Tenta outro se existir
 
-    // FIX: Usar UPSERT para garantir que grave mesmo se a linha não existir ainda
-    const { error } = await supabase
+    // Salva usando UPDATE (já sabemos que o perfil existe)
+    const { data: updated, error: updateError } = await supabase
       .from('user_profiles')
-      .upsert(
-        { 
-          user_id: userId,
-          customer_id_public: code, 
-          hero_code: code,
-          // Garante campos obrigatórios básicos caso seja um insert
-          updated_at: new Date().toISOString()
-        }, 
-        { onConflict: 'user_id' }
-      );
+      .update({ 
+        hero_code: code,
+        customer_id_public: code,
+        updated_at: new Date().toISOString()
+      })
+      .eq('user_id', userId)
+      .select('hero_code')
+      .single();
 
-    if (!error) return code;
+    if (!updateError && updated?.hero_code) {
+      return updated.hero_code;
+    }
 
-    console.error('Falha ao salvar hero code:', error);
+    if (updateError) {
+      console.error('Falha ao salvar hero code (tentativa ' + attempt + '):', updateError);
+    }
   }
 
   return null;
 };
 
-// Função apenas de upload (retorna URL)
 export const uploadAvatarFile = async (userId: string, file: File): Promise<string> => {
   const fileExt = file.name.split('.').pop() || 'jpg';
   const fileName = `${userId}/${Date.now()}.${fileExt}`;
@@ -184,11 +205,6 @@ export const uploadAvatarFile = async (userId: string, file: File): Promise<stri
   return publicUrlData.publicUrl;
 };
 
-/**
- * ✅ ATENÇÃO:
- * Para NÃO quebrar hero_code NOT NULL, aqui é UPDATE (não upsert).
- * Pressupõe que o registro já existe (se não existir, AuthProvider/RPC cria).
- */
 export const updateUserProfile = async (
   userId: string,
   updates: {
@@ -198,7 +214,7 @@ export const updateUserProfile = async (
     birthdate?: string;
   }
 ) => {
-  // garante identidade antes de qualquer update, pra não ficar "visitante"
+  // Tenta garantir identidade, mas não bloqueia se falhar
   await ensureHeroIdentity(userId);
 
   const { error } = await supabase.from('user_profiles').update(updates).eq('user_id', userId);
@@ -209,7 +225,6 @@ export const updateUserProfile = async (
   }
 };
 
-// Mantida para compatibilidade
 export const uploadAndSyncAvatar = async (userId: string, file: File): Promise<string | null> => {
   const publicUrl = await uploadAvatarFile(userId, file);
   await updateUserProfile(userId, { avatar_url: publicUrl });
