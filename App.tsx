@@ -47,9 +47,10 @@ const ProtectedRoute = ({
   children?: React.ReactNode;
   allowedRoles?: Role[];
 }) => {
-  const { isAuthed, user, isLoading, logout } = useAuthStore();
+  const { isAuthed, user, isLoading, hasHydrated, logout } = useAuthStore();
 
-  if (isLoading) {
+  // ✅ espera persist + auth terminar antes de decidir
+  if (!hasHydrated || isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
         <div className="w-8 h-8 border-4 border-hero-primary border-t-transparent rounded-full animate-spin"></div>
@@ -63,8 +64,6 @@ const ProtectedRoute = ({
 
   const role = normalizeRole(user.role);
 
-  // ✅ Se role veio inválida (cache antigo, maiúscula, vazio, etc), derruba pra login
-  // Isso impede loop infinito em /app -> /app.
   if (!role) {
     console.warn('[ProtectedRoute] role inválida detectada. Limpando sessão local.');
     logout();
