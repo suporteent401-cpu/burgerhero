@@ -1,9 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Card, CardBody } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { useAuthStore } from '../store/authStore';
-import { QrCode, Lock, CheckCircle2, Calendar, Utensils, Loader2 } from 'lucide-react';
+import { 
+  QrCode, Lock, CheckCircle2, Calendar, Utensils, 
+  Loader2, Clock, MapPin, ChevronRight, Ticket 
+} from 'lucide-react';
 import { motion } from 'framer-motion';
 import { getCurrentVoucher, getVoucherHistory } from '../services/voucher.service';
 import { subscriptionMockService } from '../services/subscriptionMock.service';
@@ -35,12 +37,10 @@ const Voucher: React.FC = () => {
         ]);
 
         setCurrentVoucher(voucherData);
-
-        // assinatura ativa de forma consistente com o resto do app
         setIsSubActive(!!activeSub && activeSub.status === 'active');
 
         const pastVouchers = historyData.filter((v) => v.id !== voucherData?.id);
-        setHistory(pastVouchers.slice(0, 2));
+        setHistory(pastVouchers.slice(0, 5)); // Mostra os últimos 5
       } catch (error) {
         console.error('Erro ao buscar dados do voucher:', error);
       } finally {
@@ -54,21 +54,14 @@ const Voucher: React.FC = () => {
   const hasVoucherThisMonth = !!currentVoucher;
 
   const isRedeemed = useMemo(() => {
-    // 1) se existir redeemed_at, já foi
     if (currentVoucher?.redeemed_at) return true;
-
-    // 2) se existir registro em voucher_redemptions, já foi
     const redemptions = currentVoucher?.voucher_redemptions;
     if (Array.isArray(redemptions) && redemptions.length > 0) return true;
-
     return false;
   }, [currentVoucher]);
 
-  // ✅ Regra certa:
-  // apto = assinatura ativa + existe voucher do mês + não resgatado
   const isEligible = isSubActive && hasVoucherThisMonth && !isRedeemed;
 
-  // imagem/nome do burger do mês (se não tiver drop ainda, cai em placeholder)
   const burgerImage =
     currentVoucher?.monthly_drop?.burger?.image_url ||
     'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80';
@@ -78,117 +71,126 @@ const Voucher: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] text-slate-400 gap-4">
-        <Loader2 className="w-8 h-8 text-hero-primary animate-spin" />
-        <p className="text-sm font-medium animate-pulse">Sincronizando satélites...</p>
+      <div className="flex flex-col items-center justify-center min-h-[70vh] gap-6 text-slate-400">
+        <div className="relative">
+          <div className="w-16 h-16 border-4 border-slate-200 dark:border-slate-800 rounded-full animate-pulse"></div>
+          <div className="absolute inset-0 flex items-center justify-center">
+            <Loader2 className="w-8 h-8 text-hero-primary animate-spin" />
+          </div>
+        </div>
+        <div className="text-center">
+          <p className="text-sm font-bold text-slate-600 dark:text-slate-300">Carregando Missão</p>
+          <p className="text-xs">Sincronizando satélites...</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6 pb-10">
+    <div className="pb-24 space-y-8">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-end justify-between px-1">
         <div>
-          <h2 className="text-xl font-black text-slate-800 dark:text-white">Drops Mensal</h2>
-          <p className="text-slate-500 dark:text-slate-400 font-medium text-xs flex items-center gap-1">
-            <Calendar size={12} /> {capitalizedMonth} de {currentYear}
-          </p>
+          <h2 className="text-3xl font-black text-slate-800 dark:text-white tracking-tight">Drop Mensal</h2>
+          <div className="flex items-center gap-2 mt-1">
+            <span className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-2.5 py-0.5 rounded-md text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
+              <Calendar size={12} /> {capitalizedMonth} {currentYear}
+            </span>
+          </div>
         </div>
       </div>
 
-      {/* Main Voucher Card */}
+      {/* Hero Card do Drop */}
       <motion.div
-        initial={{ opacity: 0, scale: 0.98 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ duration: 0.5 }}
-        className="relative w-full h-[280px] rounded-2xl overflow-hidden shadow-xl group"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.6, type: "spring" }}
+        className="relative group w-full aspect-[4/5] sm:aspect-[16/10] rounded-[2rem] overflow-hidden shadow-2xl shadow-slate-200 dark:shadow-black/50"
       >
+        {/* Imagem de Fundo */}
         <div className="absolute inset-0 bg-slate-900">
           <img
             src={burgerImage}
             alt="Burger of the Month"
-            className={`w-full h-full object-cover transition-transform duration-700 ${
-              isEligible ? 'group-hover:scale-110' : 'grayscale opacity-40'
+            className={`w-full h-full object-cover transition-transform duration-[2s] ease-out ${
+              isEligible ? 'scale-105 group-hover:scale-110' : 'grayscale opacity-50 scale-100'
             }`}
           />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent"></div>
+          {/* Gradientes para legibilidade */}
+          <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent opacity-90"></div>
+          <div className="absolute top-0 left-0 right-0 h-32 bg-gradient-to-b from-black/60 to-transparent opacity-60"></div>
         </div>
 
-        {/* Badge */}
-        <div className="absolute top-3 right-3">
+        {/* Status Badge (Top Right) */}
+        <div className="absolute top-5 right-5 z-20">
           {isRedeemed ? (
-            <div className="bg-slate-900/80 backdrop-blur-md text-white px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest border border-white/20 flex items-center gap-1.5">
-              <CheckCircle2 size={12} className="text-green-500" /> Resgatado
+            <div className="bg-slate-900/90 backdrop-blur-md text-white border border-slate-700 pl-2 pr-4 py-1.5 rounded-full flex items-center gap-2 shadow-lg">
+              <div className="bg-green-500 rounded-full p-1"><CheckCircle2 size={12} className="text-white" /></div>
+              <span className="text-[10px] font-black uppercase tracking-widest">Resgatado</span>
             </div>
           ) : isEligible ? (
-            <div className="bg-hero-primary text-white px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest shadow-lg shadow-hero-primary/40 animate-pulse">
-              Disponível
+            <div className="bg-hero-primary/90 backdrop-blur-md text-white pl-2 pr-4 py-1.5 rounded-full flex items-center gap-2 shadow-lg shadow-hero-primary/20 animate-pulse">
+              <div className="bg-white rounded-full p-1"><Ticket size={12} className="text-hero-primary" /></div>
+              <span className="text-[10px] font-black uppercase tracking-widest">Disponível</span>
             </div>
           ) : !isSubActive ? (
-            <div className="bg-red-500/90 backdrop-blur-md text-white px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest flex items-center gap-1.5">
-              <Lock size={12} /> Bloqueado
+            <div className="bg-red-600/90 backdrop-blur-md text-white pl-2 pr-4 py-1.5 rounded-full flex items-center gap-2 shadow-lg">
+              <div className="bg-white/20 rounded-full p-1"><Lock size={12} className="text-white" /></div>
+              <span className="text-[10px] font-black uppercase tracking-widest">Bloqueado</span>
             </div>
           ) : (
-            <div className="bg-slate-900/70 backdrop-blur-md text-white px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest border border-white/20">
-              Em breve
+            <div className="bg-slate-800/80 backdrop-blur-md text-slate-300 border border-slate-600 px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest">
+              Em Breve
             </div>
           )}
         </div>
 
-        <div className="absolute bottom-0 left-0 right-0 p-5 flex flex-col gap-2">
+        {/* Conteúdo do Card */}
+        <div className="absolute bottom-0 left-0 right-0 p-6 z-20 flex flex-col gap-4">
           <div>
-            <span className="text-hero-primary font-black text-[10px] uppercase tracking-[0.2em] mb-1 block">
-              Burger do Mês
-            </span>
-            <h3 className="text-2xl font-black text-white leading-tight mb-1">
-              {isRedeemed ? 'Missão Cumprida' : burgerName || 'Drop Indisponível'}
-            </h3>
-
-            <p className="text-slate-300 text-xs max-w-sm line-clamp-2 leading-relaxed">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="bg-hero-primary text-white text-[10px] font-black uppercase px-2 py-0.5 rounded shadow-sm">
+                Missão do Mês
+              </span>
+              {isEligible && (
+                <span className="text-green-400 text-[10px] font-bold flex items-center gap-1">
+                  <Clock size={10} /> Expira em breve
+                </span>
+              )}
+            </div>
+            
+            <h1 className="text-3xl sm:text-4xl font-black text-white leading-[0.9] mb-3 tracking-tight">
+              {isRedeemed ? 'Missão Cumprida' : burgerName || 'Drop Secreto'}
+            </h1>
+            
+            <p className="text-slate-300 text-sm leading-relaxed max-w-md line-clamp-3">
               {isRedeemed
-                ? `Você resgatou este drop em ${new Date(
-                    currentVoucher?.redeemed_at ||
-                      currentVoucher?.voucher_redemptions?.[0]?.created_at ||
-                      new Date().toISOString()
-                  ).toLocaleDateString()}.`
-                : isEligible && burgerDescription
-                ? burgerDescription
-                : isSubActive && !hasVoucherThisMonth
-                ? 'Seu plano está ativo. Aguardando liberação do drop.'
-                : !isSubActive
-                ? 'Sua assinatura está inativa. Reative para liberar o benefício.'
-                : 'Aguardando liberação do drop.'}
+                ? `Você completou esta missão em ${new Date(currentVoucher?.redeemed_at || new Date()).toLocaleDateString()}. O QG agradece.`
+                : burgerDescription || 'Aguarde o sinal para a revelação do próximo alvo gastronômico.'}
             </p>
           </div>
 
-          <div className="pt-1">
+          <div className="pt-2">
             {isEligible ? (
               <Button
                 onClick={() => navigate('/app/qrcode')}
-                className="w-full bg-white text-slate-900 hover:bg-slate-100 border-none h-10 text-sm rounded-xl shadow-lg hover:shadow-xl hover:scale-[1.02] transition-all font-bold"
+                className="w-full bg-white text-slate-900 hover:bg-slate-100 hover:scale-[1.02] border-none h-14 rounded-2xl shadow-xl font-black text-sm uppercase tracking-wide transition-all"
               >
-                <QrCode className="mr-2 text-hero-primary" size={16} /> Usar no Balcão
+                <QrCode className="mr-2 text-hero-primary" size={20} /> Resgatar Agora
               </Button>
             ) : isRedeemed ? (
-              <Button
-                disabled
-                className="w-full bg-slate-800/50 text-slate-400 border border-slate-700 h-10 rounded-xl cursor-not-allowed text-xs font-bold"
-              >
-                Já Utilizado
+              <Button disabled className="w-full bg-slate-800/50 text-slate-400 border border-slate-700 h-14 rounded-2xl font-bold text-xs uppercase tracking-wide">
+                Recompensa Obtida
               </Button>
             ) : !isSubActive ? (
               <Button
                 onClick={() => navigate('/plans')}
-                className="w-full bg-red-600 hover:bg-red-700 text-white border-none h-10 rounded-xl shadow-lg shadow-red-900/20 text-xs font-bold"
+                className="w-full bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 text-white border-none h-14 rounded-2xl shadow-lg shadow-red-900/30 font-black text-xs uppercase tracking-wide"
               >
-                Reativar Assinatura
+                <Lock size={16} className="mr-2" /> Desbloquear Acesso
               </Button>
             ) : (
-              <Button
-                disabled
-                className="w-full bg-slate-800/50 text-slate-300 border border-slate-700 h-10 rounded-xl cursor-not-allowed text-xs font-bold"
-              >
+              <Button disabled className="w-full bg-slate-800/50 text-slate-500 border border-slate-700 h-14 rounded-2xl font-bold text-xs uppercase tracking-wide">
                 Aguardando Drop
               </Button>
             )}
@@ -196,53 +198,82 @@ const Voucher: React.FC = () => {
         </div>
       </motion.div>
 
-      {/* History Timeline */}
-      <div className="space-y-4">
-        <h3 className="text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest pl-2">
-          Histórico
-        </h3>
+      {/* Histórico / Log de Missões */}
+      <div>
+        <div className="flex items-center gap-2 mb-4 px-1">
+          <div className="w-1 h-4 bg-hero-primary rounded-full"></div>
+          <h3 className="text-sm font-black text-slate-700 dark:text-slate-300 uppercase tracking-wide">
+            Log de Missões
+          </h3>
+        </div>
 
-        <Card className="border-none shadow-none bg-transparent">
-          <CardBody className="p-0 space-y-4">
-            {history.map((voucher) => (
-              <div
-                key={voucher.id}
-                className="relative pl-8 before:absolute before:left-[11px] before:top-8 before:bottom-[-16px] before:w-[2px] before:bg-slate-200 dark:before:bg-slate-800 last:before:hidden"
-              >
-                <div className="absolute left-0 top-1 w-6 h-6 rounded-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center z-10">
-                  <div className="w-1.5 h-1.5 rounded-full bg-slate-400"></div>
-                </div>
-                <div className="bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-100 dark:border-slate-800 flex items-center justify-between opacity-60">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 bg-slate-100 dark:bg-slate-800 rounded-lg flex items-center justify-center text-slate-400 dark:text-slate-500">
-                      <Utensils size={14} />
+        <div className="relative pl-4 space-y-6">
+          {/* Linha conectora */}
+          <div className="absolute left-[27px] top-4 bottom-4 w-[2px] bg-slate-100 dark:bg-slate-800 rounded-full"></div>
+
+          {history.length === 0 ? (
+            <div className="relative pl-10 py-4 opacity-60">
+               <div className="absolute left-0 top-1/2 -translate-y-1/2 w-6 h-6 bg-slate-200 dark:bg-slate-800 rounded-full border-4 border-slate-50 dark:border-slate-950 z-10"></div>
+               <p className="text-sm text-slate-400 font-medium">Nenhum registro anterior encontrado.</p>
+            </div>
+          ) : (
+            history.map((voucher, idx) => {
+              const date = new Date(voucher.created_at);
+              const isRedeemedLog = voucher.status === 'redeemed';
+              
+              return (
+                <motion.div 
+                  key={voucher.id}
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: idx * 0.1 }}
+                  className="relative pl-10 group"
+                >
+                  {/* Dot do Timeline */}
+                  <div className={`
+                    absolute left-0 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full border-4 border-slate-50 dark:border-slate-950 z-10 flex items-center justify-center
+                    ${isRedeemedLog ? 'bg-green-500' : 'bg-slate-300'}
+                  `}>
+                    {isRedeemedLog && <div className="w-1.5 h-1.5 bg-white rounded-full" />}
+                  </div>
+
+                  <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 p-4 rounded-2xl shadow-sm hover:shadow-md transition-shadow flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${isRedeemedLog ? 'bg-green-50 dark:bg-green-900/20 text-green-600' : 'bg-slate-50 dark:bg-slate-800 text-slate-400'}`}>
+                        {isRedeemedLog ? <Utensils size={18} /> : <Ticket size={18} />}
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-slate-800 dark:text-white leading-tight">
+                          {voucher.monthly_drop?.burger?.name || 'Drop Arquivado'}
+                        </p>
+                        <p className="text-xs text-slate-400 font-medium mt-0.5 capitalize">
+                          {date.toLocaleString('pt-BR', { month: 'long', year: 'numeric' })}
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                        Resgate de {new Date(voucher.created_at).toLocaleString('pt-BR', { month: 'long' })}
-                      </p>
-                      <p className="text-xs text-slate-400 dark:text-slate-500 capitalize">
-                        {String(voucher.status || 'registrado')}
-                      </p>
+                    
+                    <div className="text-right">
+                       <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-1 rounded-md ${isRedeemedLog ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-slate-100 text-slate-500 dark:bg-slate-800'}`}>
+                         {isRedeemedLog ? 'Resgatado' : 'Expirado'}
+                       </span>
                     </div>
                   </div>
-                </div>
-              </div>
-            ))}
+                </motion.div>
+              );
+            })
+          )}
 
-            <div className="relative pl-8">
-              <div className="absolute left-0 top-1 w-6 h-6 rounded-full bg-hero-primary/20 flex items-center justify-center z-10">
-                <div className="w-1.5 h-1.5 rounded-full bg-hero-primary animate-pulse"></div>
-              </div>
-              <div className="p-3 rounded-xl border-2 border-dashed border-slate-200 dark:border-slate-800 flex flex-col items-center justify-center text-center py-6 gap-1">
-                <p className="text-xs font-bold text-slate-500 dark:text-slate-300">Próximo drop em breve</p>
-                <p className="text-[10px] text-slate-400 dark:text-slate-500 max-w-[180px]">
-                  Aguarde o início do próximo mês.
-                </p>
-              </div>
-            </div>
-          </CardBody>
-        </Card>
+          {/* Item Futuro */}
+          <div className="relative pl-10 opacity-50">
+             <div className="absolute left-0 top-1/2 -translate-y-1/2 w-6 h-6 bg-slate-200 dark:bg-slate-800 rounded-full border-4 border-slate-50 dark:border-slate-950 z-10"></div>
+             <div className="border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-2xl p-4 flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400">
+                   <Clock size={16} />
+                </div>
+                <p className="text-xs font-bold text-slate-400">Próximo drop em breve...</p>
+             </div>
+          </div>
+        </div>
       </div>
     </div>
   );
