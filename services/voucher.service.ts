@@ -1,24 +1,31 @@
 import { supabase } from '../lib/supabaseClient';
 
 /**
- * Busca o voucher mais recente (do mês atual) para um usuário.
- * Também traz voucher_redemptions para sabermos se foi resgatado.
+ * Helpers: range do mês atual (início inclusive, próximo mês exclusive)
+ */
+const getMonthRange = () => {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+  const end = new Date(now.getFullYear(), now.getMonth() + 1, 1, 0, 0, 0, 0);
+
+  return {
+    startISO: start.toISOString(),
+    endISO: end.toISOString(),
+  };
+};
+
+/**
+ * Busca o voucher do mês atual para um usuário.
+ * (agora realmente filtra pelo mês atual)
  */
 export const getCurrentVoucher = async (userId: string) => {
-  const startOfMonth = new Date();
-  startOfMonth.setDate(1);
-  startOfMonth.setHours(0, 0, 0, 0);
+  const { startISO, endISO } = getMonthRange();
 
   const { data, error } = await supabase
     .from('vouchers')
     .select(
       `
       *,
-      voucher_redemptions:voucher_redemptions (
-        id,
-        created_at,
-        staff_user_id
-      ),
       monthly_drop:monthly_drops (
         *,
         burger:burgers(*)
@@ -26,23 +33,26 @@ export const getCurrentVoucher = async (userId: string) => {
     `
     )
     .eq('user_id', userId)
-    .gte('created_at', startOfMonth.toISOString())
+    // ✅ FILTRO DO MÊS ATUAL
+    .gte('created_at', startISO)
+    .lt('created_at', endISO)
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle();
 
   if (error) {
     console.error('Erro ao buscar voucher atual:', error);
-    // PGRST116 = no rows
-    if ((error as any).code !== 'PGRST116') throw error;
-    return null;
+    // Não lançar erro se for "nenhuma linha"
+    if ((error as any).code !== 'PGRST116') {
+      throw error;
+    }
   }
 
   return data ?? null;
 };
 
 /**
- * Busca o histórico de vouchers de um usuário.
+ * Histórico completo de vouchers (todos os meses)
  */
 export const getVoucherHistory = async (userId: string) => {
   const { data, error } = await supabase
@@ -55,5 +65,6 @@ export const getVoucherHistory = async (userId: string) => {
     console.error('Erro ao buscar histórico de vouchers:', error);
     throw error;
   }
+
   return data || [];
 };
