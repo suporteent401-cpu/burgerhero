@@ -2,6 +2,8 @@ import { supabase } from '../lib/supabaseClient';
 import { Coupon, CampaignLog } from '../types';
 
 export const couponsService = {
+  // --- ADMIN METHODS ---
+
   async listCoupons(filters: { search?: string; status?: 'active' | 'expired' }): Promise<Coupon[]> {
     let query = supabase.from('coupons').select('*').order('created_at', { ascending: false });
 
@@ -84,5 +86,43 @@ export const couponsService = {
     });
     
     if (error) throw error;
+  },
+
+  // --- CLIENT METHODS ---
+
+  /**
+   * Retorna cupons ativos aplicáveis ao usuário.
+   * Se o usuário estiver ativo (assinante), vê apenas cupons gerais.
+   * Se estiver inativo, vê cupons gerais + cupons de reativação.
+   */
+  async getAvailableCouponsForUser(isUserActive: boolean): Promise<Coupon[]> {
+    const now = new Date().toISOString();
+    
+    // Busca tudo que está ativo e não expirou
+    let query = supabase
+      .from('coupons')
+      .select('*')
+      .eq('is_active', true)
+      .gt('expires_at', now)
+      .order('expires_at', { ascending: true });
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    const allCoupons = (data || []).map(c => ({
+      id: c.id,
+      code: c.code,
+      discountPercent: c.discount_percent,
+      expiresAt: c.expires_at,
+      active: c.is_active,
+      ruleOnlyForInactives: c.rule_only_inactives
+    }));
+
+    // Filtra no cliente (memória) para simplificar a lógica de "OR"
+    return allCoupons.filter(c => {
+      // Se a regra é "só para inativos", e o user é ativo -> esconde
+      if (c.ruleOnlyForInactives && isUserActive) return false;
+      return true;
+    });
   }
 };
