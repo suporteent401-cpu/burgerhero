@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { fakeApi } from '../lib/fakeApi';
-import { User, Subscription, Plan } from '../types';
+import { adminUsersService } from '../services/adminUsers.service';
 import { Card, CardBody, CardHeader } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { ArrowLeft, Mail, Phone, CreditCard, Calendar, CheckCircle, Gift, ShieldCheck, User as UserIcon } from 'lucide-react';
@@ -20,10 +19,10 @@ const AdminUserDetails: React.FC = () => {
 
   useEffect(() => {
     if (id) {
-      fakeApi.adminGetUserDetails(id).then(res => {
-        setData(res);
-        setLoading(false);
-      });
+      adminUsersService.getUserDetails(id)
+        .then(res => setData(res))
+        .catch(err => console.error(err))
+        .finally(() => setLoading(false));
     }
   }, [id]);
 
@@ -54,37 +53,36 @@ const AdminUserDetails: React.FC = () => {
             <CardHeader><h3 className="font-bold text-slate-700">Assinatura e Plano</h3></CardHeader>
             <CardBody className="grid grid-cols-2 md:grid-cols-3 gap-6">
               <DetailItem icon={ShieldCheck} label="Status" value={
-                <span className={`font-bold ${subscription?.status === 'ACTIVE' ? 'text-green-600' : 'text-red-600'}`}>
-                  {subscription?.status || 'INACTIVE'}
+                <span className={`font-bold ${subscription?.status === 'active' ? 'text-green-600' : 'text-red-600'}`}>
+                  {subscription?.status?.toUpperCase() || 'INACTIVE'}
                 </span>
               } />
               <DetailItem icon={CreditCard} label="Plano" value={plan?.name || 'N/A'} />
-              <DetailItem icon={Calendar} label="Próxima Cobrança" value={subscription ? new Date(subscription.nextBillingDate).toLocaleDateString() : 'N/A'} />
+              <DetailItem icon={Calendar} label="Próxima Cobrança" value={subscription?.nextBillingDate ? new Date(subscription.nextBillingDate).toLocaleDateString() : 'N/A'} />
             </CardBody>
-            <div className="p-5 border-t border-slate-50 flex gap-2">
-              <Button size="sm">Marcar Resgate</Button>
-              <Button size="sm" variant="outline">Enviar Cupom</Button>
-              <Button size="sm" variant="danger">Cancelar Assinatura</Button>
-            </div>
           </Card>
 
           <Card>
-            <CardHeader><h3 className="font-bold text-slate-700">Histórico de Resgates</h3></CardHeader>
+            <CardHeader><h3 className="font-bold text-slate-700">Últimos Resgates</h3></CardHeader>
             <CardBody className="p-0">
-              <ul className="divide-y divide-slate-50">
-                {redemptionHistory.map((item: any) => (
-                  <li key={item.month} className="p-4 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="bg-green-100 text-green-600 p-2 rounded-full"><Gift size={16} /></div>
-                      <div>
-                        <p className="font-bold text-sm text-slate-800">Resgate de {item.month}</p>
-                        <p className="text-xs text-slate-500">Realizado em {new Date(item.redeemedAt).toLocaleString()}</p>
+              {redemptionHistory.length === 0 ? (
+                <p className="p-4 text-slate-500 text-sm">Nenhum resgate registrado.</p>
+              ) : (
+                <ul className="divide-y divide-slate-50">
+                  {redemptionHistory.map((item: any, i: number) => (
+                    <li key={i} className="p-4 flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="bg-green-100 text-green-600 p-2 rounded-full"><Gift size={16} /></div>
+                        <div>
+                          <p className="font-bold text-sm text-slate-800">{item.month}</p>
+                          <p className="text-xs text-slate-500">Realizado em {new Date(item.redeemedAt).toLocaleString()}</p>
+                        </div>
                       </div>
-                    </div>
-                    <CheckCircle size={20} className="text-green-500" />
-                  </li>
-                ))}
-              </ul>
+                      <CheckCircle size={20} className="text-green-500" />
+                    </li>
+                  ))}
+                </ul>
+              )}
             </CardBody>
           </Card>
         </div>
@@ -96,8 +94,7 @@ const AdminUserDetails: React.FC = () => {
             <CardBody className="space-y-4">
               <DetailItem icon={UserIcon} label="Nome Completo" value={user.name} />
               <DetailItem icon={Mail} label="Email" value={user.email} />
-              <DetailItem icon={Phone} label="WhatsApp" value={user.whatsapp} />
-              <DetailItem icon={CreditCard} label="CPF" value={user.cpf} />
+              <DetailItem icon={CreditCard} label="CPF" value={user.cpf || '-'} />
             </CardBody>
           </Card>
         </div>

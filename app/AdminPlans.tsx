@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { fakeApi } from '../lib/fakeApi';
+import { plansService } from '../services/plans.service';
 import { Plan } from '../types';
 import { Button } from '../components/ui/Button';
 import { PlusCircle, TrendingUp, Award, AlertTriangle, BarChart } from 'lucide-react';
@@ -23,7 +23,7 @@ const AdminPlans: React.FC = () => {
   const [editingPlan, setEditingPlan] = useState<Plan | null>(null);
 
   const fetchPlans = () => {
-    fakeApi.adminListAllPlans().then(setPlans);
+    plansService.listAllPlans().then(setPlans);
   };
 
   useEffect(() => {
@@ -42,9 +42,9 @@ const AdminPlans: React.FC = () => {
 
   const onSubmit = async (data: Plan) => {
     if (editingPlan) {
-      await fakeApi.adminUpdatePlan(editingPlan.id, data);
+      await plansService.updatePlan(editingPlan.id, data);
     } else {
-      await fakeApi.adminCreatePlan(data);
+      await plansService.createPlan(data);
     }
     fetchPlans();
     closeModal();
@@ -52,15 +52,16 @@ const AdminPlans: React.FC = () => {
   
   const handleToggleStatus = async (plan: Plan) => {
     if (window.confirm(`Tem certeza que deseja ${plan.active ? 'desativar' : 'ativar'} o plano "${plan.name}"?`)) {
-      await fakeApi.adminUpdatePlan(plan.id, { active: !plan.active });
+      await plansService.updatePlan(plan.id, { is_active: !plan.active } as any);
       fetchPlans();
     }
   };
 
   const handleDuplicate = async (plan: Plan) => {
-    const newPlanData = { ...plan, name: `${plan.name} (Cópia)`, active: false };
-    delete (newPlanData as any).id;
-    await fakeApi.adminCreatePlan(newPlanData);
+    const newPlanData = { ...plan, name: `${plan.name} (Cópia)`, is_active: false };
+    // @ts-ignore
+    delete newPlanData.id;
+    await plansService.createPlan(newPlanData as any);
     fetchPlans();
   };
 
@@ -76,17 +77,13 @@ const AdminPlans: React.FC = () => {
         </Button>
       </div>
 
-      {/* Insights Section */}
       <Card>
         <CardBody className="p-4 grid grid-cols-2 md:grid-cols-4 gap-4">
-          <InsightPill icon={TrendingUp} label="Mais Vendido" value="Plano Vingador" />
-          <InsightPill icon={Award} label="Maior Resgate" value="Plano Vingador" />
-          <InsightPill icon={AlertTriangle} label="Maior Churn" value="Plano Justiceiro" />
-          <InsightPill icon={BarChart} label="Ticket Médio" value="R$ 39,90" />
+          <InsightPill icon={TrendingUp} label="Total Planos" value={plans.length.toString()} />
+          <InsightPill icon={Award} label="Ativos" value={plans.filter(p => p.active).length.toString()} />
         </CardBody>
       </Card>
 
-      {/* Plans Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {plans.map(plan => (
           <PlanCard 
