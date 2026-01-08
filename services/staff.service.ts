@@ -5,9 +5,20 @@ export interface StaffLookupResult {
   display_name: string;
   cpf: string | null;
   avatar_url: string | null;
+
   hero_code: string;
+  customer_id_public: string;
+
   subscription_active: boolean;
+
+  // NOVO: status real do voucher do mês
+  // 'available' | 'redeemed' | null
+  voucher_status: string | null;
+
+  // Mantido por compatibilidade (true quando voucher_status === 'available')
   has_current_voucher: boolean;
+
+  // Visual
   card_image_url?: string;
 }
 
@@ -17,48 +28,31 @@ export interface RedeemResult {
   voucher_id?: string | null;
 }
 
-function normalizeRpcResult(data: any): RedeemResult {
-  // algumas RPCs retornam array
-  if (Array.isArray(data)) {
-    const row = data[0] ?? null;
-    if (!row) return { ok: false, message: 'empty_result', voucher_id: null };
-    return {
-      ok: !!row.ok,
-      message: String(row.message ?? ''),
-      voucher_id: row.voucher_id ?? null,
-    };
-  }
-
-  // outras retornam objeto direto
-  if (data && typeof data === 'object') {
-    return {
-      ok: !!data.ok,
-      message: String(data.message ?? ''),
-      voucher_id: data.voucher_id ?? null,
-    };
-  }
-
-  return { ok: false, message: 'invalid_result', voucher_id: null };
-}
-
 export const staffService = {
   /**
-   * Busca um cliente por Hero Code (BH-XXXX) ou CPF.
-   * Enriquecido com imagem do template do cartão.
+   * Busca um cliente por:
+   *  - customer_id_public (principal)
+   *  - hero_code (fallback)
+   *  - cpf (fallback)
+   * Também tenta enriquecer com o template do cartão.
    */
   async lookupClient(query: string): Promise<StaffLookupResult | null> {
-    const { data, error } = await supabase.rpc('staff_lookup_client', { p_query: query });
+    const { data, error } = await supabase.rpc('staff_lookup_client', {
+      p_query: query,
+    });
 
     if (error) {
       console.error('Erro no lookup do cliente:', error);
       throw error;
     }
 
-    if (!Array.isArray(data) || data.length === 0) return null;
+    if (!Array.isArray(data) || data.length === 0) {
+      return null;
+    }
 
     const client = data[0] as StaffLookupResult;
 
-    // Imagem do template (não quebra o fluxo se falhar)
+    // Enriquecer com a imagem do template do cartão (não pode travar o fluxo)
     try {
       const { data: settings } = await supabase
         .from('hero_card_settings')
@@ -73,10 +67,12 @@ export const staffService = {
         .eq('user_id', client.user_id)
         .maybeSingle();
 
-      const templateData = (settings?.template as any) ?? null;
+      const templateData = (settings as any)?.template as any;
       const imageUrl = templateData?.preview_url || null;
 
-      if (imageUrl) client.card_image_url = imageUrl;
+      if (imageUrl) {
+        client.card_image_url = imageUrl;
+      }
     } catch (err) {
       console.warn('Não foi possível carregar a imagem do cartão do cliente:', err);
     }
@@ -85,23 +81,30 @@ export const staffService = {
   },
 
   /**
-   * Resgata voucher pelo código (hero_code ou qr_token dependendo da RPC).
-   * Estratégia segura: tenta a RPC principal e faz fallback para a alternativa.
+   * Resgata o voucher do mês atual.
+   * O "code" principal deve ser customer_id_public, mas a RPC aceita hero_code/CPF também.
    */
   async redeemVoucherByCode(code: string): Promise<RedeemResult> {
-    // 1) Tenta redeem_voucher_by_code
-    const { data: d1, error: e1 } = await supabase.rpc('redeem_voucher_by_code', { p_code: code });
+    const { data, error } = await supabase.rpc('redeem_voucher_by_code', {
+      p_code: code,
+    });
 
-    if (!e1) return normalizeRpcResult(d1);
+    if (error) {
+      console.error('Erro na redenção do voucher:', error);
+      return { ok: false, message: error.message, voucher_id: null };
+    }
 
-    console.warn('redeem_voucher_by_code falhou, tentando fallback:', e1);
+    // Supabase normalmente retorna array em RPC TABLE
+    if (Array.isArray(data)) {
+      const row = data[0] as any;
+      return {
+        ok: !!row?.ok,
+        message: row?.message ?? 'unknown',
+        voucher_id: row?.voucher_id ?? null,
+      };
+    }
 
-    // 2) Fallback: redeem_voucher_staff
-    const { data: d2, error: e2 } = await supabase.rpc('redeem_voucher_staff', { p_code: code });
-
-    if (!e2) return normalizeRpcResult(d2);
-
-    console.error('Falha nas duas RPCs de resgate:', { e1, e2 });
-    return { ok: false, message: e2.message || e1.message, voucher_id: null };
+    // fallback se vier objeto direto
+    return data as RedeemResult;
   },
 };
