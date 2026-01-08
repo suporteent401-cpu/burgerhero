@@ -39,16 +39,6 @@ export const getSubscriptionStatus = async (userId: string): Promise<Subscriptio
   };
 };
 
-/**
- * ✅ EXPORT QUE ESTÁ FALTANDO NO SEU APP
- * getMonthlyBenefit(): retorna o “benefício do mês” para o cliente.
- *
- * Como você já tem tabelas monthly_drops / vouchers, o mais seguro é:
- * - buscar o drop do mês atual (o mais recente ativo)
- * - retornar algo simples que a Home consegue renderizar
- *
- * Se sua Home espera outro formato, me diz o shape que ela usa e eu ajusto.
- */
 export type MonthlyBenefitDTO = {
   title: string;
   subtitle?: string;
@@ -58,12 +48,16 @@ export type MonthlyBenefitDTO = {
 
 export const getMonthlyBenefit = async (): Promise<MonthlyBenefitDTO | null> => {
   try {
-    // Pega o drop mais recente (ou do mês atual se você tiver campo de mês/ano)
+    // Pega o drop do mês atual (mais confiável do que "created_at")
+    const now = new Date();
+    const monthDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0, 0))
+      .toISOString()
+      .slice(0, 10);
+
     const { data, error } = await supabase
       .from('monthly_drops')
-      .select('title, month_label, is_active')
-      .order('created_at', { ascending: false })
-      .limit(1)
+      .select('title, month_label, is_active, month_date')
+      .eq('month_date', monthDate)
       .maybeSingle();
 
     if (error) {
