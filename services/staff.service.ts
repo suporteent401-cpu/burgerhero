@@ -8,6 +8,7 @@ export interface StaffLookupResult {
   hero_code: string;
   subscription_active: boolean;
   has_current_voucher: boolean;
+  card_image_url?: string; // Novo campo para a imagem de capa
 }
 
 export interface RedeemResult {
@@ -19,8 +20,10 @@ export interface RedeemResult {
 export const staffService = {
   /**
    * Busca um cliente por Hero Code (BH-XXXX) ou CPF (apenas números).
+   * Agora enriquece o resultado com a imagem do template do cartão.
    */
   async lookupClient(query: string): Promise<StaffLookupResult | null> {
+    // 1. Busca dados funcionais via RPC
     const { data, error } = await supabase.rpc('staff_lookup_client', {
       p_query: query
     });
@@ -30,12 +33,38 @@ export const staffService = {
       throw error;
     }
 
-    // A RPC retorna uma tabela, mas como limitamos a 1 no SQL, pegamos o primeiro (se houver)
-    if (Array.isArray(data) && data.length > 0) {
-      return data[0] as StaffLookupResult;
+    if (!Array.isArray(data) || data.length === 0) {
+      return null;
     }
-    
-    return null;
+
+    const client = data[0] as StaffLookupResult;
+
+    // 2. Busca dados visuais (Template do cartão)
+    try {
+      const { data: settings } = await supabase
+        .from('hero_card_settings')
+        .select(`
+          card_template_id,
+          template:hero_card_templates (
+            preview_url
+          )
+        `)
+        .eq('user_id', client.user_id)
+        .maybeSingle();
+
+      // Extrai a URL se existir (Supabase retorna joined tables como objeto ou array)
+      const templateData = settings?.template as any;
+      const imageUrl = templateData?.preview_url || null;
+
+      if (imageUrl) {
+        client.card_image_url = imageUrl;
+      }
+    } catch (err) {
+      console.warn('Não foi possível carregar a imagem do cartão do cliente:', err);
+      // Não falha o fluxo principal, apenas fica sem a imagem customizada
+    }
+
+    return client;
   },
 
   /**
@@ -51,7 +80,6 @@ export const staffService = {
       return { ok: false, message: error.message };
     }
 
-    // O retorno é um JSON direto
     return data as RedeemResult;
   }
 };

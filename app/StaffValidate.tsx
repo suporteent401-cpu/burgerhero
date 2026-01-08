@@ -4,8 +4,8 @@ import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Modal } from '../components/ui/Modal';
 import { 
-  Search, QrCode, ShieldCheck, ShieldAlert, User, 
-  CheckCircle2, XCircle, Loader2, AlertTriangle, CreditCard 
+  Search, QrCode, ShieldCheck, ShieldAlert, 
+  CheckCircle2, XCircle, AlertTriangle, CreditCard 
 } from 'lucide-react';
 import QrScanner from '../components/QrScanner';
 import { staffService, StaffLookupResult } from '../services/staff.service';
@@ -24,19 +24,15 @@ const StaffValidate: React.FC = () => {
     if (!input) return null;
     const cleanInput = input.trim();
 
-    // 1. Tenta achar padrão BH-XXXXXX (no meio de uma URL ou texto puro)
-    // Regex: Procura "BH-" seguido de alfanuméricos
     const heroCodeMatch = cleanInput.match(/(BH-[A-Z0-9]+)/i);
     if (heroCodeMatch) {
       return heroCodeMatch[1].toUpperCase();
     }
 
-    // 2. Se for numérico (provável CPF), remove não dígitos
     if (/^[\d.-]+$/.test(cleanInput)) {
       return cleanInput.replace(/\D/g, '');
     }
 
-    // 3. Retorna o input limpo como fallback (ex: digitou só o código sem BH)
     return cleanInput.toUpperCase();
   };
 
@@ -48,7 +44,7 @@ const StaffValidate: React.FC = () => {
     setClient(null);
     setErrorMsg(null);
     setSuccessMsg(null);
-    setQuery(term); // Atualiza o input visualmente
+    setQuery(term); 
 
     try {
       const data = await staffService.lookupClient(term);
@@ -78,10 +74,8 @@ const StaffValidate: React.FC = () => {
       
       if (res.ok) {
         setSuccessMsg('Resgate realizado com sucesso! 🎉');
-        // Atualiza os dados do cliente para refletir que não tem mais voucher pendente
         handleLookup(client.hero_code);
       } else {
-        // Traduz mensagens técnicas para amigáveis
         let msg = res.message;
         if (msg === 'subscription_inactive') msg = 'Assinatura do cliente não está ativa.';
         if (msg === 'no_voucher_available') msg = 'Cliente não possui voucher disponível para este mês.';
@@ -101,7 +95,6 @@ const StaffValidate: React.FC = () => {
     handleLookup(scannedText);
   };
 
-  // Cores e ícones dinâmicos baseados no status
   const getSubStatusUI = (active: boolean) => active 
     ? { text: 'Ativa', color: 'text-green-600', bg: 'bg-green-100', icon: CheckCircle2 }
     : { text: 'Inativa/Pendente', color: 'text-red-600', bg: 'bg-red-100', icon: XCircle };
@@ -163,22 +156,48 @@ const StaffValidate: React.FC = () => {
       {client && (
         <div className="animate-in fade-in slide-in-from-bottom-4">
           <Card className="overflow-hidden border-0 shadow-2xl">
-            {/* Header com Avatar */}
-            <div className="bg-slate-900 p-6 flex flex-col items-center text-center relative">
-               <div className="w-24 h-24 rounded-full border-4 border-white bg-slate-200 overflow-hidden shadow-lg mb-3 relative">
-                 <img src={client.avatar_url || `https://picsum.photos/seed/${client.user_id}/200`} alt={client.display_name} className="w-full h-full object-cover" />
-                 {client.subscription_active && (
-                   <div className="absolute bottom-0 right-0 w-6 h-6 bg-green-500 rounded-full border-2 border-white"></div>
-                 )}
-               </div>
-               <h3 className="text-xl font-black text-white">{client.display_name}</h3>
-               <div className="inline-block bg-white/10 px-3 py-1 rounded-full mt-2">
-                 <p className="text-xs font-mono font-bold text-slate-300 tracking-widest">{client.hero_code}</p>
+            {/* Header com Avatar e Capa */}
+            <div className="relative h-48 bg-slate-900 overflow-hidden">
+               {/* Imagem de Fundo (Template) */}
+               {client.card_image_url ? (
+                 <img 
+                   src={client.card_image_url} 
+                   alt="Background" 
+                   className="absolute inset-0 w-full h-full object-cover opacity-80"
+                 />
+               ) : (
+                 <div className="absolute inset-0 bg-gradient-to-br from-slate-900 to-slate-800"></div>
+               )}
+               
+               {/* Overlay Escuro para legibilidade */}
+               <div className="absolute inset-0 bg-black/60 backdrop-blur-[1px]"></div>
+
+               {/* Conteúdo sobreposto */}
+               <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center z-10">
+                  <div className="w-20 h-20 rounded-full border-[3px] border-white bg-slate-200 overflow-hidden shadow-xl mb-3 relative">
+                    <img 
+                      src={client.avatar_url || `https://picsum.photos/seed/${client.user_id}/200`} 
+                      alt={client.display_name} 
+                      className="w-full h-full object-cover" 
+                    />
+                    {client.subscription_active && (
+                      <div className="absolute bottom-0 right-0 w-5 h-5 bg-green-500 rounded-full border-2 border-white"></div>
+                    )}
+                  </div>
+                  
+                  <h3 className="text-xl font-black text-white drop-shadow-md leading-tight">
+                    {client.display_name}
+                  </h3>
+                  
+                  <div className="inline-block bg-white/20 backdrop-blur-md border border-white/20 px-3 py-1 rounded-full mt-2">
+                    <p className="text-xs font-mono font-bold text-white tracking-widest drop-shadow-sm">
+                      {client.hero_code}
+                    </p>
+                  </div>
                </div>
             </div>
 
             <CardBody className="p-6 space-y-6 bg-white dark:bg-slate-800">
-              
               {/* Status Grid */}
               <div className="grid grid-cols-2 gap-4">
                 {(() => {
