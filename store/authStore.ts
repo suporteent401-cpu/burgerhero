@@ -8,17 +8,17 @@ interface AuthState {
   isAuthed: boolean;
   isLoading: boolean;
 
-  // ✅ ajuda a evitar tela piscando / estado incompleto antes do persist rehidratar
+  // ✅ Persist hidratado
   hasHydrated: boolean;
 
   login: (user: User) => void;
   logout: () => void;
 
-  // ✅ utilitário para setar usuário completo (não só partial)
   setUser: (user: User | null) => void;
-
   updateUser: (user: Partial<User>) => void;
+
   setLoading: (loading: boolean) => void;
+  setHasHydrated: (hydrated: boolean) => void;
 
   // ✅ Recarrega do banco e corrige customerCode/avatar/name se o store estiver faltando
   refreshUserFromDb: (userId: string) => Promise<void>;
@@ -43,6 +43,7 @@ export const useAuthStore = create<AuthState>()(
         })),
 
       setLoading: (loading) => set({ isLoading: loading }),
+      setHasHydrated: (hydrated) => set({ hasHydrated: hydrated }),
 
       refreshUserFromDb: async (userId: string) => {
         try {
@@ -69,7 +70,7 @@ export const useAuthStore = create<AuthState>()(
             nextPatch.customerCode = dbProfile.customer_id_public || dbProfile.hero_code || '';
           }
 
-          // extras que você usa
+          // extras
           if (!current?.cpf && dbProfile.cpf) nextPatch.cpf = dbProfile.cpf;
           if (!current?.whatsapp && dbProfile.whatsapp) nextPatch.whatsapp = dbProfile.whatsapp;
           if (!current?.birthDate && dbProfile.birthdate) nextPatch.birthDate = dbProfile.birthdate;
@@ -80,7 +81,7 @@ export const useAuthStore = create<AuthState>()(
             }));
           }
         } catch (e) {
-          console.warn('refreshUserFromDb falhou (seguindo sem travar).', e);
+          console.warn('[authStore] refreshUserFromDb falhou (seguindo).', e);
         }
       },
     }),
@@ -88,12 +89,9 @@ export const useAuthStore = create<AuthState>()(
       name: 'burger-hero-auth',
       partialize: (state) => ({ user: state.user, isAuthed: state.isAuthed }),
       onRehydrateStorage: () => (state, error) => {
-        if (error) {
-          console.error('Erro ao rehidratar authStore:', error);
-        }
-        // ✅ marca que terminou o persist
+        if (error) console.error('Erro ao rehidratar authStore:', error);
+        state?.setHasHydrated(true);
         state?.setLoading(false);
-        (state as any).hasHydrated = true;
       },
     }
   )
