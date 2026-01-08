@@ -34,7 +34,6 @@ const Auth: React.FC = () => {
   const password = watch('password');
 
   const applySettingsAndLoadTemplates = async (settings: any) => {
-    // 1. Aplica configurações do usuário
     useThemeStore.getState().setHeroTheme(settings.heroTheme);
     useThemeStore.getState().setMode(settings.mode);
     useCardStore.getState().setAll({
@@ -45,7 +44,6 @@ const Auth: React.FC = () => {
     });
     useThemeStore.getState().applyTheme();
 
-    // 2. Carrega templates ativos do banco para garantir que a imagem apareça
     try {
       const dbTemplates = await templatesService.getActiveTemplates();
       if (dbTemplates && dbTemplates.length > 0) {
@@ -74,7 +72,6 @@ const Auth: React.FC = () => {
 
     try {
       if (isLogin) {
-        // --- LOGIN ---
         const { data: signInData, error: authError } = await supabase.auth.signInWithPassword({
           email: data.email,
           password: data.password,
@@ -98,13 +95,12 @@ const Auth: React.FC = () => {
           const role = normalizeRole(full.profile.role);
           const safeProfile = { ...full.profile, role };
 
-          // Aguarda carregar templates antes de logar e redirecionar
           await applySettingsAndLoadTemplates(full.settings);
-          
+
           login(safeProfile);
           handlePostAuthRedirect(role);
         } else {
-          console.error('Falha ao carregar perfil no login, AuthProvider irá tentar recuperar.');
+          console.warn('Falha ao carregar perfil no login. AuthProvider vai tentar recuperar.');
           navigate('/app', { replace: true });
         }
       } else {
@@ -140,6 +136,7 @@ const Auth: React.FC = () => {
           throw new Error('Erro ao estabelecer sessão após cadastro.');
         }
 
+        // Mantém sua RPC (ok), mas mesmo que falhe o getFullUserProfile vai garantir o perfil
         const { data: rpcData, error: rpcError } = await supabase.rpc('ensure_user_profile', {
           p_display_name: fullUserData.name,
           p_email: fullUserData.email,
