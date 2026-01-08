@@ -16,11 +16,6 @@ const normalizeRole = (input: any): Role => {
   return 'client';
 };
 
-const generateHeroCode = () => {
-  const rand = Math.random().toString(36).substring(2, 8).toUpperCase();
-  return `BH-${rand}`;
-};
-
 type UserProfileRow = {
   user_id: string;
   display_name: string | null;
@@ -46,7 +41,7 @@ export const SupabaseAuthProvider: React.FC<AuthProviderProps> = ({ children }) 
         .from('hero_card_settings')
         .select('*')
         .eq('user_id', userId)
-        .single();
+        .maybeSingle();
 
       if (!error && settings) {
         if (settings.hero_theme) useThemeStore.getState().setHeroTheme(settings.hero_theme);
@@ -86,6 +81,15 @@ export const SupabaseAuthProvider: React.FC<AuthProviderProps> = ({ children }) 
       return data as UserProfileRow;
     };
 
+    const ensureProfileExists = async (email: string) => {
+      // Tenta garantir que os registros básicos existam caso o cadastro tenha falhado parcialmente
+      try {
+        await supabase.rpc('ensure_user_profile_login', { p_email: email });
+      } catch (e) {
+        console.warn('Erro ao executar ensure_user_profile_login:', e);
+      }
+    };
+
     const fetchUserRole = async (userId: string): Promise<Role> => {
       const { data, error } = await supabase
         .from('app_users')
@@ -108,16 +112,25 @@ export const SupabaseAuthProvider: React.FC<AuthProviderProps> = ({ children }) 
         }
 
         const authUser = session.user;
-        const [profile, role] = await Promise.all([
-          fetchUserProfile(authUser.id),
-          fetchUserRole(authUser.id)
-        ]);
         
+        // Tenta buscar o perfil
+        let profile = await fetchUserProfile(authUser.id);
+        
+        // Se não existir, tenta criar um perfil básico de "emergência"
         if (!profile) {
-          logout();
-          return;
+          await ensureProfileExists(authUser.email || '');
+          profile = await fetchUserProfile(authUser.id);
         }
 
+        // Se mesmo assim não existir, o usuário precisa completar o cadastro ou há um erro de RLS
+        if (!profile) {
+           // Em vez de deslogar, vamos apenas setar o loading como false 
+           // e deixar as páginas tratarem o estado sem perfil (ex: redirecionar para completar cadastro)
+           setLoading(false);
+           return;
+        }
+
+        const role = await fetchUserRole(authUser.id);
         await loadUserSettingsAndTemplates(authUser.id);
 
         login({
@@ -148,16 +161,19 @@ export const SupabaseAuthProvider: React.FC<AuthProviderProps> = ({ children }) 
       if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session?.user) {
         try {
           setLoading(true);
-          const [profile, role] = await Promise.all([
-            fetchUserProfile(session.user.id),
-            fetchUserRole(session.user.id)
-          ]);
+          let profile = await fetchUserProfile(session.user.id);
           
           if (!profile) {
-            logout();
+            await ensureProfileExists(session.user.email || '');
+            profile = await fetchUserProfile(session.user.id);
+          }
+
+          if (!profile) {
+            setLoading(false);
             return;
           }
 
+          const role = await fetchUserRole(session.user.id);
           await loadUserSettingsAndTemplates(session.user.id);
 
           login({
