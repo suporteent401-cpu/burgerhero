@@ -4,7 +4,7 @@ import { useAuthStore } from '../../store/authStore';
 import { useThemeStore } from '../../store/themeStore';
 import { useCardStore } from '../../store/cardStore';
 import { templatesService } from '../../services/templates.service';
-import { getFullUserProfile } from '../../services/users.service';
+import { getFullUserProfile, ensureProfileFromSession } from '../../services/users.service';
 import type { Role } from '../../types';
 
 interface AuthProviderProps {
@@ -54,9 +54,19 @@ export const SupabaseAuthProvider: React.FC<AuthProviderProps> = ({ children }) 
     };
 
     const buildLoginFromSession = async (sessionUser: any) => {
-      // 🔥 Fonte única de verdade:
-      // garante perfil + garante customerCode + traz settings
-      const full = await getFullUserProfile(sessionUser);
+      let full = await getFullUserProfile(sessionUser);
+      
+      // 🔥 AUTO-CURA: Se não achou perfil, tenta criar agora
+      if (!full) {
+        console.warn('Perfil incompleto detectado. Tentando auto-cura...');
+        try {
+          await ensureProfileFromSession(sessionUser);
+          full = await getFullUserProfile(sessionUser);
+        } catch (e) {
+          console.error('Falha na auto-cura de perfil:', e);
+        }
+      }
+
       if (!full) return null;
 
       const role = normalizeRole(full.profile.role);
@@ -80,8 +90,8 @@ export const SupabaseAuthProvider: React.FC<AuthProviderProps> = ({ children }) 
         const safeProfile = await buildLoginFromSession(session.user);
 
         if (!safeProfile) {
-          // Não derruba sessão: só deixa o app seguir e tratar casos extremos
-          console.warn('[SupabaseAuthProvider] Não foi possível montar perfil completo.');
+          console.warn('[SupabaseAuthProvider] Perfil não pôde ser recuperado. Realizando logout de limpeza.');
+          logout(); // Segurança: se falhar tudo, sai.
           return;
         }
 
@@ -108,7 +118,11 @@ export const SupabaseAuthProvider: React.FC<AuthProviderProps> = ({ children }) 
         setLoading(true);
         try {
           const safeProfile = await buildLoginFromSession(session.user);
-          if (!safeProfile) return;
+          if (!safeProfile) {
+             console.error('Falha crítica ao montar perfil no evento de Auth. Logout forçado.');
+             logout();
+             return;
+          }
 
           login(safeProfile);
         } catch (e) {

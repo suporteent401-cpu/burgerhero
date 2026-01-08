@@ -62,14 +62,12 @@ export const getFullUserProfile = async (authUser: SupabaseUser): Promise<FullUs
     supabase.from('hero_card_settings').select('*').eq('user_id', authUser.id).maybeSingle(),
   ]);
 
-  if (appUserResponse.error) {
-    console.error('CRÍTICO: erro ao buscar app_users:', appUserResponse.error);
+  // Se não achou app_users, pode ser um user novo sem trigger. Retorna null para forçar o fluxo de "ensure".
+  if (!appUserResponse.data && !userProfileResponse.data) {
     return null;
   }
 
-  const appUserData = appUserResponse.data;
-  if (!appUserData) return null;
-
+  const appUserData = appUserResponse.data || { role: 'client', is_active: true }; // Fallback seguro
   const role: Role = normalizeRole(appUserData.role);
 
   const userProfileData = userProfileResponse.data;
@@ -104,6 +102,18 @@ export const getFullUserProfile = async (authUser: SupabaseUser): Promise<FullUs
   };
 
   return { profile, settings };
+};
+
+// ✅ Garante que o perfil existe usando os dados da sessão (Fallback de Auto-Cura)
+export const ensureProfileFromSession = async (user: SupabaseUser) => {
+  const metadata = user.user_metadata || {};
+  
+  await supabase.rpc('ensure_user_profile', {
+    p_display_name: metadata.full_name || 'Novo Herói',
+    p_email: user.email,
+    p_cpf: metadata.cpf || null,
+    p_birthdate: metadata.birthDate || null,
+  });
 };
 
 // ✅ garante que existe um perfil (RPC já existe no seu projeto)
