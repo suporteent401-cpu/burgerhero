@@ -1,21 +1,14 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback } from 'react';
 import { Card, CardBody } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Modal } from '../components/ui/Modal';
 import {
-  Search,
-  QrCode,
-  ShieldCheck,
-  ShieldAlert,
-  CheckCircle2,
-  XCircle,
-  AlertTriangle,
-  CreditCard,
-  Clock
+  Search, QrCode, ShieldCheck, ShieldAlert,
+  CheckCircle2, XCircle, AlertTriangle, CreditCard, PackageCheck
 } from 'lucide-react';
 import QrScanner from '../components/QrScanner';
-import { staffService, StaffLookupResult, VoucherStatus } from '../services/staff.service';
+import { staffService, StaffLookupResult } from '../services/staff.service';
 
 const StaffValidate: React.FC = () => {
   const [query, setQuery] = useState('');
@@ -24,7 +17,6 @@ const StaffValidate: React.FC = () => {
   const [client, setClient] = useState<StaffLookupResult | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
-  const [deliveredAt, setDeliveredAt] = useState<string | null>(null);
   const [isScannerOpen, setIsScannerOpen] = useState(false);
 
   // Normaliza e extrai o código (Hero Code ou CPF limpo)
@@ -32,14 +24,12 @@ const StaffValidate: React.FC = () => {
     if (!input) return null;
     const cleanInput = input.trim();
 
+    // Se vier URL, tenta extrair BH-XXXX
     const heroCodeMatch = cleanInput.match(/(BH-[A-Z0-9]+)/i);
-    if (heroCodeMatch) {
-      return heroCodeMatch[1].toUpperCase();
-    }
+    if (heroCodeMatch) return heroCodeMatch[1].toUpperCase();
 
-    if (/^[\d.-]+$/.test(cleanInput)) {
-      return cleanInput.replace(/\D/g, '');
-    }
+    // CPF
+    if (/^[\d.-]+$/.test(cleanInput)) return cleanInput.replace(/\D/g, '');
 
     return cleanInput.toUpperCase();
   };
@@ -52,16 +42,12 @@ const StaffValidate: React.FC = () => {
     setClient(null);
     setErrorMsg(null);
     setSuccessMsg(null);
-    setDeliveredAt(null);
     setQuery(term);
 
     try {
       const data = await staffService.lookupClient(term);
-      if (data) {
-        setClient(data);
-      } else {
-        setErrorMsg('Cliente não encontrado. Verifique o código ou CPF.');
-      }
+      if (data) setClient(data);
+      else setErrorMsg('Cliente não encontrado. Verifique o código ou CPF.');
     } catch (err) {
       setErrorMsg('Erro de conexão ao buscar cliente.');
     } finally {
@@ -69,44 +55,31 @@ const StaffValidate: React.FC = () => {
     }
   }, []);
 
-  const normalizeRedeemMessage = (msg: string) => {
-    if (msg === 'subscription_inactive') return 'Assinatura do cliente não está ativa.';
-    if (msg === 'no_voucher_available') return 'Cliente não possui voucher disponível para este mês.';
-    if (msg === 'already_redeemed') return 'Voucher deste mês já foi resgatado.';
-    if (msg === 'client_not_found') return 'Cliente não encontrado para validação.';
-    return msg;
-  };
-
   const handleRedeem = async () => {
     if (!client) return;
-
-    const canRedeem =
-      client.subscription_active &&
-      (client.voucher_status === 'available' || client.has_current_voucher === true);
-
-    if (!canRedeem) return;
 
     if (!confirm(`Confirmar entrega do burger para ${client.display_name}?`)) return;
 
     setRedeeming(true);
     setSuccessMsg(null);
     setErrorMsg(null);
-    setDeliveredAt(null);
 
     try {
       const res = await staffService.redeemVoucherByCode(client.hero_code);
 
-      if (res?.ok) {
+      if (res.ok) {
         const now = new Date();
-        const hora = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const stamp = now.toLocaleString();
 
-        setSuccessMsg('✅ Entregue com sucesso! Burger liberado no balcão.');
-        setDeliveredAt(hora);
-
-        // Recarrega os dados do cliente pra refletir status "redeemed"
+        setSuccessMsg(`✅ Entregue com sucesso! Entrega registrada em ${stamp}.`);
+        // Recarrega para refletir status "redeemed" e data
         await handleLookup(client.hero_code);
       } else {
-        const msg = normalizeRedeemMessage(res?.message || 'Erro ao resgatar voucher.');
+        let msg = res.message;
+        if (msg === 'subscription_inactive') msg = 'Assinatura do cliente não está ativa.';
+        if (msg === 'no_voucher_available') msg = 'Cliente não possui voucher disponível para este mês.';
+        if (msg === 'already_redeemed') msg = 'Voucher deste mês já foi resgatado.';
+        if (msg === 'client_not_found') msg = 'Cliente não encontrado para este código.';
         setErrorMsg(msg);
       }
     } catch (err) {
@@ -121,42 +94,37 @@ const StaffValidate: React.FC = () => {
     handleLookup(scannedText);
   };
 
-  const getSubStatusUI = (active: boolean) =>
-    active
-      ? { text: 'Ativa', color: 'text-green-600', bg: 'bg-green-100', icon: CheckCircle2 }
-      : { text: 'Inativa/Pendente', color: 'text-red-600', bg: 'bg-red-100', icon: XCircle };
+  const getSubStatusUI = (active: boolean) => active
+    ? { text: 'Ativa', color: 'text-green-600', bg: 'bg-green-100', icon: CheckCircle2 }
+    : { text: 'Inativa/Pendente', color: 'text-red-600', bg: 'bg-red-100', icon: XCircle };
 
-  const voucherStatusLabel = useMemo(() => {
-    const status: VoucherStatus = client?.voucher_status ?? null;
+  const getVoucherStatusUI = (voucher_status: string, subActive: boolean) => {
+    if (!subActive) return { text: 'Bloqueado', color: 'text-slate-400', bg: 'bg-slate-100', icon: ShieldAlert };
 
-    if (!client) return null;
-
-    if (!client.subscription_active) {
-      return { text: 'Bloqueado', color: 'text-slate-400', bg: 'bg-slate-100', icon: ShieldAlert };
-    }
-
-    if (status === 'available') {
+    if (voucher_status === 'available') {
       return { text: 'Disponível', color: 'text-blue-600', bg: 'bg-blue-100', icon: ShieldCheck };
     }
 
-    if (status === 'redeemed') {
+    if (voucher_status === 'redeemed') {
       return { text: 'Já Utilizado', color: 'text-amber-600', bg: 'bg-amber-100', icon: AlertTriangle };
     }
 
-    // status null = não existe voucher emitido para o mês
-    return { text: 'Não Emitido', color: 'text-slate-600', bg: 'bg-slate-100', icon: AlertTriangle };
-  }, [client]);
+    if (voucher_status === 'not_issued') {
+      return { text: 'Sem Voucher', color: 'text-slate-600', bg: 'bg-slate-100', icon: ShieldAlert };
+    }
 
-  const canRedeem = useMemo(() => {
-    if (!client) return false;
-    if (!client.subscription_active) return false;
+    if (voucher_status === 'no_drop') {
+      return { text: 'Drop Inativo', color: 'text-slate-600', bg: 'bg-slate-100', icon: ShieldAlert };
+    }
 
-    // Verdade principal: voucher_status
-    if (client.voucher_status === 'available') return true;
+    return { text: 'Indefinido', color: 'text-slate-600', bg: 'bg-slate-100', icon: ShieldAlert };
+  };
 
-    // Fallback compatibilidade (caso algum ambiente ainda venha só boolean)
-    return client.has_current_voucher === true;
-  }, [client]);
+  const canRedeem =
+    !!client &&
+    client.subscription_active &&
+    client.voucher_status === 'available' &&
+    !redeeming;
 
   return (
     <div className="space-y-6">
@@ -184,17 +152,11 @@ const StaffValidate: React.FC = () => {
             <div className="flex-grow border-t border-slate-200 dark:border-slate-700"></div>
           </div>
 
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              handleLookup(query);
-            }}
-            className="flex gap-2"
-          >
+          <form onSubmit={(e) => { e.preventDefault(); handleLookup(query); }} className="flex gap-2">
             <Input
               placeholder="Hero Code ou CPF (apenas números)"
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              onChange={e => setQuery(e.target.value)}
               className="rounded-xl h-12"
             />
             <Button
@@ -247,10 +209,14 @@ const StaffValidate: React.FC = () => {
                   )}
                 </div>
 
-                <h3 className="text-xl font-black text-white drop-shadow-md leading-tight">{client.display_name}</h3>
+                <h3 className="text-xl font-black text-white drop-shadow-md leading-tight">
+                  {client.display_name}
+                </h3>
 
                 <div className="inline-block bg-white/20 backdrop-blur-md border border-white/20 px-3 py-1 rounded-full mt-2">
-                  <p className="text-xs font-mono font-bold text-white tracking-widest drop-shadow-sm">{client.hero_code}</p>
+                  <p className="text-xs font-mono font-bold text-white tracking-widest drop-shadow-sm">
+                    {client.hero_code}
+                  </p>
                 </div>
               </div>
             </div>
@@ -260,7 +226,7 @@ const StaffValidate: React.FC = () => {
               <div className="grid grid-cols-2 gap-4">
                 {(() => {
                   const subUI = getSubStatusUI(client.subscription_active);
-                  const vUI = voucherStatusLabel!;
+                  const voucherUI = getVoucherStatusUI(client.voucher_status, client.subscription_active);
 
                   return (
                     <>
@@ -272,11 +238,11 @@ const StaffValidate: React.FC = () => {
                         </div>
                       </div>
 
-                      <div className={`p-3 rounded-xl border flex flex-col items-center text-center gap-2 ${vUI.bg} border-transparent`}>
-                        <vUI.icon size={20} className={vUI.color} />
+                      <div className={`p-3 rounded-xl border flex flex-col items-center text-center gap-2 ${voucherUI.bg} border-transparent`}>
+                        <voucherUI.icon size={20} className={voucherUI.color} />
                         <div>
                           <p className="text-[10px] font-bold uppercase text-slate-500 opacity-70">Voucher Mês</p>
-                          <p className={`text-sm font-black ${vUI.color}`}>{vUI.text}</p>
+                          <p className={`text-sm font-black ${voucherUI.color}`}>{voucherUI.text}</p>
                         </div>
                       </div>
                     </>
@@ -284,19 +250,25 @@ const StaffValidate: React.FC = () => {
                 })()}
               </div>
 
-              {/* Mensagens */}
-              {successMsg && (
-                <div className="bg-green-50 text-green-700 p-4 rounded-xl text-center font-bold border border-green-200 space-y-2">
-                  <div>{successMsg}</div>
-                  {deliveredAt && (
-                    <div className="flex items-center justify-center gap-2 text-sm font-semibold text-green-800">
-                      <Clock size={16} />
-                      <span>Entregue às {deliveredAt}</span>
-                    </div>
-                  )}
+              {/* Entregue em (quando já foi resgatado) */}
+              {client.voucher_status === 'redeemed' && client.redeemed_at && (
+                <div className="bg-amber-50 text-amber-800 p-4 rounded-xl border border-amber-200 flex items-center gap-3">
+                  <PackageCheck className="shrink-0" />
+                  <div className="text-sm">
+                    <p className="font-black">✅ Já foi entregue</p>
+                    <p className="font-medium opacity-80">
+                      Entregue em {new Date(client.redeemed_at).toLocaleString()}
+                    </p>
+                  </div>
                 </div>
               )}
 
+              {/* Mensagens de Sucesso/Erro Pós Ação */}
+              {successMsg && (
+                <div className="bg-green-50 text-green-700 p-4 rounded-xl text-center font-bold border border-green-200">
+                  {successMsg}
+                </div>
+              )}
               {errorMsg && client && (
                 <div className="bg-red-50 text-red-600 p-3 rounded-xl text-center font-bold text-sm border border-red-200">
                   {errorMsg}
@@ -309,11 +281,11 @@ const StaffValidate: React.FC = () => {
                   size="lg"
                   className="w-full h-14 text-base rounded-2xl"
                   onClick={handleRedeem}
-                  disabled={!canRedeem || redeeming}
+                  disabled={!canRedeem}
                   isLoading={redeeming}
                   variant={!canRedeem ? 'secondary' : 'primary'}
                 >
-                  {redeeming ? 'Validando...' : 'Confirmar Entrega'}
+                  {redeeming ? 'Validando...' : 'Validar Resgate'}
                 </Button>
 
                 {!canRedeem && (
@@ -321,8 +293,10 @@ const StaffValidate: React.FC = () => {
                     {!client.subscription_active
                       ? 'Assinatura inativa. Oriente o cliente.'
                       : client.voucher_status === 'redeemed'
-                        ? 'Voucher já foi utilizado neste mês.'
-                        : 'Voucher ainda não foi emitido para este mês.'}
+                        ? 'Voucher já entregue neste mês.'
+                        : client.voucher_status === 'no_drop'
+                          ? 'Drop do mês não está ativo.'
+                          : 'Voucher indisponível para este mês.'}
                   </p>
                 )}
               </div>
@@ -357,11 +331,7 @@ const StaffValidate: React.FC = () => {
 
           <div className="p-6 bg-slate-900 text-center">
             <p className="text-white font-medium mb-4">Aponte para o QR Code do cliente</p>
-            <Button
-              variant="secondary"
-              onClick={() => setIsScannerOpen(false)}
-              className="w-full bg-slate-800 text-white border-slate-700"
-            >
+            <Button variant="secondary" onClick={() => setIsScannerOpen(false)} className="w-full bg-slate-800 text-white border-slate-700">
               Cancelar
             </Button>
           </div>
