@@ -101,8 +101,6 @@ const getCurrentDrop = async (monthDate: string) => {
 };
 
 const getBurgerById = async (burgerId: string) => {
-  // burgers pode ter policy "is_active = true" — então se o burger estiver inativo
-  // a consulta voltará null (o que é ok).
   const { data, error } = await supabase
     .from('burgers')
     .select('id, name, description, image_url, is_active')
@@ -139,7 +137,6 @@ const tryEnsureCurrentVoucher = async (userId: string) => {
   try {
     const { error } = await supabase.rpc('ensure_current_voucher', { p_user_id: userId });
     if (error) {
-      // não quebra a tela: só loga
       console.warn('[VoucherService] ensure_current_voucher falhou:', error);
     }
   } catch (e) {
@@ -147,6 +144,9 @@ const tryEnsureCurrentVoucher = async (userId: string) => {
   }
 };
 
+/**
+ * Retorna o voucher do mês atual para o usuário.
+ */
 export const getCurrentVoucher = async (userId: string): Promise<CurrentVoucherResult> => {
   const monthDate = getMonthDateUTCString();
 
@@ -163,7 +163,6 @@ export const getCurrentVoucher = async (userId: string): Promise<CurrentVoucherR
 
   if (!userId) return base;
 
-  // 1) Drop do mês
   const drop = await getCurrentDrop(monthDate);
   if (!drop?.id) return base;
 
@@ -175,21 +174,16 @@ export const getCurrentVoucher = async (userId: string): Promise<CurrentVoucherR
   };
   base.eligibility.dropActive = Boolean((drop as any).is_active);
 
-  // 2) Burger (se policy permitir)
   if ((drop as any).burger_id) {
     base.burger = await getBurgerById((drop as any).burger_id);
   }
 
-  // 3) Se drop não está ativo, UI deve “travar”
   if (!base.eligibility.dropActive) {
-    // Não tenta emitir voucher para rascunho
     return base;
   }
 
-  // 4) Assinatura ativa (regra oficial)
   base.eligibility.subscriptionActive = await isSubscriptionActive(userId);
 
-  // 5) Busca voucher existente
   let voucher = await getVoucherForUserAndDrop(userId, drop.id);
   if (voucher) {
     base.voucher = {
@@ -205,7 +199,6 @@ export const getCurrentVoucher = async (userId: string): Promise<CurrentVoucherR
     return base;
   }
 
-  // 6) Auto-cura (JIT): só tenta emitir se assinatura ativa
   if (base.eligibility.subscriptionActive) {
     await tryEnsureCurrentVoucher(userId);
 
@@ -225,4 +218,24 @@ export const getCurrentVoucher = async (userId: string): Promise<CurrentVoucherR
   }
 
   return base;
+};
+
+/**
+ * Retorna o histórico de vouchers do usuário.
+ */
+export const getVoucherHistory = async (userId: string) => {
+  if (!userId) return [];
+
+  const { data, error } = await supabase
+    .from('vouchers')
+    .select('*, monthly_drop:monthly_drops(*, burger:burgers(*))')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('[VoucherService] erro ao buscar histórico de vouchers:', error);
+    return [];
+  }
+
+  return data || [];
 };
