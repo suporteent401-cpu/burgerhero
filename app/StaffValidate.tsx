@@ -3,9 +3,9 @@ import { Card, CardBody } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Modal } from '../components/ui/Modal';
-import { 
-  Search, QrCode, ShieldCheck, ShieldAlert, 
-  CheckCircle2, XCircle, AlertTriangle, CreditCard 
+import {
+  Search, QrCode, ShieldCheck, ShieldAlert,
+  CheckCircle2, XCircle, AlertTriangle, CreditCard
 } from 'lucide-react';
 import QrScanner from '../components/QrScanner';
 import { staffService, StaffLookupResult } from '../services/staff.service';
@@ -19,21 +19,47 @@ const StaffValidate: React.FC = () => {
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [isScannerOpen, setIsScannerOpen] = useState(false);
 
-  // Normaliza e extrai o código (Hero Code ou CPF limpo)
+  /**
+   * Extrai o termo de busca do input ou do QR:
+   * - Se vier URL, tenta pegar o último segmento (customerCode)
+   * - Se vier BH-XXXX (hero_code), mantém
+   * - Se vier CPF, limpa
+   * - Caso contrário, retorna upper
+   */
   const extractSearchTerm = (input: string): string | null => {
     if (!input) return null;
-    const cleanInput = input.trim();
 
-    const heroCodeMatch = cleanInput.match(/(BH-[A-Z0-9]+)/i);
+    const clean = input.trim();
+
+    // Se for URL (QR do cliente gera link para perfil público)
+    // Ex: https://dominio.com/p/9RFWU3  ou /public/9RFWU3 etc.
+    if (clean.startsWith('http://') || clean.startsWith('https://') || clean.includes('/')) {
+      try {
+        const url = clean.startsWith('http') ? new URL(clean) : new URL(`https://x.local${clean}`);
+        const path = url.pathname.replace(/\/+$/, '');
+        const parts = path.split('/').filter(Boolean);
+        const last = parts[parts.length - 1];
+        if (last) return last.toUpperCase();
+      } catch {
+        // fallback: pega o último pedaço após /
+        const parts = clean.split('/').filter(Boolean);
+        const last = parts[parts.length - 1];
+        if (last) return last.toUpperCase();
+      }
+    }
+
+    // Hero Code (fallback)
+    const heroCodeMatch = clean.match(/(BH-[A-Z0-9]+)/i);
     if (heroCodeMatch) {
       return heroCodeMatch[1].toUpperCase();
     }
 
-    if (/^[\d.-]+$/.test(cleanInput)) {
-      return cleanInput.replace(/\D/g, '');
+    // CPF (somente números)
+    if (/^[\d.\-]+$/.test(clean)) {
+      return clean.replace(/\D/g, '');
     }
 
-    return cleanInput.toUpperCase();
+    return clean.toUpperCase();
   };
 
   const handleLookup = useCallback(async (rawValue: string) => {
@@ -44,7 +70,7 @@ const StaffValidate: React.FC = () => {
     setClient(null);
     setErrorMsg(null);
     setSuccessMsg(null);
-    setQuery(term); 
+    setQuery(term);
 
     try {
       const data = await staffService.lookupClient(term);
@@ -70,17 +96,25 @@ const StaffValidate: React.FC = () => {
     setErrorMsg(null);
 
     try {
-      const res = await staffService.redeemVoucherByCode(client.hero_code);
-      
+      // Prioridade: customer_id_public (QR usa isso)
+      const codeToRedeem = client.customer_id_public || client.hero_code;
+
+      const res = await staffService.redeemVoucherByCode(codeToRedeem);
+
       if (res.ok) {
         setSuccessMsg('Resgate realizado com sucesso! 🎉');
-        handleLookup(client.hero_code);
+        // Recarrega estado do cliente
+        await handleLookup(codeToRedeem);
       } else {
         let msg = res.message;
+
         if (msg === 'subscription_inactive') msg = 'Assinatura do cliente não está ativa.';
+        if (msg === 'drop_not_found') msg = 'Drop do mês não foi criado no sistema.';
+        if (msg === 'drop_inactive') msg = 'Drop do mês ainda não está liberado.';
         if (msg === 'no_voucher_available') msg = 'Cliente não possui voucher disponível para este mês.';
         if (msg === 'already_redeemed') msg = 'Voucher deste mês já foi resgatado.';
-        
+        if (msg === 'client_not_found') msg = 'Cliente não encontrado pelo código informado.';
+
         setErrorMsg(msg);
       }
     } catch (err) {
@@ -95,30 +129,50 @@ const StaffValidate: React.FC = () => {
     handleLookup(scannedText);
   };
 
-  const getSubStatusUI = (active: boolean) => active 
+  const getSubStatusUI = (active: boolean) => active
     ? { text: 'Ativa', color: 'text-green-600', bg: 'bg-green-100', icon: CheckCircle2 }
     : { text: 'Inativa/Pendente', color: 'text-red-600', bg: 'bg-red-100', icon: XCircle };
 
-  const getVoucherStatusUI = (hasVoucher: boolean, subActive: boolean) => {
+  /**
+   * voucher_status é a fonte da verdade.
+   * - available => Disponível
+   * - redeemed => Já Utilizado
+   * - null => Sem voucher (ou não gerado)
+   * Se assinatura inativa => Bloqueado
+   */
+  const getVoucherStatusUI = (voucherStatus: string | null, subActive: boolean) => {
     if (!subActive) return { text: 'Bloqueado', color: 'text-slate-400', bg: 'bg-slate-100', icon: ShieldAlert };
-    return hasVoucher
-      ? { text: 'Disponível', color: 'text-blue-600', bg: 'bg-blue-100', icon: ShieldCheck }
-      : { text: 'Já Utilizado', color: 'text-amber-600', bg: 'bg-amber-100', icon: AlertTriangle };
+
+    if (voucherStatus === 'available') {
+      return { text: 'Disponível', color: 'text-blue-600', bg: 'bg-blue-100', icon: ShieldCheck };
+    }
+
+    if (voucherStatus === 'redeemed') {
+      return { text: 'Já Utilizado', color: 'text-amber-600', bg: 'bg-amber-100', icon: AlertTriangle };
+    }
+
+    return { text: 'Sem Voucher', color: 'text-slate-600', bg: 'bg-slate-100', icon: AlertTriangle };
   };
+
+  const canRedeem = !!client
+    && client.subscription_active
+    && client.voucher_status === 'available'
+    && !redeeming;
 
   return (
     <div className="space-y-6">
       <div className="text-center">
-        <h2 className="text-2xl font-black text-slate-800 dark:text-white">Validação <span className="text-hero-primary">Hero</span></h2>
+        <h2 className="text-2xl font-black text-slate-800 dark:text-white">
+          Validação <span className="text-hero-primary">Hero</span>
+        </h2>
         <p className="text-slate-500 text-sm">Identifique o herói para liberar o benefício.</p>
       </div>
 
-      {/* Área de Busca */}
       <Card>
         <CardBody className="p-4 space-y-4">
-          <Button 
-            size="lg" 
-            className="w-full h-14 text-lg rounded-2xl shadow-lg shadow-hero-primary/20" 
+          <Button
+            size="lg"
+            className="w-full h-14 text-lg rounded-2xl shadow-lg shadow-hero-primary/20"
             onClick={() => setIsScannerOpen(true)}
           >
             <QrCode size={24} className="mr-2" /> Escanear QR Code
@@ -131,20 +185,24 @@ const StaffValidate: React.FC = () => {
           </div>
 
           <form onSubmit={(e) => { e.preventDefault(); handleLookup(query); }} className="flex gap-2">
-            <Input 
-              placeholder="Hero Code ou CPF (apenas números)" 
-              value={query} 
-              onChange={e => setQuery(e.target.value)} 
+            <Input
+              placeholder="Customer Code / Hero Code / CPF"
+              value={query}
+              onChange={e => setQuery(e.target.value)}
               className="rounded-xl h-12"
             />
-            <Button type="submit" variant="secondary" isLoading={loading} className="rounded-xl w-14 h-12 flex items-center justify-center">
+            <Button
+              type="submit"
+              variant="secondary"
+              isLoading={loading}
+              className="rounded-xl w-14 h-12 flex items-center justify-center"
+            >
               <Search size={20} />
             </Button>
           </form>
         </CardBody>
       </Card>
 
-      {/* Feedback de Erro Geral */}
       {errorMsg && !client && (
         <div className="bg-red-50 text-red-600 p-4 rounded-xl flex items-center gap-3 border border-red-100 animate-in fade-in slide-in-from-top-2">
           <ShieldAlert size={24} />
@@ -152,58 +210,52 @@ const StaffValidate: React.FC = () => {
         </div>
       )}
 
-      {/* Cartão do Cliente Encontrado */}
       {client && (
         <div className="animate-in fade-in slide-in-from-bottom-4">
           <Card className="overflow-hidden border-0 shadow-2xl">
-            {/* Header com Avatar e Capa */}
             <div className="relative h-48 bg-slate-900 overflow-hidden">
-               {/* Imagem de Fundo (Template) */}
-               {client.card_image_url ? (
-                 <img 
-                   src={client.card_image_url} 
-                   alt="Background" 
-                   className="absolute inset-0 w-full h-full object-cover opacity-80"
-                 />
-               ) : (
-                 <div className="absolute inset-0 bg-gradient-to-br from-slate-900 to-slate-800"></div>
-               )}
-               
-               {/* Overlay Escuro para legibilidade */}
-               <div className="absolute inset-0 bg-black/60 backdrop-blur-[1px]"></div>
+              {client.card_image_url ? (
+                <img
+                  src={client.card_image_url}
+                  alt="Background"
+                  className="absolute inset-0 w-full h-full object-cover opacity-80"
+                />
+              ) : (
+                <div className="absolute inset-0 bg-gradient-to-br from-slate-900 to-slate-800"></div>
+              )}
 
-               {/* Conteúdo sobreposto */}
-               <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center z-10">
-                  <div className="w-20 h-20 rounded-full border-[3px] border-white bg-slate-200 overflow-hidden shadow-xl mb-3 relative">
-                    <img 
-                      src={client.avatar_url || `https://picsum.photos/seed/${client.user_id}/200`} 
-                      alt={client.display_name} 
-                      className="w-full h-full object-cover" 
-                    />
-                    {client.subscription_active && (
-                      <div className="absolute bottom-0 right-0 w-5 h-5 bg-green-500 rounded-full border-2 border-white"></div>
-                    )}
-                  </div>
-                  
-                  <h3 className="text-xl font-black text-white drop-shadow-md leading-tight">
-                    {client.display_name}
-                  </h3>
-                  
-                  <div className="inline-block bg-white/20 backdrop-blur-md border border-white/20 px-3 py-1 rounded-full mt-2">
-                    <p className="text-xs font-mono font-bold text-white tracking-widest drop-shadow-sm">
-                      {client.hero_code}
-                    </p>
-                  </div>
-               </div>
+              <div className="absolute inset-0 bg-black/60 backdrop-blur-[1px]"></div>
+
+              <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center z-10">
+                <div className="w-20 h-20 rounded-full border-[3px] border-white bg-slate-200 overflow-hidden shadow-xl mb-3 relative">
+                  <img
+                    src={client.avatar_url || `https://picsum.photos/seed/${client.user_id}/200`}
+                    alt={client.display_name}
+                    className="w-full h-full object-cover"
+                  />
+                  {client.subscription_active && (
+                    <div className="absolute bottom-0 right-0 w-5 h-5 bg-green-500 rounded-full border-2 border-white"></div>
+                  )}
+                </div>
+
+                <h3 className="text-xl font-black text-white drop-shadow-md leading-tight">
+                  {client.display_name}
+                </h3>
+
+                <div className="inline-block bg-white/20 backdrop-blur-md border border-white/20 px-3 py-1 rounded-full mt-2">
+                  <p className="text-xs font-mono font-bold text-white tracking-widest drop-shadow-sm">
+                    {client.customer_id_public || client.hero_code}
+                  </p>
+                </div>
+              </div>
             </div>
 
             <CardBody className="p-6 space-y-6 bg-white dark:bg-slate-800">
-              {/* Status Grid */}
               <div className="grid grid-cols-2 gap-4">
                 {(() => {
                   const subUI = getSubStatusUI(client.subscription_active);
-                  const voucherUI = getVoucherStatusUI(client.has_current_voucher, client.subscription_active);
-                  
+                  const voucherUI = getVoucherStatusUI(client.voucher_status, client.subscription_active);
+
                   return (
                     <>
                       <div className={`p-3 rounded-xl border flex flex-col items-center text-center gap-2 ${subUI.bg} border-transparent`}>
@@ -213,6 +265,7 @@ const StaffValidate: React.FC = () => {
                           <p className={`text-sm font-black ${subUI.color}`}>{subUI.text}</p>
                         </div>
                       </div>
+
                       <div className={`p-3 rounded-xl border flex flex-col items-center text-center gap-2 ${voucherUI.bg} border-transparent`}>
                         <voucherUI.icon size={20} className={voucherUI.color} />
                         <div>
@@ -225,41 +278,46 @@ const StaffValidate: React.FC = () => {
                 })()}
               </div>
 
-              {/* Mensagens de Sucesso/Erro Pós Ação */}
               {successMsg && (
                 <div className="bg-green-50 text-green-700 p-4 rounded-xl text-center font-bold border border-green-200">
                   {successMsg}
                 </div>
               )}
+
               {errorMsg && client && (
                 <div className="bg-red-50 text-red-600 p-3 rounded-xl text-center font-bold text-sm border border-red-200">
                   {errorMsg}
                 </div>
               )}
 
-              {/* Ações */}
               <div className="pt-2">
-                <Button 
-                  size="lg" 
+                <Button
+                  size="lg"
                   className="w-full h-14 text-base rounded-2xl"
                   onClick={handleRedeem}
-                  disabled={!client.subscription_active || !client.has_current_voucher || redeeming}
+                  disabled={!canRedeem}
                   isLoading={redeeming}
-                  variant={(!client.subscription_active || !client.has_current_voucher) ? 'secondary' : 'primary'}
+                  variant={!canRedeem ? 'secondary' : 'primary'}
                 >
                   {redeeming ? 'Validando...' : 'Validar Resgate'}
                 </Button>
-                
-                {(!client.subscription_active || !client.has_current_voucher) && (
+
+                {!canRedeem && (
                   <p className="text-center text-xs text-slate-400 mt-3 font-medium">
-                    {!client.subscription_active ? 'Assinatura inativa. Oriente o cliente.' : 'Voucher indisponível ou já utilizado.'}
+                    {!client.subscription_active
+                      ? 'Assinatura inativa. Oriente o cliente.'
+                      : (client.voucher_status === 'redeemed'
+                        ? 'Voucher já utilizado neste mês.'
+                        : 'Voucher indisponível para este mês.')}
                   </p>
                 )}
               </div>
 
               {client.cpf && (
                 <div className="text-center border-t border-slate-100 pt-4">
-                  <p className="text-xs text-slate-400">CPF: ***.{client.cpf.slice(3,6)}.{client.cpf.slice(6,9)}-**</p>
+                  <p className="text-xs text-slate-400">
+                    CPF: ***.{client.cpf.slice(3, 6)}.{client.cpf.slice(6, 9)}-**
+                  </p>
                 </div>
               )}
             </CardBody>
@@ -267,25 +325,28 @@ const StaffValidate: React.FC = () => {
         </div>
       )}
 
-      {/* Scanner Modal */}
       <Modal isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} title="Escanear Cartão" size="fullscreen">
         <div className="w-full h-full flex flex-col relative bg-black">
           <div className="flex-1 relative">
             <QrScanner onScan={onScan} onError={(err) => console.log(err)} />
-            
-            {/* Overlay Gráfico */}
+
             <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-               <div className="w-64 h-64 border-2 border-white/30 rounded-3xl relative">
-                  <div className="absolute top-0 left-0 w-8 h-8 border-l-4 border-t-4 border-hero-primary -translate-x-1 -translate-y-1"></div>
-                  <div className="absolute top-0 right-0 w-8 h-8 border-r-4 border-t-4 border-hero-primary translate-x-1 -translate-y-1"></div>
-                  <div className="absolute bottom-0 left-0 w-8 h-8 border-l-4 border-b-4 border-hero-primary -translate-x-1 translate-y-1"></div>
-                  <div className="absolute bottom-0 right-0 w-8 h-8 border-r-4 border-b-4 border-hero-primary translate-x-1 translate-y-1"></div>
-               </div>
+              <div className="w-64 h-64 border-2 border-white/30 rounded-3xl relative">
+                <div className="absolute top-0 left-0 w-8 h-8 border-l-4 border-t-4 border-hero-primary -translate-x-1 -translate-y-1"></div>
+                <div className="absolute top-0 right-0 w-8 h-8 border-r-4 border-t-4 border-hero-primary translate-x-1 -translate-y-1"></div>
+                <div className="absolute bottom-0 left-0 w-8 h-8 border-l-4 border-b-4 border-hero-primary -translate-x-1 translate-y-1"></div>
+                <div className="absolute bottom-0 right-0 w-8 h-8 border-r-4 border-b-4 border-hero-primary translate-x-1 translate-y-1"></div>
+              </div>
             </div>
           </div>
+
           <div className="p-6 bg-slate-900 text-center">
             <p className="text-white font-medium mb-4">Aponte para o QR Code do cliente</p>
-            <Button variant="secondary" onClick={() => setIsScannerOpen(false)} className="w-full bg-slate-800 text-white border-slate-700">
+            <Button
+              variant="secondary"
+              onClick={() => setIsScannerOpen(false)}
+              className="w-full bg-slate-800 text-white border-slate-700"
+            >
               Cancelar
             </Button>
           </div>
