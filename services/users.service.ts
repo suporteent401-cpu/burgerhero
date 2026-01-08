@@ -127,7 +127,9 @@ export const ensureProfileExistsForEmail = async (email: string) => {
 };
 
 // ✅ fonte da verdade: banco gera e fixa o código
-export const ensureHeroIdentity = async (): Promise<string | null> => {
+// Aceita userId opcional APENAS para compatibilidade com chamadas existentes.
+// A RPC pode ou não receber parâmetro — por isso não enviamos nada por padrão.
+export const ensureHeroIdentity = async (_userId?: string): Promise<string | null> => {
   try {
     const { data, error } = await supabase.rpc('ensure_hero_identity');
     if (error) {
