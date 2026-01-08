@@ -15,16 +15,19 @@ import {
   Loader2,
   ShieldCheck,
   ShieldAlert,
+  RefreshCw,
 } from 'lucide-react';
 import { Modal } from '../components/ui/Modal';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
+import { ensureHeroIdentity } from '../services/users.service';
 
 const QRCodePage: React.FC = () => {
   const user = useAuthStore((s) => s.user);
   const isLoadingAuth = useAuthStore((s) => s.isLoading);
   const hasHydrated = useAuthStore((s) => s.hasHydrated);
   const refreshUserFromDb = useAuthStore((s) => s.refreshUserFromDb);
+  const updateUser = useAuthStore((s) => s.updateUser);
 
   const selectedTemplateId = useCardStore((s) => s.selectedTemplateId);
   const availableTemplates = useCardStore((s) => s.availableTemplates);
@@ -32,47 +35,28 @@ const QRCodePage: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const [subStatus, setSubStatus] = useState<'active' | 'inactive' | 'loading'>('loading');
+  const [syncing, setSyncing] = useState(false);
 
-  // ✅ Blindagem: se o user existe mas o customerCode veio vazio, tenta recuperar do banco
   useEffect(() => {
-    if (!user?.id) return;
+    if (user?.id) {
+      const checkStatus = async () => {
+        try {
+          const mockSub = subscriptionMockService.getActiveSubscription(user.id);
+          if (mockSub && mockSub.status === 'active') {
+            setSubStatus('active');
+            return;
+          }
 
-    // Se ainda não hidratou, espera.
-    if (!hasHydrated) return;
-
-    if (!user.customerCode) {
-      refreshUserFromDb(user.id);
-    }
-  }, [user?.id, user?.customerCode, hasHydrated, refreshUserFromDb]);
-
-  // Busca o status real para exibir no QR
-  useEffect(() => {
-    if (!user?.id) return;
-
-    const checkStatus = async () => {
-      try {
-        // Mock primeiro, depois banco
-        const mockSub = subscriptionMockService.getActiveSubscription(user.id);
-        if (mockSub && mockSub.status === 'active') {
-          setSubStatus('active');
-          return;
+          const data = await getSubscriptionStatus(user.id);
+          const isDbActive = data?.status === 'active' || data?.status === 'ACTIVE';
+          setSubStatus(isDbActive ? 'active' : 'inactive');
+        } catch {
+          setSubStatus('inactive');
         }
+      };
 
-        const data = await getSubscriptionStatus(user.id);
-        const raw = String((data as any)?.status || '').toUpperCase();
-        const isDbActive = raw === 'ACTIVE' || raw === 'ATIVO' || raw === 'ACTIVE_SUBSCRIPTION';
-
-        // também aceito "active" minúsculo caso seu serviço devolva assim
-        const rawLower = String((data as any)?.status || '').toLowerCase();
-        const isDbActiveLoose = isDbActive || rawLower === 'active';
-
-        setSubStatus(isDbActiveLoose ? 'active' : 'inactive');
-      } catch (e) {
-        setSubStatus('inactive');
-      }
-    };
-
-    checkStatus();
+      checkStatus();
+    }
   }, [user?.id]);
 
   const template = useMemo(() => {
@@ -84,8 +68,6 @@ const QRCodePage: React.FC = () => {
 
   const qrUrl = useMemo(() => {
     if (!customerCode) return '';
-    // ✅ hash router correto:
-    // Sempre gera: https://seu-dominio/#/public/client/CODIGO
     const origin = window.location.origin;
     return `${origin}/#/public/client/${customerCode}`;
   }, [customerCode]);
@@ -97,13 +79,24 @@ const QRCodePage: React.FC = () => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      // fallback visual
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }
   };
 
-  // ✅ Gate completo: só renderiza quando o persist hidratou + auth terminou + status carregou
+  const handleSyncIdentity = async () => {
+    if (!user?.id) return;
+    setSyncing(true);
+    try {
+      const code = await ensureHeroIdentity(user.id);
+      if (code) updateUser({ customerCode: code });
+
+      await refreshUserFromDb(user.id);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   if (!hasHydrated || isLoadingAuth || subStatus === 'loading') {
     return (
       <div className="flex flex-col items-center justify-center py-20">
@@ -113,33 +106,25 @@ const QRCodePage: React.FC = () => {
     );
   }
 
-  // ✅ Se ainda não tem user: volta pro login
-  if (!user) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 text-center px-6">
-        <AlertCircle className="w-12 h-12 text-amber-500 mb-4" />
-        <h3 className="font-black text-lg text-slate-700 dark:text-slate-200">Sessão não encontrada</h3>
-        <p className="text-sm text-slate-500 mt-1 mb-6">Faça login novamente.</p>
-        <Link to="/auth">
-          <Button variant="secondary">Ir para Login</Button>
-        </Link>
-      </div>
-    );
-  }
-
-  // ✅ Se ainda não tem customerCode, deixa uma saída clara
-  if (!customerCode) {
+  if (!user || !customerCode) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-center px-6">
         <AlertCircle className="w-12 h-12 text-amber-500 mb-4" />
         <h3 className="font-black text-lg text-slate-700 dark:text-slate-200">Identidade Não Encontrada</h3>
         <p className="text-sm text-slate-500 mt-1 mb-6">
-          Não conseguimos localizar seu ID de Herói. Vá ao perfil e salve novamente.
+          Seu ID de Herói ainda não foi gerado. Clique em “Tentar Sincronizar”.
         </p>
-        <div className="flex gap-2">
-          <Button variant="secondary" onClick={() => refreshUserFromDb(user.id)}>
-            Tentar Sincronizar
+
+        <div className="flex gap-3">
+          <Button
+            variant="secondary"
+            onClick={handleSyncIdentity}
+            disabled={syncing}
+            isLoading={syncing}
+          >
+            <RefreshCw size={16} className="mr-2" /> Tentar Sincronizar
           </Button>
+
           <Link to="/app/profile">
             <Button>Ir para Perfil</Button>
           </Link>
@@ -163,34 +148,16 @@ const QRCodePage: React.FC = () => {
         animate={{ opacity: 1, y: 0 }}
         className="relative max-w-sm mx-auto"
       >
-        {/* Glow Effect */}
-        <div
-          className={`absolute inset-0 blur-3xl rounded-full -z-10 opacity-30 ${
-            isActive ? 'bg-green-500' : 'bg-hero-primary'
-          }`}
-        ></div>
+        <div className={`absolute inset-0 blur-3xl rounded-full -z-10 opacity-30 ${isActive ? 'bg-green-500' : 'bg-hero-primary'}`} />
 
         <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] overflow-hidden shadow-2xl border border-slate-100 dark:border-slate-800">
-          {/* Top Banner */}
           <div className="h-32 relative overflow-hidden">
-            <img
-              src={templateImageUrl}
-              alt="Bg"
-              className="absolute inset-0 w-full h-full object-cover scale-125"
-            />
+            <img src={templateImageUrl} alt="Bg" className="absolute inset-0 w-full h-full object-cover scale-125" />
             <div className="absolute inset-0 bg-black/40"></div>
 
             <div className="absolute top-4 inset-x-0 flex justify-center">
-              <div
-                className={`px-3 py-1 rounded-full backdrop-blur-md border border-white/20 flex items-center gap-2 ${
-                  isActive ? 'bg-green-500/30' : 'bg-slate-500/30'
-                }`}
-              >
-                <div
-                  className={`w-2 h-2 rounded-full ${
-                    isActive ? 'bg-green-400 animate-pulse' : 'bg-slate-400'
-                  }`}
-                ></div>
+              <div className={`px-3 py-1 rounded-full backdrop-blur-md border border-white/20 flex items-center gap-2 ${isActive ? 'bg-green-500/30' : 'bg-slate-500/30'}`}>
+                <div className={`w-2 h-2 rounded-full ${isActive ? 'bg-green-400 animate-pulse' : 'bg-slate-400'}`} />
                 <span className="text-[10px] font-black text-white uppercase tracking-widest">
                   {isActive ? 'Assinatura Ativa' : 'Assinatura Inativa'}
                 </span>
@@ -199,22 +166,13 @@ const QRCodePage: React.FC = () => {
           </div>
 
           <div className="px-8 pb-8 -mt-12 flex flex-col items-center relative z-10">
-            {/* Avatar */}
             <div className="w-24 h-24 rounded-full border-[6px] border-white dark:border-slate-900 bg-slate-200 overflow-hidden shadow-xl mb-4">
-              <img
-                src={user.avatarUrl || `https://picsum.photos/seed/${user.id}/100`}
-                alt="User"
-                className="w-full h-full object-cover"
-              />
+              <img src={user.avatarUrl || `https://picsum.photos/seed/${user.id}/100`} alt="User" className="w-full h-full object-cover" />
             </div>
 
             <h3 className="text-xl font-black text-slate-800 dark:text-white mb-6">{user.name}</h3>
 
-            {/* QR Code Container */}
-            <div
-              className="bg-white p-5 rounded-3xl shadow-inner border border-slate-100 relative group cursor-pointer"
-              onClick={() => setIsModalOpen(true)}
-            >
+            <div className="bg-white p-5 rounded-3xl shadow-inner border border-slate-100 relative group cursor-pointer" onClick={() => setIsModalOpen(true)}>
               <QRCodeSVG
                 value={qrUrl}
                 size={180}
@@ -248,23 +206,13 @@ const QRCodePage: React.FC = () => {
 
             <div className="w-full my-6 border-t-2 border-dashed border-slate-100 dark:border-slate-800"></div>
 
-            {/* Manual Code */}
             <div className="w-full">
-              <p className="text-center text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2">
-                ID do Herói
-              </p>
-              <div
-                onClick={handleCopy}
-                className="bg-slate-50 dark:bg-slate-800 p-3 rounded-2xl flex items-center justify-between cursor-pointer active:scale-95 transition-all"
-              >
+              <p className="text-center text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2">ID do Herói</p>
+              <div onClick={handleCopy} className="bg-slate-50 dark:bg-slate-800 p-3 rounded-2xl flex items-center justify-between cursor-pointer active:scale-95 transition-all">
                 <span className="font-mono font-bold text-lg text-slate-700 dark:text-slate-200 tracking-widest pl-2">
                   {customerCode}
                 </span>
-                <div
-                  className={`p-2 rounded-xl ${
-                    copied ? 'bg-green-500 text-white' : 'bg-white dark:bg-slate-700 text-slate-400'
-                  }`}
-                >
+                <div className={`p-2 rounded-xl ${copied ? 'bg-green-500 text-white' : 'bg-white dark:bg-slate-700 text-slate-400'}`}>
                   {copied ? <Check size={18} /> : <Copy size={18} />}
                 </div>
               </div>
@@ -273,11 +221,7 @@ const QRCodePage: React.FC = () => {
         </div>
 
         <div className="mt-6 flex flex-col gap-3">
-          <Button
-            variant="secondary"
-            className="w-full py-4 rounded-2xl dark:bg-slate-800"
-            onClick={() => setIsModalOpen(true)}
-          >
+          <Button variant="secondary" className="w-full py-4 rounded-2xl dark:bg-slate-800" onClick={() => setIsModalOpen(true)}>
             <Maximize2 size={18} className="mr-2" /> Tela Cheia
           </Button>
 
