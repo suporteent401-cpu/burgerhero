@@ -21,12 +21,12 @@ const generateHeroCode = () => {
   return `BH-${rand}`;
 };
 
-type ClientProfileRow = {
+type UserProfileRow = {
   user_id: string;
   display_name: string | null;
   email: string | null;
   avatar_url: string | null;
-  hero_code: string; // ✅ EXISTE NO SEU BANCO
+  hero_code: string;
 };
 
 type HeroCardSettingsRow = {
@@ -67,13 +67,13 @@ export const SupabaseAuthProvider: React.FC<AuthProviderProps> = ({ children }) 
       useThemeStore.getState().applyTheme();
     };
 
-    const ensureHeroCode = async (profile: ClientProfileRow) => {
+    const ensureHeroCode = async (profile: UserProfileRow) => {
       if (profile.hero_code) return profile;
 
       const newCode = generateHeroCode();
 
       const { error } = await supabase
-        .from('client_profiles')
+        .from('user_profiles')
         .update({ hero_code: newCode })
         .eq('user_id', profile.user_id);
 
@@ -85,19 +85,19 @@ export const SupabaseAuthProvider: React.FC<AuthProviderProps> = ({ children }) 
       return { ...profile, hero_code: newCode };
     };
 
-    const fetchClientProfile = async (userId: string): Promise<ClientProfileRow | null> => {
+    const fetchUserProfile = async (userId: string): Promise<UserProfileRow | null> => {
       const { data, error } = await supabase
-        .from('client_profiles')
+        .from('user_profiles')
         .select('user_id, display_name, email, avatar_url, hero_code')
         .eq('user_id', userId)
         .single();
 
       if (error) {
-        console.error('Erro ao buscar client_profiles:', error);
+        console.error('Erro ao buscar user_profiles:', error);
         return null;
       }
 
-      return data as ClientProfileRow;
+      return data as UserProfileRow;
     };
 
     const fetchHeroCardSettings = async (userId: string): Promise<HeroCardSettingsRow | null> => {
@@ -127,9 +127,9 @@ export const SupabaseAuthProvider: React.FC<AuthProviderProps> = ({ children }) 
 
         const authUser = session.user;
 
-        let profile = await fetchClientProfile(authUser.id);
+        let profile = await fetchUserProfile(authUser.id);
         if (!profile) {
-          console.error('client_profiles não encontrado para usuário:', authUser.id);
+          console.error('user_profiles não encontrado para usuário:', authUser.id);
           logout();
           return;
         }
@@ -144,7 +144,7 @@ export const SupabaseAuthProvider: React.FC<AuthProviderProps> = ({ children }) 
           name: profile.display_name || authUser.email?.split('@')[0] || 'Herói',
           email: profile.email || authUser.email || '',
           avatarUrl: profile.avatar_url || '',
-          customerCode: profile.hero_code, // ✅ MAPEAMENTO CORRETO
+          customerCode: profile.hero_code,
           role: normalizeRole('client'),
         };
 
@@ -176,7 +176,7 @@ export const SupabaseAuthProvider: React.FC<AuthProviderProps> = ({ children }) 
 
           setLoading(true);
 
-          let profile = await fetchClientProfile(session.user.id);
+          let profile = await fetchUserProfile(session.user.id);
           if (!profile) {
             logout();
             return;

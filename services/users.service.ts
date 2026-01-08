@@ -27,7 +27,7 @@ export const checkCpfExists = async (cpf: string): Promise<boolean> => {
   if (!normalizedCpf) return false;
 
   const { data, error } = await supabase
-    .from('client_profiles')
+    .from('user_profiles')
     .select('cpf')
     .eq('cpf', normalizedCpf)
     .limit(1);
@@ -42,7 +42,7 @@ export const checkCpfExists = async (cpf: string): Promise<boolean> => {
 
 export const getUserProfileById = async (userId: string) => {
   const { data, error } = await supabase
-    .from('client_profiles')
+    .from('user_profiles')
     .select('*')
     .eq('user_id', userId)
     .maybeSingle();
@@ -56,9 +56,9 @@ export const getUserProfileById = async (userId: string) => {
 };
 
 export const getFullUserProfile = async (authUser: SupabaseUser): Promise<FullUserProfile | null> => {
-  const [appUserResponse, clientProfileResponse, settingsResponse] = await Promise.all([
+  const [appUserResponse, userProfileResponse, settingsResponse] = await Promise.all([
     supabase.from('app_users').select('role, is_active').eq('id', authUser.id).maybeSingle(),
-    supabase.from('client_profiles').select('*').eq('user_id', authUser.id).maybeSingle(),
+    supabase.from('user_profiles').select('*').eq('user_id', authUser.id).maybeSingle(),
     supabase.from('hero_card_settings').select('*').eq('user_id', authUser.id).maybeSingle(),
   ]);
 
@@ -72,7 +72,7 @@ export const getFullUserProfile = async (authUser: SupabaseUser): Promise<FullUs
 
   const role: Role = normalizeRole(appUserData.role);
 
-  const clientProfileData = clientProfileResponse.data;
+  const userProfileData = userProfileResponse.data;
   const settingsData = settingsResponse.data;
 
   const profile: AppUser = {
@@ -81,23 +81,23 @@ export const getFullUserProfile = async (authUser: SupabaseUser): Promise<FullUs
     role,
 
     name:
-      clientProfileData?.display_name ||
+      userProfileData?.display_name ||
       (authUser.user_metadata as any)?.full_name ||
       'Herói',
 
     customerCode:
-      clientProfileData?.customer_id_public ||
-      clientProfileData?.hero_code ||
+      userProfileData?.customer_id_public ||
+      userProfileData?.hero_code ||
       '',
 
     avatarUrl:
-      clientProfileData?.avatar_url ||
+      userProfileData?.avatar_url ||
       (authUser.user_metadata as any)?.avatar_url ||
       null,
 
-    cpf: clientProfileData?.cpf || '',
-    whatsapp: clientProfileData?.whatsapp || '',
-    birthDate: clientProfileData?.birthdate || '',
+    cpf: userProfileData?.cpf || '',
+    whatsapp: userProfileData?.whatsapp || '',
+    birthDate: userProfileData?.birthdate || '',
 
     heroTheme: (settingsData?.hero_theme as HeroTheme) || 'sombra-noturna',
   };
@@ -128,7 +128,7 @@ export const uploadAndSyncAvatar = async (userId: string, file: File): Promise<s
   const publicUrl = publicUrlData.publicUrl;
 
   const { error: dbError } = await supabase
-    .from('client_profiles')
+    .from('user_profiles')
     .update({ avatar_url: publicUrl })
     .eq('user_id', userId);
 
@@ -139,7 +139,7 @@ export const uploadAndSyncAvatar = async (userId: string, file: File): Promise<s
 
 export const updateProfileName = async (userId: string, name: string) => {
   const { error } = await supabase
-    .from('client_profiles')
+    .from('user_profiles')
     .update({ display_name: name })
     .eq('user_id', userId);
 
