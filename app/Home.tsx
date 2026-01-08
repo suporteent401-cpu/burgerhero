@@ -98,8 +98,52 @@ const Home: React.FC = () => {
         />
       </div>
 
-      {/* Nearby Restaurants Section */}
+      {/* Seção de Cupons (Novidade) */}
+      {coupons.length > 0 && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2 px-1">
+             <Sparkles size={16} className="text-hero-primary" />
+             <h3 className="font-black text-slate-700 dark:text-slate-300 text-sm uppercase tracking-wide">Ofertas Especiais</h3>
+          </div>
+          
+          <div className="flex gap-4 overflow-x-auto pb-4 px-1 no-scrollbar snap-x">
+             {coupons.map(coupon => (
+               <div key={coupon.id} className="min-w-[260px] snap-center">
+                 <div className="relative bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-2xl p-4 shadow-lg overflow-hidden border border-slate-700">
+                    {/* Efeito de Ticket (Circles) */}
+                    <div className="absolute -left-3 top-1/2 -translate-y-1/2 w-6 h-6 bg-slate-50 dark:bg-slate-950 rounded-full"></div>
+                    <div className="absolute -right-3 top-1/2 -translate-y-1/2 w-6 h-6 bg-slate-50 dark:bg-slate-950 rounded-full"></div>
+                    
+                    <div className="flex justify-between items-start mb-4">
+                       <span className="bg-hero-primary/20 text-hero-primary text-[10px] font-bold px-2 py-0.5 rounded uppercase border border-hero-primary/30">
+                         {coupon.ruleOnlyForInactives ? 'Reativação' : 'Promoção'}
+                       </span>
+                       <Tag size={16} className="text-slate-400" />
+                    </div>
+                    
+                    <div className="text-center mb-4">
+                       <span className="text-4xl font-black text-white">{coupon.discountPercent}%</span>
+                       <span className="text-lg font-bold text-slate-400 ml-1">OFF</span>
+                       <p className="text-xs text-slate-400 mt-1">Válido até {new Date(coupon.expiresAt).toLocaleDateString()}</p>
+                    </div>
+
+                    <button 
+                      onClick={() => copyCoupon(coupon.code)}
+                      className="w-full bg-white/10 hover:bg-white/20 active:scale-95 transition-all py-2 rounded-xl flex items-center justify-center gap-2 border border-white/10 group"
+                    >
+                       <span className="font-mono font-bold tracking-wider">{coupon.code}</span>
+                       <Copy size={14} className="text-slate-400 group-hover:text-white" />
+                    </button>
+                 </div>
+               </div>
+             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Nearby Restaurants Section - OCULTO TEMPORARIAMENTE
       <NearbyRestaurants />
+      */}
 
       {/* Status Info Grid */}
       <div className="grid grid-cols-2 gap-4">
@@ -165,49 +209,6 @@ const Home: React.FC = () => {
           </CardBody>
         </Card>
       </div>
-
-      {/* Seção de Cupons (Novidade) - Movida para o final */}
-      {coupons.length > 0 && (
-        <div className="space-y-3 pt-2">
-          <div className="flex items-center gap-2 px-1">
-             <Sparkles size={16} className="text-hero-primary" />
-             <h3 className="font-black text-slate-700 dark:text-slate-300 text-sm uppercase tracking-wide">Ofertas Especiais</h3>
-          </div>
-          
-          <div className="flex gap-4 overflow-x-auto pb-4 px-1 no-scrollbar snap-x">
-             {coupons.map(coupon => (
-               <div key={coupon.id} className="min-w-[260px] snap-center">
-                 <div className="relative bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-2xl p-4 shadow-lg overflow-hidden border border-slate-700">
-                    {/* Efeito de Ticket (Circles) */}
-                    <div className="absolute -left-3 top-1/2 -translate-y-1/2 w-6 h-6 bg-slate-50 dark:bg-slate-950 rounded-full"></div>
-                    <div className="absolute -right-3 top-1/2 -translate-y-1/2 w-6 h-6 bg-slate-50 dark:bg-slate-950 rounded-full"></div>
-                    
-                    <div className="flex justify-between items-start mb-4">
-                       <span className="bg-hero-primary/20 text-hero-primary text-[10px] font-bold px-2 py-0.5 rounded uppercase border border-hero-primary/30">
-                         {coupon.ruleOnlyForInactives ? 'Reativação' : 'Promoção'}
-                       </span>
-                       <Tag size={16} className="text-slate-400" />
-                    </div>
-                    
-                    <div className="text-center mb-4">
-                       <span className="text-4xl font-black text-white">{coupon.discountPercent}%</span>
-                       <span className="text-lg font-bold text-slate-400 ml-1">OFF</span>
-                       <p className="text-xs text-slate-400 mt-1">Válido até {new Date(coupon.expiresAt).toLocaleDateString()}</p>
-                    </div>
-
-                    <button 
-                      onClick={() => copyCoupon(coupon.code)}
-                      className="w-full bg-white/10 hover:bg-white/20 active:scale-95 transition-all py-2 rounded-xl flex items-center justify-center gap-2 border border-white/10 group"
-                    >
-                       <span className="font-mono font-bold tracking-wider">{coupon.code}</span>
-                       <Copy size={14} className="text-slate-400 group-hover:text-white" />
-                    </button>
-                 </div>
-               </div>
-             ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 };
