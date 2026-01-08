@@ -7,7 +7,7 @@ import { useCardStore, FONT_OPTIONS, COLOR_OPTIONS } from '../store/cardStore';
 import {
   LogOut, Palette, Moon, Sun, Monitor, CreditCard, CheckCircle2,
   Camera, Pencil, Check, X, Download, Fingerprint,
-  Loader2, Save, RotateCcw, AlertTriangle
+  Loader2, Save, RotateCcw, AlertTriangle, User as UserIcon
 } from 'lucide-react';
 import { HeroTheme, Subscription } from '../types';
 import { supabase } from '../lib/supabaseClient';
@@ -50,6 +50,7 @@ const Profile: React.FC = () => {
   const cardRef = useRef<HTMLDivElement>(null);
   const [isEditingName, setIsEditingName] = useState(false);
   const [editName, setEditName] = useState(user?.name || '');
+  const [isSavingName, setIsSavingName] = useState(false);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [sub, setSub] = useState<Subscription | null>(null);
 
@@ -64,7 +65,7 @@ const Profile: React.FC = () => {
 
   const [draft, setDraft] = useState<DraftSettings | null>(null);
   const [lastSavedState, setLastSavedState] = useState<DraftSettings | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
   // Efeito para buscar templates e inicializar o estado de rascunho (draft)
@@ -76,7 +77,7 @@ const Profile: React.FC = () => {
       setTemplates(templatesService.mapToStoreFormat(dbTemplates));
     });
 
-    // Subscription: mock -> supabase
+    // Subscription
     (async () => {
       try {
         const mockSub = subscriptionMockService.getActiveSubscription(user.id);
@@ -106,6 +107,7 @@ const Profile: React.FC = () => {
     };
     setDraft(initialState);
     setLastSavedState(initialState);
+    setEditName(user.name);
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
@@ -127,7 +129,7 @@ const Profile: React.FC = () => {
 
   const handleSaveSettings = async () => {
     if (!user || !draft) return;
-    setIsSaving(true);
+    setIsSavingSettings(true);
 
     try {
       await updateCardSettings(user.id, {
@@ -153,9 +155,9 @@ const Profile: React.FC = () => {
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (e) {
       console.error(e);
-      alert("Erro ao salvar.");
+      alert("Erro ao salvar configurações. Verifique sua conexão.");
     } finally {
-      setIsSaving(false);
+      setIsSavingSettings(false);
     }
   };
 
@@ -169,6 +171,7 @@ const Profile: React.FC = () => {
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file && user) {
+      // Preview imediato
       const reader = new FileReader();
       reader.onload = (e) => updateUser({ avatarUrl: e.target?.result as string });
       reader.readAsDataURL(file);
@@ -176,10 +179,13 @@ const Profile: React.FC = () => {
       setUploadingAvatar(true);
       try {
         const finalUrl = await uploadAndSyncAvatar(user.id, file);
-        if (finalUrl) updateUser({ avatarUrl: finalUrl });
+        if (finalUrl) {
+          // Atualiza com a URL final do servidor para garantir persistência
+          updateUser({ avatarUrl: finalUrl });
+        }
       } catch (err) {
         console.error(err);
-        alert('Erro ao processar imagem.');
+        alert('Erro ao enviar imagem. Tente novamente.');
       } finally {
         setUploadingAvatar(false);
       }
@@ -188,15 +194,30 @@ const Profile: React.FC = () => {
 
   const handleSaveName = async () => {
     if (!user || !editName.trim()) return;
-    const old = user.name;
-    updateUser({ name: editName });
+    
+    const newName = editName.trim();
+    if (newName === user.name) {
+      setIsEditingName(false);
+      return;
+    }
+
+    setIsSavingName(true);
+    const oldName = user.name;
+    
+    // Otimista
+    updateUser({ name: newName });
     setIsEditingName(false);
 
     try {
-      await updateProfileName(user.id, editName);
+      await updateProfileName(user.id, newName);
     } catch (err) {
-      updateUser({ name: old });
-      alert('Erro ao salvar nome.');
+      console.error(err);
+      // Reverte em caso de erro
+      updateUser({ name: oldName });
+      setEditName(oldName);
+      alert('Não foi possível salvar o nome. Tente novamente.');
+    } finally {
+      setIsSavingName(false);
     }
   };
 
@@ -212,17 +233,9 @@ const Profile: React.FC = () => {
   };
 
   const handleLogout = async () => {
-    // 1. Limpa estado local imediatamente
     logout();
-    
-    // 2. Redireciona
     navigate('/auth');
-
-    // 3. Limpa sessão Supabase
-    const { error } = await supabase.auth.signOut();
-    if (error) {
-      console.error('Erro ao fazer logout no servidor:', error);
-    }
+    await supabase.auth.signOut();
   };
 
   const themes: { name: HeroTheme, color: string }[] = [
@@ -242,6 +255,7 @@ const Profile: React.FC = () => {
     return (
       <div className="p-10 text-center">
         <Loader2 className="animate-spin mx-auto text-hero-primary" />
+        <p className="text-slate-500 text-sm mt-2">Carregando seu QG...</p>
       </div>
     );
   }
@@ -259,14 +273,15 @@ const Profile: React.FC = () => {
               variant="ghost"
               onClick={handleCancelChanges}
               className="text-white hover:bg-white/20 h-8"
+              disabled={isSavingSettings}
             >
               <RotateCcw size={14} />
             </Button>
             <Button
               size="sm"
               onClick={handleSaveSettings}
-              isLoading={isSaving}
-              className="h-8 bg-white text-amber-700 shadow-sm"
+              isLoading={isSavingSettings}
+              className="h-8 bg-white text-amber-700 shadow-sm border-none hover:bg-amber-50"
             >
               <Save size={14} className="mr-1.5" /> Salvar
             </Button>
@@ -274,15 +289,16 @@ const Profile: React.FC = () => {
         </div>
       )}
 
+      {/* Profile Header Section */}
       <div className="flex flex-col items-center">
         <div
           className="relative group cursor-pointer"
           onClick={() => !uploadingAvatar && fileInputRef.current?.click()}
         >
-          <div className="w-28 h-28 rounded-full border-4 border-white dark:border-slate-800 shadow-xl bg-slate-200 overflow-hidden relative">
+          <div className={`w-28 h-28 rounded-full border-4 border-white dark:border-slate-800 shadow-xl bg-slate-200 overflow-hidden relative transition-all ${uploadingAvatar ? 'opacity-50' : ''}`}>
             {uploadingAvatar && (
-              <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-10">
-                <Loader2 className="animate-spin text-white" />
+              <div className="absolute inset-0 flex items-center justify-center bg-black/40 z-10 backdrop-blur-sm">
+                <Loader2 className="animate-spin text-white" size={32} />
               </div>
             )}
             <img
@@ -292,7 +308,7 @@ const Profile: React.FC = () => {
             />
           </div>
 
-          <div className="absolute inset-0 bg-black/30 rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/30 rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
             <Camera size={24} className="text-white" />
           </div>
 
@@ -302,29 +318,42 @@ const Profile: React.FC = () => {
             className="hidden"
             accept="image/*"
             onChange={handleFileChange}
+            disabled={uploadingAvatar}
           />
         </div>
 
-        <div className="mt-4 flex flex-col items-center">
+        <div className="mt-4 flex flex-col items-center w-full max-w-xs">
           {isEditingName ? (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 w-full justify-center animate-in fade-in">
               <input
-                className="bg-transparent border-b-2 border-hero-primary text-xl font-black text-center dark:text-white"
+                className="bg-transparent border-b-2 border-hero-primary text-xl font-black text-center dark:text-white outline-none w-full min-w-[150px]"
                 value={editName}
                 onChange={e => setEditName(e.target.value)}
                 autoFocus
+                onKeyDown={(e) => e.key === 'Enter' && handleSaveName()}
               />
-              <button onClick={handleSaveName} className="p-1 bg-green-100 text-green-600 rounded-full">
-                <Check size={16} />
+              <button 
+                onClick={handleSaveName} 
+                disabled={isSavingName}
+                className="p-1.5 bg-green-100 text-green-600 rounded-full hover:bg-green-200 transition-colors disabled:opacity-50"
+              >
+                {isSavingName ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
               </button>
-              <button onClick={() => setIsEditingName(false)} className="p-1 bg-red-100 text-red-600 rounded-full">
+              <button 
+                onClick={() => { setIsEditingName(false); setEditName(user?.name || ''); }} 
+                className="p-1.5 bg-red-100 text-red-600 rounded-full hover:bg-red-200 transition-colors"
+                disabled={isSavingName}
+              >
                 <X size={16} />
               </button>
             </div>
           ) : (
-            <div className="flex items-center gap-2 cursor-pointer" onClick={() => setIsEditingName(true)}>
+            <div 
+              className="flex items-center gap-2 cursor-pointer group hover:bg-slate-100 dark:hover:bg-slate-800 px-3 py-1 rounded-lg transition-colors" 
+              onClick={() => setIsEditingName(true)}
+            >
               <h2 className="text-xl font-black dark:text-white">{user?.name}</h2>
-              <span className="text-slate-400">
+              <span className="text-slate-400 group-hover:text-hero-primary transition-colors">
                 <Pencil size={14} />
               </span>
             </div>
@@ -332,7 +361,7 @@ const Profile: React.FC = () => {
 
           <p className="text-slate-400 text-sm mt-1 mb-3">{user?.email}</p>
 
-          <div className="bg-slate-50 dark:bg-slate-800 px-4 py-1.5 rounded-full flex items-center gap-2">
+          <div className="bg-slate-50 dark:bg-slate-800 px-4 py-1.5 rounded-full flex items-center gap-2 border border-slate-100 dark:border-slate-700">
             <Fingerprint size={14} className="text-hero-primary" />
             <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">
               ID: {user?.customerCode}
@@ -341,14 +370,15 @@ const Profile: React.FC = () => {
         </div>
       </div>
 
+      {/* Editor do Cartão */}
       <Card>
         <CardHeader className="flex justify-between items-center">
           <div className="flex items-center gap-2 font-black text-xs uppercase tracking-widest text-slate-400">
             <CreditCard size={14} /> Editor do Cartão
           </div>
           {saveSuccess && (
-            <span className="text-xs font-bold text-green-600 flex items-center gap-1">
-              <CheckCircle2 size={12} /> Sincronizado
+            <span className="text-xs font-bold text-green-600 flex items-center gap-1 animate-in fade-in">
+              <CheckCircle2 size={12} /> Salvo
             </span>
           )}
         </CardHeader>
@@ -359,12 +389,12 @@ const Profile: React.FC = () => {
               <button
                 key={t.id}
                 onClick={() => updateDraft('templateId', t.id)}
-                className={`relative rounded-xl overflow-hidden aspect-[1.586/1] ${draft.templateId === t.id ? 'ring-4 ring-hero-primary scale-[1.02]' : 'ring-1 ring-slate-200'}`}
+                className={`relative rounded-xl overflow-hidden aspect-[1.586/1] transition-all ${draft.templateId === t.id ? 'ring-4 ring-hero-primary scale-[1.02] shadow-md' : 'ring-1 ring-slate-200 hover:ring-hero-primary/50'}`}
               >
                 <img src={t.imageUrl} alt={t.name} className="w-full h-full object-cover" />
                 {draft.templateId === t.id && (
                   <div className="absolute inset-0 bg-hero-primary/20 flex items-center justify-center">
-                    <CheckCircle2 className="text-white" />
+                    <CheckCircle2 className="text-white drop-shadow-md" size={24} />
                   </div>
                 )}
               </button>
@@ -380,7 +410,7 @@ const Profile: React.FC = () => {
                     key={f.name}
                     onClick={() => updateDraft('fontFamily', f.value)}
                     style={{ fontFamily: f.value }}
-                    className={`px-3 py-1.5 rounded-lg text-sm border ${draft.fontFamily === f.value ? 'bg-hero-primary text-white' : 'bg-white'}`}
+                    className={`px-3 py-1.5 rounded-lg text-sm border transition-all ${draft.fontFamily === f.value ? 'bg-hero-primary text-white border-hero-primary shadow-sm' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'}`}
                   >
                     {f.name}
                   </button>
@@ -395,8 +425,9 @@ const Profile: React.FC = () => {
                   <button
                     key={c.name}
                     onClick={() => updateDraft('fontColor', c.value)}
-                    className={`w-8 h-8 rounded-full border-2 ${draft.fontColor === c.value ? 'ring-2 ring-hero-primary' : ''}`}
-                    style={{ backgroundColor: c.value }}
+                    className={`w-8 h-8 rounded-full border-2 transition-transform ${draft.fontColor === c.value ? 'ring-2 ring-hero-primary scale-110' : 'hover:scale-110'}`}
+                    style={{ backgroundColor: c.value, borderColor: c.value === '#FFFFFF' ? '#e2e8f0' : 'transparent' }}
+                    title={c.name}
                   />
                 ))}
               </div>
@@ -405,15 +436,15 @@ const Profile: React.FC = () => {
 
           <div className="pt-4 flex flex-col items-center">
             <div className="flex justify-between w-full mb-2">
-              <p className="text-xs font-bold text-slate-400">PRÉVIA</p>
-              <Button onClick={handleExportCard} variant="ghost" size="sm">
-                <Download size={14} />
+              <p className="text-xs font-bold text-slate-400">PRÉVIA EM TEMPO REAL</p>
+              <Button onClick={handleExportCard} variant="ghost" size="sm" className="h-6 text-xs">
+                <Download size={12} className="mr-1" /> Baixar
               </Button>
             </div>
 
             <HeroCard
               ref={cardRef}
-              user={user}
+              user={user} // Usa user atual (com nome/avatar atualizado)
               imageUrl={availableTemplates.find(t => t.id === draft.templateId)?.imageUrl || ''}
               fontFamily={draft.fontFamily}
               textColor={draft.fontColor}
@@ -423,6 +454,7 @@ const Profile: React.FC = () => {
         </CardBody>
       </Card>
 
+      {/* Tema e Modo */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Card>
           <CardHeader>
@@ -430,13 +462,14 @@ const Profile: React.FC = () => {
               <Palette size={14} /> Tema do App
             </div>
           </CardHeader>
-          <CardBody className="p-4 grid grid-cols-5 gap-2">
+          <CardBody className="p-4 grid grid-cols-5 gap-3">
             {themes.map(t => (
               <button
                 key={t.name}
                 onClick={() => updateDraft('heroTheme', t.name)}
-                className={`w-8 h-8 rounded-full border-2 ${draft.heroTheme === t.name ? 'border-hero-primary scale-110 shadow-lg' : 'border-transparent'}`}
+                className={`w-8 h-8 rounded-full border-2 transition-all ${draft.heroTheme === t.name ? 'border-hero-primary scale-110 shadow-lg ring-2 ring-offset-1 ring-hero-primary/30' : 'border-transparent hover:scale-110'}`}
                 style={{ backgroundColor: t.color }}
+                title={t.name.replace('-', ' ')}
               />
             ))}
           </CardBody>
@@ -451,13 +484,13 @@ const Profile: React.FC = () => {
           <CardBody className="p-4 flex gap-2">
             <button
               onClick={() => updateDraft('mode', 'light')}
-              className={`flex-1 flex items-center justify-center gap-2 p-3 rounded-xl border-2 ${draft.mode === 'light' ? 'border-hero-primary text-hero-primary' : ''}`}
+              className={`flex-1 flex items-center justify-center gap-2 p-3 rounded-xl border-2 transition-all ${draft.mode === 'light' ? 'border-hero-primary text-hero-primary bg-hero-primary/5' : 'border-slate-100 text-slate-500 hover:bg-slate-50'}`}
             >
               <Sun size={18} /> <span className="text-xs font-bold">CLARO</span>
             </button>
             <button
               onClick={() => updateDraft('mode', 'dark')}
-              className={`flex-1 flex items-center justify-center gap-2 p-3 rounded-xl border-2 ${draft.mode === 'dark' ? 'border-hero-primary text-hero-primary' : ''}`}
+              className={`flex-1 flex items-center justify-center gap-2 p-3 rounded-xl border-2 transition-all ${draft.mode === 'dark' ? 'border-hero-primary text-hero-primary bg-hero-primary/5' : 'border-slate-100 text-slate-500 hover:bg-slate-50'}`}
             >
               <Moon size={18} /> <span className="text-xs font-bold">ESCURO</span>
             </button>
