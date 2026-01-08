@@ -1,6 +1,6 @@
 import { supabase } from '../lib/supabaseClient';
 
-export type VoucherStatus = 'available' | 'redeemed' | 'expired' | null;
+export type VoucherStatus = 'available' | 'redeemed' | 'not_issued' | 'no_drop' | string;
 
 export interface StaffLookupResult {
   user_id: string;
@@ -8,16 +8,17 @@ export interface StaffLookupResult {
   cpf: string | null;
   avatar_url: string | null;
   hero_code: string;
+
   subscription_active: boolean;
 
-  // Compatibilidade (continua existindo)
+  // Mantido pra não quebrar UI antiga
   has_current_voucher: boolean;
 
-  // Novo: status real do voucher do mês
+  // Novo (fonte da verdade)
   voucher_status: VoucherStatus;
   current_voucher_id: string | null;
+  redeemed_at: string | null;
 
-  // Visual
   card_image_url?: string;
 }
 
@@ -25,17 +26,12 @@ export interface RedeemResult {
   ok: boolean;
   message: string;
   voucher_id?: string | null;
-  user_id?: string | null;
 }
 
 export const staffService = {
-  /**
-   * Busca um cliente por Hero Code (BH-XXXX) ou CPF (apenas números).
-   * Enriquecido com template do cartão (se existir).
-   */
   async lookupClient(query: string): Promise<StaffLookupResult | null> {
     const { data, error } = await supabase.rpc('staff_lookup_client', {
-      p_query: query
+      p_query: query,
     });
 
     if (error) {
@@ -43,13 +39,13 @@ export const staffService = {
       throw error;
     }
 
-    if (!Array.isArray(data) || data.length === 0) {
-      return null;
-    }
+    // Supabase RPC costuma retornar array
+    const row = Array.isArray(data) ? data[0] : data;
+    if (!row) return null;
 
-    const client = data[0] as StaffLookupResult;
+    const client = row as StaffLookupResult;
 
-    // Busca visual (template do cartão) sem travar o fluxo
+    // Enriquecimento visual (não quebra fluxo)
     try {
       const { data: settings } = await supabase
         .from('hero_card_settings')
@@ -64,12 +60,10 @@ export const staffService = {
         .eq('user_id', client.user_id)
         .maybeSingle();
 
-      const templateData = (settings as any)?.template;
+      const templateData = (settings?.template as any) || null;
       const imageUrl = templateData?.preview_url || null;
 
-      if (imageUrl) {
-        client.card_image_url = imageUrl;
-      }
+      if (imageUrl) client.card_image_url = imageUrl;
     } catch (err) {
       console.warn('Não foi possível carregar a imagem do cartão do cliente:', err);
     }
@@ -77,21 +71,16 @@ export const staffService = {
     return client;
   },
 
-  /**
-   * Tenta resgatar o voucher do mês atual para o cliente informado via HERO CODE.
-   */
   async redeemVoucherByCode(code: string): Promise<RedeemResult> {
     const { data, error } = await supabase.rpc('redeem_voucher_by_code', {
-      p_code: code
+      p_code: code,
     });
 
     if (error) {
       console.error('Erro na redenção do voucher:', error);
-      return { ok: false, message: error.message };
+      return { ok: false, message: error.message, voucher_id: null };
     }
 
-    // Algumas RPCs retornam array
-    const payload = Array.isArray(data) ? data[0] : data;
-    return payload as RedeemResult;
-  }
+    return data as RedeemResult;
+  },
 };
