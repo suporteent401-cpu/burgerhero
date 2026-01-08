@@ -8,11 +8,12 @@ import { QrCode, Lock, CheckCircle2, Calendar, Utensils } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { getCurrentVoucher, getVoucherHistory } from '../services/voucher.service';
 import { getSubscriptionStatus } from '../services/clientHome.service';
+import { subscriptionMockService } from '../services/subscriptionMock.service';
 
 const Voucher: React.FC = () => {
   const user = useAuthStore(state => state.user);
   const navigate = useNavigate();
-  
+
   const [sub, setSub] = useState<Subscription | null>(null);
   const [currentVoucher, setCurrentVoucher] = useState<any | null>(null);
   const [history, setHistory] = useState<any[]>([]);
@@ -27,46 +28,63 @@ const Voucher: React.FC = () => {
     if (user?.id) {
       const fetchData = async () => {
         try {
-          const [voucherData, subData, historyData] = await Promise.all([
+          // 1) Mock primeiro (evita travar a UX e evita “bloqueado” por case)
+          const mockSub = subscriptionMockService.getActiveSubscription(user.id);
+
+          const subData: Subscription | null =
+            mockSub?.status === 'active'
+              ? ({
+                  status: 'active',
+                  currentPeriodStart: mockSub.startedAt,
+                  currentPeriodEnd: mockSub.nextBillingDate,
+                } as any)
+              : await getSubscriptionStatus(user.id);
+
+          // 2) Voucher + histórico
+          const [voucherData, historyData] = await Promise.all([
             getCurrentVoucher(user.id),
-            getSubscriptionStatus(user.id),
-            getVoucherHistory(user.id)
+            getVoucherHistory(user.id),
           ]);
-          
+
           setCurrentVoucher(voucherData);
           setSub(subData);
-          
+
           // Filtra o histórico para não incluir o voucher do mês atual
-          const pastVouchers = historyData.filter(v => v.id !== voucherData?.id);
-          setHistory(pastVouchers.slice(0, 2)); // Limita a 2 itens no histórico por enquanto
+          const pastVouchers = historyData.filter((v: any) => v.id !== voucherData?.id);
+          setHistory(pastVouchers.slice(0, 2));
         } catch (error) {
-          console.error("Erro ao buscar dados do voucher, usando fallback silencioso.", error);
+          console.error('Erro ao buscar dados do voucher, usando fallback silencioso.', error);
         } finally {
           setLoading(false);
         }
       };
+
       fetchData();
     }
   }, [user?.id]);
 
-  if (loading) return (
-    <div className="flex flex-col items-center justify-center min-h-[60vh] text-slate-400 gap-4">
-      <div className="w-8 h-8 border-4 border-hero-primary border-t-transparent rounded-full animate-spin"></div>
-      <p className="text-sm font-medium animate-pulse">Sincronizando satélites...</p>
-    </div>
-  );
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] text-slate-400 gap-4">
+        <div className="w-8 h-8 border-4 border-hero-primary border-t-transparent rounded-full animate-spin"></div>
+        <p className="text-sm font-medium animate-pulse">Sincronizando satélites...</p>
+      </div>
+    );
+  }
 
-  const isActive = sub?.status === 'ACTIVE';
+  // ✅ Corrige o case do status
+  const isActive = sub?.status === 'active' || sub?.status === 'ACTIVE';
   const isRedeemed = currentVoucher?.status === 'redeemed';
   const isEligible = isActive && currentVoucher?.status === 'available';
 
-  const burgerImage = currentVoucher?.monthly_drop?.burger?.image_url || "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80";
+  const burgerImage =
+    currentVoucher?.monthly_drop?.burger?.image_url ||
+    'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80';
   const burgerName = currentVoucher?.monthly_drop?.burger?.name;
   const burgerDescription = currentVoucher?.monthly_drop?.burger?.description;
 
   return (
     <div className="space-y-6 pb-10">
-      
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -78,19 +96,21 @@ const Voucher: React.FC = () => {
       </div>
 
       {/* Main Voucher Card */}
-      <motion.div 
+      <motion.div
         initial={{ opacity: 0, scale: 0.98 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 0.5 }}
         className="relative w-full h-[280px] rounded-2xl overflow-hidden shadow-xl group"
       >
         <div className="absolute inset-0 bg-slate-900">
-           <img 
-             src={burgerImage} 
-             alt="Burger of the Month" 
-             className={`w-full h-full object-cover transition-transform duration-700 ${isEligible ? 'group-hover:scale-110' : 'grayscale opacity-40'}`}
-           />
-           <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent"></div>
+          <img
+            src={burgerImage}
+            alt="Burger of the Month"
+            className={`w-full h-full object-cover transition-transform duration-700 ${
+              isEligible ? 'group-hover:scale-110' : 'grayscale opacity-40'
+            }`}
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent"></div>
         </div>
 
         <div className="absolute top-3 right-3">
@@ -115,35 +135,34 @@ const Voucher: React.FC = () => {
               Burger do Mês
             </span>
             <h3 className="text-2xl font-black text-white leading-tight mb-1">
-              {isRedeemed ? 'Missão Cumprida' : (burgerName || 'Drop Indisponível')}
+              {isRedeemed ? 'Missão Cumprida' : burgerName || 'Drop Indisponível'}
             </h3>
             <p className="text-slate-300 text-xs max-w-sm line-clamp-2 leading-relaxed">
-              {isRedeemed 
+              {isRedeemed
                 ? `Você saboreou este drop épico em ${new Date(currentVoucher!.redeemed_at!).toLocaleDateString()}.`
                 : isEligible && burgerDescription
                   ? burgerDescription
-                  : 'Sua assinatura está inativa ou o drop ainda não foi liberado.'
-              }
+                  : 'Sua assinatura está inativa ou o drop ainda não foi liberado.'}
             </p>
           </div>
 
           <div className="pt-1">
             {isEligible ? (
-              <Button 
+              <Button
                 onClick={() => navigate('/app/qrcode')}
                 className="w-full bg-white text-slate-900 hover:bg-slate-100 border-none h-10 text-sm rounded-xl shadow-lg hover:shadow-xl hover:scale-[1.02] transition-all font-bold"
               >
                 <QrCode className="mr-2 text-hero-primary" size={16} /> Usar no Balcão
               </Button>
             ) : isRedeemed ? (
-               <Button 
-                 disabled 
-                 className="w-full bg-slate-800/50 text-slate-400 border border-slate-700 h-10 rounded-xl cursor-not-allowed text-xs font-bold"
-               >
-                 Já Utilizado
-               </Button>
+              <Button
+                disabled
+                className="w-full bg-slate-800/50 text-slate-400 border border-slate-700 h-10 rounded-xl cursor-not-allowed text-xs font-bold"
+              >
+                Já Utilizado
+              </Button>
             ) : (
-              <Button 
+              <Button
                 onClick={() => navigate('/plans')}
                 className="w-full bg-red-600 hover:bg-red-700 text-white border-none h-10 rounded-xl shadow-lg shadow-red-900/20 text-xs font-bold"
               >
@@ -156,40 +175,52 @@ const Voucher: React.FC = () => {
 
       {/* History Timeline */}
       <div className="space-y-4">
-        <h3 className="text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest pl-2">Histórico</h3>
-        
+        <h3 className="text-xs font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest pl-2">
+          Histórico
+        </h3>
+
         <Card className="border-none shadow-none bg-transparent">
           <CardBody className="p-0 space-y-4">
-             {history.map((voucher, i) => (
-                <div key={voucher.id} className="relative pl-8 before:absolute before:left-[11px] before:top-8 before:bottom-[-16px] before:w-[2px] before:bg-slate-200 dark:before:bg-slate-800 last:before:hidden">
-                   <div className="absolute left-0 top-1 w-6 h-6 rounded-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center z-10">
-                      <div className="w-1.5 h-1.5 rounded-full bg-slate-400"></div>
-                   </div>
-                   <div className="bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-100 dark:border-slate-800 flex items-center justify-between opacity-60">
-                      <div className="flex items-center gap-3">
-                         <div className="w-8 h-8 bg-slate-100 dark:bg-slate-800 rounded-lg flex items-center justify-center text-slate-400 dark:text-slate-500">
-                            <Utensils size={14} />
-                         </div>
-                         <div>
-                            <p className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                              Resgate de {new Date(voucher.created_at).toLocaleString('pt-BR', { month: 'long' })}
-                            </p>
-                            <p className="text-xs text-slate-400 dark:text-slate-500 capitalize">{voucher.status}</p>
-                         </div>
-                      </div>
-                   </div>
+            {history.map((voucher: any) => (
+              <div
+                key={voucher.id}
+                className="relative pl-8 before:absolute before:left-[11px] before:top-8 before:bottom-[-16px] before:w-[2px] before:bg-slate-200 dark:before:bg-slate-800 last:before:hidden"
+              >
+                <div className="absolute left-0 top-1 w-6 h-6 rounded-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center z-10">
+                  <div className="w-1.5 h-1.5 rounded-full bg-slate-400"></div>
                 </div>
-             ))}
+                <div className="bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-100 dark:border-slate-800 flex items-center justify-between opacity-60">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 bg-slate-100 dark:bg-slate-800 rounded-lg flex items-center justify-center text-slate-400 dark:text-slate-500">
+                      <Utensils size={14} />
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                        Resgate de{' '}
+                        {new Date(voucher.created_at).toLocaleString('pt-BR', { month: 'long' })}
+                      </p>
+                      <p className="text-xs text-slate-400 dark:text-slate-500 capitalize">
+                        {voucher.status}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
 
-             <div className="relative pl-8">
-                <div className="absolute left-0 top-1 w-6 h-6 rounded-full bg-hero-primary/20 flex items-center justify-center z-10">
-                   <div className="w-1.5 h-1.5 rounded-full bg-hero-primary animate-pulse"></div>
-                </div>
-                <div className="p-3 rounded-xl border-2 border-dashed border-slate-200 dark:border-slate-800 flex flex-col items-center justify-center text-center py-6 gap-1">
-                   <p className="text-xs font-bold text-slate-500 dark:text-slate-300">Próximo drop em breve</p>
-                   <p className="text-[10px] text-slate-400 dark:text-slate-500 max-w-[180px]">Aguarde o início do próximo mês.</p>
-                </div>
-             </div>
+            <div className="relative pl-8">
+              <div className="absolute left-0 top-1 w-6 h-6 rounded-full bg-hero-primary/20 flex items-center justify-center z-10">
+                <div className="w-1.5 h-1.5 rounded-full bg-hero-primary animate-pulse"></div>
+              </div>
+              <div className="p-3 rounded-xl border-2 border-dashed border-slate-200 dark:border-slate-800 flex flex-col items-center justify-center text-center py-6 gap-1">
+                <p className="text-xs font-bold text-slate-500 dark:text-slate-300">
+                  Próximo drop em breve
+                </p>
+                <p className="text-[10px] text-slate-400 dark:text-slate-500 max-w-[180px]">
+                  Aguarde o início do próximo mês.
+                </p>
+              </div>
+            </div>
           </CardBody>
         </Card>
       </div>
