@@ -1,11 +1,14 @@
 import React from 'react';
-import { Outlet, Link, useLocation } from 'react-router-dom';
+import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { Home, QrCode, LogOut } from 'lucide-react';
 import { useThemeStore } from '../store/themeStore';
 import { supabase } from '../lib/supabaseClient';
+import { useAuthStore } from '../store/authStore';
 
 const StaffLayout: React.FC = () => {
   const location = useLocation();
+  const navigate = useNavigate();
+  const logout = useAuthStore(state => state.logout);
   const heroTheme = useThemeStore(state => state.heroTheme);
   
   const navItems = [
@@ -17,11 +20,17 @@ const StaffLayout: React.FC = () => {
   const heroTextColor = themesForBlueText.includes(heroTheme) ? 'text-blue-300' : 'text-red-500';
 
   const handleLogout = async () => {
+    // 1. Limpa estado local imediatamente
+    logout();
+    
+    // 2. Redireciona
+    navigate('/auth');
+
+    // 3. Limpa sessão Supabase
     const { error } = await supabase.auth.signOut();
     if (error) {
-      console.error('Erro ao fazer logout:', error);
+      console.error('Erro ao fazer logout no servidor:', error);
     }
-    // O listener onAuthStateChange no SupabaseAuthProvider cuidará de limpar o estado e redirecionar.
   };
 
   return (

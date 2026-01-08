@@ -21,10 +21,13 @@ import HeroCard from '../components/HeroCard';
 import { toPng } from 'html-to-image';
 import { subscriptionMockService } from '../services/subscriptionMock.service';
 import { getSubscriptionStatus } from '../services/clientHome.service';
+import { useNavigate } from 'react-router-dom';
 
 const Profile: React.FC = () => {
   const user = useAuthStore(state => state.user);
   const updateUser = useAuthStore(state => state.updateUser);
+  const logout = useAuthStore(state => state.logout);
+  const navigate = useNavigate();
 
   // Global Themes
   const globalHeroTheme = useThemeStore(state => state.heroTheme);
@@ -209,10 +212,16 @@ const Profile: React.FC = () => {
   };
 
   const handleLogout = async () => {
+    // 1. Limpa estado local imediatamente
+    logout();
+    
+    // 2. Redireciona
+    navigate('/auth');
+
+    // 3. Limpa sessão Supabase
     const { error } = await supabase.auth.signOut();
     if (error) {
-      console.error('Erro ao fazer logout:', error);
-      alert('Erro ao sair. Tente novamente.');
+      console.error('Erro ao fazer logout no servidor:', error);
     }
   };
 

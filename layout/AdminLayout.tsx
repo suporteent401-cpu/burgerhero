@@ -1,7 +1,8 @@
 import React from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Users, CreditCard, Tag, LogOut, ChevronDown, Image as ImageIcon } from 'lucide-react';
+import { LayoutDashboard, Users, CreditCard, Tag, LogOut, Image as ImageIcon } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
+import { supabase } from '../lib/supabaseClient';
 
 const AdminLayout: React.FC = () => {
   const user = useAuthStore(s => s.user);
@@ -9,9 +10,19 @@ const AdminLayout: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    // 1. Limpa estado visual imediatamente para feedback instantâneo
     logout();
-    navigate('/');
+    
+    // 2. Garante navegação para fora da área protegida
+    navigate('/auth');
+
+    // 3. Encerra sessão no backend (limpa cookies/tokens)
+    try {
+      await supabase.auth.signOut();
+    } catch (error) {
+      console.error("Erro silencioso ao deslogar do Supabase:", error);
+    }
   };
 
   const navItems = [
@@ -47,12 +58,12 @@ const AdminLayout: React.FC = () => {
         </nav>
         <div className="p-4 border-t border-white/10">
           <div className="flex items-center gap-3">
-            <img src={user?.avatarUrl} alt={user?.name} className="w-10 h-10 rounded-full" />
-            <div className="flex-1">
-              <p className="text-sm font-bold">{user?.name}</p>
-              <p className="text-xs text-slate-400">{user?.role}</p>
+            <img src={user?.avatarUrl || `https://picsum.photos/seed/${user?.id}/100`} alt={user?.name} className="w-10 h-10 rounded-full bg-slate-700" />
+            <div className="flex-1 overflow-hidden">
+              <p className="text-sm font-bold truncate">{user?.name}</p>
+              <p className="text-xs text-slate-400 capitalize">{user?.role}</p>
             </div>
-            <button onClick={handleLogout} className="text-slate-400 hover:text-red-400">
+            <button onClick={handleLogout} className="text-slate-400 hover:text-red-400 p-2 transition-colors">
               <LogOut size={20} />
             </button>
           </div>
