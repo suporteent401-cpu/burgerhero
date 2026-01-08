@@ -12,6 +12,7 @@ import { getFullUserProfile, checkCpfExists } from '../services/users.service';
 import { subscriptionMockService } from '../services/subscriptionMock.service';
 import { useThemeStore } from '../store/themeStore';
 import { useCardStore } from '../store/cardStore';
+import { templatesService } from '../services/templates.service';
 import type { Role } from '../types';
 
 const normalizeRole = (input: any): Role => {
@@ -32,7 +33,8 @@ const Auth: React.FC = () => {
   const { register, handleSubmit, watch, formState: { errors } } = useForm();
   const password = watch('password');
 
-  const applySettings = (settings: any) => {
+  const applySettingsAndLoadTemplates = async (settings: any) => {
+    // 1. Aplica configurações do usuário
     useThemeStore.getState().setHeroTheme(settings.heroTheme);
     useThemeStore.getState().setMode(settings.mode);
     useCardStore.getState().setAll({
@@ -42,6 +44,16 @@ const Auth: React.FC = () => {
       fontSize: settings.fontSize,
     });
     useThemeStore.getState().applyTheme();
+
+    // 2. Carrega templates ativos do banco para garantir que a imagem apareça
+    try {
+      const dbTemplates = await templatesService.getActiveTemplates();
+      if (dbTemplates && dbTemplates.length > 0) {
+        useCardStore.getState().setTemplates(templatesService.mapToStoreFormat(dbTemplates));
+      }
+    } catch (e) {
+      console.error('Erro ao carregar templates no login:', e);
+    }
   };
 
   const handlePostAuthRedirect = (role: Role) => {
@@ -86,11 +98,12 @@ const Auth: React.FC = () => {
           const role = normalizeRole(full.profile.role);
           const safeProfile = { ...full.profile, role };
 
-          applySettings(full.settings);
+          // Aguarda carregar templates antes de logar e redirecionar
+          await applySettingsAndLoadTemplates(full.settings);
+          
           login(safeProfile);
           handlePostAuthRedirect(role);
         } else {
-          // Se não carregou perfil, deixa o Provider tentar, mas joga pro app
           console.error('Falha ao carregar perfil no login, AuthProvider irá tentar recuperar.');
           navigate('/app', { replace: true });
         }
@@ -149,7 +162,8 @@ const Auth: React.FC = () => {
           const role = normalizeRole(full.profile.role);
           const safeProfile = { ...full.profile, role };
 
-          applySettings(full.settings);
+          await applySettingsAndLoadTemplates(full.settings);
+
           login(safeProfile);
           handlePostAuthRedirect(role);
         } else {

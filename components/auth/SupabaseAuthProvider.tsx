@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabaseClient';
 import { useAuthStore } from '../../store/authStore';
 import { useThemeStore } from '../../store/themeStore';
 import { useCardStore } from '../../store/cardStore';
+import { templatesService } from '../../services/templates.service';
 import type { Role } from '../../types';
 
 interface AuthProviderProps {
@@ -16,7 +17,6 @@ const normalizeRole = (input: any): Role => {
 };
 
 const generateHeroCode = () => {
-  // curto, legível no balcão
   const rand = Math.random().toString(36).substring(2, 8).toUpperCase();
   return `BH-${rand}`;
 };
@@ -44,34 +44,50 @@ export const SupabaseAuthProvider: React.FC<AuthProviderProps> = ({ children }) 
   const logout = useAuthStore((s) => s.logout);
   const setLoading = useAuthStore((s) => s.setLoading);
 
-  // Evita execução dupla no StrictMode
   const isInitializingRef = useRef(false);
 
   useEffect(() => {
     if (isInitializingRef.current) return;
     isInitializingRef.current = true;
 
-    const applySettings = (settings?: HeroCardSettingsRow | null) => {
-      if (!settings) return;
+    // Helper para carregar configurações e templates
+    const loadUserSettingsAndTemplates = async (userId: string) => {
+      // 1. Busca configurações do usuário
+      const { data: settings, error } = await supabase
+        .from('hero_card_settings')
+        .select('user_id, card_template_id, font_style, font_color, font_size, hero_theme, mode')
+        .eq('user_id', userId)
+        .single();
 
-      if (settings.hero_theme) useThemeStore.getState().setHeroTheme(settings.hero_theme);
-      if (settings.mode) useThemeStore.getState().setMode(settings.mode);
+      if (!error && settings) {
+        // Aplica configurações globais
+        if (settings.hero_theme) useThemeStore.getState().setHeroTheme(settings.hero_theme);
+        if (settings.mode) useThemeStore.getState().setMode(settings.mode);
 
-      useCardStore.getState().setAll({
-        templateId: settings.card_template_id || undefined,
-        font: settings.font_style || undefined,
-        color: settings.font_color || undefined,
-        fontSize: settings.font_size || undefined,
-      });
+        useCardStore.getState().setAll({
+          templateId: settings.card_template_id || undefined,
+          font: settings.font_style || undefined,
+          color: settings.font_color || undefined,
+          fontSize: settings.font_size || undefined,
+        });
 
-      useThemeStore.getState().applyTheme();
+        useThemeStore.getState().applyTheme();
+      }
+
+      // 2. Busca templates ativos para popular o store (garante que a Home tenha as imagens)
+      try {
+        const dbTemplates = await templatesService.getActiveTemplates();
+        if (dbTemplates.length > 0) {
+          useCardStore.getState().setTemplates(templatesService.mapToStoreFormat(dbTemplates));
+        }
+      } catch (err) {
+        console.error('Erro ao carregar templates no AuthProvider:', err);
+      }
     };
 
     const ensureHeroCode = async (profile: UserProfileRow) => {
       if (profile.hero_code) return profile;
-
       const newCode = generateHeroCode();
-
       const { error } = await supabase
         .from('user_profiles')
         .update({ hero_code: newCode })
@@ -79,9 +95,8 @@ export const SupabaseAuthProvider: React.FC<AuthProviderProps> = ({ children }) 
 
       if (error) {
         console.error('Erro ao gerar hero_code:', error);
-        return profile; // não derruba o app
+        return profile;
       }
-
       return { ...profile, hero_code: newCode };
     };
 
@@ -96,29 +111,13 @@ export const SupabaseAuthProvider: React.FC<AuthProviderProps> = ({ children }) 
         console.error('Erro ao buscar user_profiles:', error);
         return null;
       }
-
       return data as UserProfileRow;
-    };
-
-    const fetchHeroCardSettings = async (userId: string): Promise<HeroCardSettingsRow | null> => {
-      const { data, error } = await supabase
-        .from('hero_card_settings')
-        .select('user_id, card_template_id, font_style, font_color, font_size, hero_theme, mode')
-        .eq('user_id', userId)
-        .single();
-
-      if (error) return null;
-      return data as HeroCardSettingsRow;
     };
 
     const initAuth = async () => {
       setLoading(true);
-
       try {
-        const {
-          data: { session },
-          error,
-        } = await supabase.auth.getSession();
+        const { data: { session }, error } = await supabase.auth.getSession();
 
         if (error || !session?.user) {
           logout();
@@ -126,18 +125,18 @@ export const SupabaseAuthProvider: React.FC<AuthProviderProps> = ({ children }) 
         }
 
         const authUser = session.user;
-
         let profile = await fetchUserProfile(authUser.id);
+        
         if (!profile) {
-          console.error('user_profiles não encontrado para usuário:', authUser.id);
+          console.error('Perfil não encontrado para:', authUser.id);
           logout();
           return;
         }
 
         profile = await ensureHeroCode(profile);
-
-        const settings = await fetchHeroCardSettings(authUser.id);
-        applySettings(settings);
+        
+        // Carrega configurações E templates
+        await loadUserSettingsAndTemplates(authUser.id);
 
         const userForStore = {
           id: authUser.id,
@@ -159,9 +158,7 @@ export const SupabaseAuthProvider: React.FC<AuthProviderProps> = ({ children }) 
 
     initAuth();
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'INITIAL_SESSION') return;
 
       if (event === 'SIGNED_OUT') {
@@ -171,21 +168,20 @@ export const SupabaseAuthProvider: React.FC<AuthProviderProps> = ({ children }) 
 
       if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session?.user) {
         try {
+          // Se já tem usuário carregado, evita reload desnecessário
           const currentUser = useAuthStore.getState().user;
-          if (currentUser?.customerCode) return;
+          if (currentUser?.id === session.user.id && currentUser?.customerCode) return;
 
           setLoading(true);
-
           let profile = await fetchUserProfile(session.user.id);
+          
           if (!profile) {
             logout();
             return;
           }
 
           profile = await ensureHeroCode(profile);
-
-          const settings = await fetchHeroCardSettings(session.user.id);
-          applySettings(settings);
+          await loadUserSettingsAndTemplates(session.user.id);
 
           login({
             id: session.user.id,
