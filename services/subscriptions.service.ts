@@ -1,6 +1,6 @@
 import { supabase } from "../lib/supabaseClient";
 
-export type SubscriptionStatus = "active" | "past_due" | "canceled";
+export type SubscriptionStatus = "active" | "past_due" | "canceled" | "inactive";
 
 export interface SubscriptionRow {
   user_id: string;
@@ -13,13 +13,6 @@ export interface SubscriptionRow {
 }
 
 export const subscriptionsService = {
-  async refreshMyStatus(): Promise<void> {
-    const { error } = await supabase.rpc("refresh_my_subscription_status");
-    if (error) {
-      console.warn("[subscriptions] refreshMyStatus failed:", error);
-    }
-  },
-
   async getMySubscription(): Promise<SubscriptionRow | null> {
     const { data, error } = await supabase
       .from("subscriptions")
@@ -35,13 +28,10 @@ export const subscriptionsService = {
   },
 
   async activateMock(planSlug: string, days = 30): Promise<void> {
-    const { data, error } = await supabase.rpc(
-      "set_subscription_active_mock",
-      {
-        p_plan_slug: planSlug,
-        p_days: days,
-      }
-    );
+    const { data, error } = await supabase.rpc("set_subscription_active_mock", {
+      p_plan_slug: planSlug,
+      p_days: days,
+    });
 
     if (error) {
       console.error("[subscriptions] activateMock error:", error);
@@ -50,9 +40,7 @@ export const subscriptionsService = {
 
     const ok = (data as any)?.ok;
     if (!ok) {
-      throw new Error(
-        (data as any)?.message || "Falha ao ativar assinatura (mock)."
-      );
+      throw new Error((data as any)?.message || "Falha ao ativar assinatura (mock).");
     }
   },
 };
