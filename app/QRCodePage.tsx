@@ -23,6 +23,9 @@ import { Link } from 'react-router-dom';
 const QRCodePage: React.FC = () => {
   const user = useAuthStore((s) => s.user);
   const isLoadingAuth = useAuthStore((s) => s.isLoading);
+  const hasHydrated = useAuthStore((s) => s.hasHydrated);
+  const refreshUserFromDb = useAuthStore((s) => s.refreshUserFromDb);
+
   const selectedTemplateId = useCardStore((s) => s.selectedTemplateId);
   const availableTemplates = useCardStore((s) => s.availableTemplates);
 
@@ -30,28 +33,46 @@ const QRCodePage: React.FC = () => {
   const [copied, setCopied] = useState(false);
   const [subStatus, setSubStatus] = useState<'active' | 'inactive' | 'loading'>('loading');
 
+  // ✅ Blindagem: se o user existe mas o customerCode veio vazio, tenta recuperar do banco
+  useEffect(() => {
+    if (!user?.id) return;
+
+    // Se ainda não hidratou, espera.
+    if (!hasHydrated) return;
+
+    if (!user.customerCode) {
+      refreshUserFromDb(user.id);
+    }
+  }, [user?.id, user?.customerCode, hasHydrated, refreshUserFromDb]);
+
   // Busca o status real para exibir no QR
   useEffect(() => {
-    if (user?.id) {
-      const checkStatus = async () => {
-        try {
-          // Mock primeiro, depois banco
-          const mockSub = subscriptionMockService.getActiveSubscription(user.id);
-          if (mockSub && mockSub.status === 'active') {
-            setSubStatus('active');
-            return;
-          }
+    if (!user?.id) return;
 
-          const data = await getSubscriptionStatus(user.id);
-          const isDbActive = data?.status === 'active' || data?.status === 'ACTIVE';
-          setSubStatus(isDbActive ? 'active' : 'inactive');
-        } catch (e) {
-          setSubStatus('inactive');
+    const checkStatus = async () => {
+      try {
+        // Mock primeiro, depois banco
+        const mockSub = subscriptionMockService.getActiveSubscription(user.id);
+        if (mockSub && mockSub.status === 'active') {
+          setSubStatus('active');
+          return;
         }
-      };
 
-      checkStatus();
-    }
+        const data = await getSubscriptionStatus(user.id);
+        const raw = String((data as any)?.status || '').toUpperCase();
+        const isDbActive = raw === 'ACTIVE' || raw === 'ATIVO' || raw === 'ACTIVE_SUBSCRIPTION';
+
+        // também aceito "active" minúsculo caso seu serviço devolva assim
+        const rawLower = String((data as any)?.status || '').toLowerCase();
+        const isDbActiveLoose = isDbActive || rawLower === 'active';
+
+        setSubStatus(isDbActiveLoose ? 'active' : 'inactive');
+      } catch (e) {
+        setSubStatus('inactive');
+      }
+    };
+
+    checkStatus();
   }, [user?.id]);
 
   const template = useMemo(() => {
@@ -63,7 +84,6 @@ const QRCodePage: React.FC = () => {
 
   const qrUrl = useMemo(() => {
     if (!customerCode) return '';
-
     // ✅ hash router correto:
     // Sempre gera: https://seu-dominio/#/public/client/CODIGO
     const origin = window.location.origin;
@@ -77,12 +97,14 @@ const QRCodePage: React.FC = () => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
+      // fallback visual
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }
   };
 
-  if (isLoadingAuth || subStatus === 'loading') {
+  // ✅ Gate completo: só renderiza quando o persist hidratou + auth terminou + status carregou
+  if (!hasHydrated || isLoadingAuth || subStatus === 'loading') {
     return (
       <div className="flex flex-col items-center justify-center py-20">
         <Loader2 className="w-10 h-10 text-hero-primary animate-spin" />
@@ -91,17 +113,37 @@ const QRCodePage: React.FC = () => {
     );
   }
 
-  if (!user || !customerCode) {
+  // ✅ Se ainda não tem user: volta pro login
+  if (!user) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 text-center px-6">
+        <AlertCircle className="w-12 h-12 text-amber-500 mb-4" />
+        <h3 className="font-black text-lg text-slate-700 dark:text-slate-200">Sessão não encontrada</h3>
+        <p className="text-sm text-slate-500 mt-1 mb-6">Faça login novamente.</p>
+        <Link to="/auth">
+          <Button variant="secondary">Ir para Login</Button>
+        </Link>
+      </div>
+    );
+  }
+
+  // ✅ Se ainda não tem customerCode, deixa uma saída clara
+  if (!customerCode) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-center px-6">
         <AlertCircle className="w-12 h-12 text-amber-500 mb-4" />
         <h3 className="font-black text-lg text-slate-700 dark:text-slate-200">Identidade Não Encontrada</h3>
         <p className="text-sm text-slate-500 mt-1 mb-6">
-          Não conseguimos localizar seu ID de Herói. Tente atualizar seu perfil.
+          Não conseguimos localizar seu ID de Herói. Vá ao perfil e salve novamente.
         </p>
-        <Link to="/app/profile">
-          <Button variant="secondary">Verificar Perfil</Button>
-        </Link>
+        <div className="flex gap-2">
+          <Button variant="secondary" onClick={() => refreshUserFromDb(user.id)}>
+            Tentar Sincronizar
+          </Button>
+          <Link to="/app/profile">
+            <Button>Ir para Perfil</Button>
+          </Link>
+        </div>
       </div>
     );
   }
@@ -144,7 +186,11 @@ const QRCodePage: React.FC = () => {
                   isActive ? 'bg-green-500/30' : 'bg-slate-500/30'
                 }`}
               >
-                <div className={`w-2 h-2 rounded-full ${isActive ? 'bg-green-400 animate-pulse' : 'bg-slate-400'}`}></div>
+                <div
+                  className={`w-2 h-2 rounded-full ${
+                    isActive ? 'bg-green-400 animate-pulse' : 'bg-slate-400'
+                  }`}
+                ></div>
                 <span className="text-[10px] font-black text-white uppercase tracking-widest">
                   {isActive ? 'Assinatura Ativa' : 'Assinatura Inativa'}
                 </span>
