@@ -140,19 +140,11 @@ export const ensureHeroIdentity = async (userId: string): Promise<string | null>
     if (colErr) console.warn('Falha ao checar colisão de código:', colErr);
     if (Array.isArray(collision) && collision.length > 0) continue;
 
-    // FIX: Usar UPSERT para garantir que grave mesmo se a linha não existir ainda
+    // ⚠️ aqui sim é upsert, mas COMPLETO o suficiente pra não violar NOT NULL
     const { error } = await supabase
       .from('user_profiles')
-      .upsert(
-        { 
-          user_id: userId,
-          customer_id_public: code, 
-          hero_code: code,
-          // Garante campos obrigatórios básicos caso seja um insert
-          updated_at: new Date().toISOString()
-        }, 
-        { onConflict: 'user_id' }
-      );
+      .update({ customer_id_public: code, hero_code: code })
+      .eq('user_id', userId);
 
     if (!error) return code;
 
