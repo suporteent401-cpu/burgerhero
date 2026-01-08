@@ -3,146 +3,272 @@ import { Card, CardBody } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Modal } from '../components/ui/Modal';
-import { Search, QrCode, ShieldCheck, ShieldAlert, Award } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
-import { User } from '../types';
+import { 
+  Search, QrCode, ShieldCheck, ShieldAlert, User, 
+  CheckCircle2, XCircle, Loader2, AlertTriangle, CreditCard 
+} from 'lucide-react';
 import QrScanner from '../components/QrScanner';
-import { validateVoucher } from '../services/redemption.service';
-import { getUserProfileById } from '../services/users.service';
+import { staffService, StaffLookupResult } from '../services/staff.service';
 
 const StaffValidate: React.FC = () => {
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<{ success: boolean; message: string; user?: User } | null>(null);
+  const [redeeming, setRedeeming] = useState(false);
+  const [client, setClient] = useState<StaffLookupResult | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [isScannerOpen, setIsScannerOpen] = useState(false);
-  const navigate = useNavigate();
 
-  const handleValidate = useCallback(async (val: string) => {
-    if (!val) return;
-    const input = val.trim();
-    let extractedCode = null;
+  // Normaliza e extrai o código (Hero Code ou CPF limpo)
+  const extractSearchTerm = (input: string): string | null => {
+    if (!input) return null;
+    const cleanInput = input.trim();
 
-    if (input.includes('/public/client/')) {
-      const parts = input.split('/public/client/');
-      if (parts[1]) extractedCode = parts[1].split('?')[0].split('#')[0];
-    } else if (input.toUpperCase().startsWith('BH-')) {
-      extractedCode = input.toUpperCase();
+    // 1. Tenta achar padrão BH-XXXXXX (no meio de uma URL ou texto puro)
+    // Regex: Procura "BH-" seguido de alfanuméricos
+    const heroCodeMatch = cleanInput.match(/(BH-[A-Z0-9]+)/i);
+    if (heroCodeMatch) {
+      return heroCodeMatch[1].toUpperCase();
     }
 
-    if (extractedCode) {
-      navigate(`/staff/client/${extractedCode}`);
-      return;
+    // 2. Se for numérico (provável CPF), remove não dígitos
+    if (/^[\d.-]+$/.test(cleanInput)) {
+      return cleanInput.replace(/\D/g, '');
     }
+
+    // 3. Retorna o input limpo como fallback (ex: digitou só o código sem BH)
+    return cleanInput.toUpperCase();
+  };
+
+  const handleLookup = useCallback(async (rawValue: string) => {
+    const term = extractSearchTerm(rawValue);
+    if (!term) return;
 
     setLoading(true);
-    setResult(null);
+    setClient(null);
+    setErrorMsg(null);
+    setSuccessMsg(null);
+    setQuery(term); // Atualiza o input visualmente
 
     try {
-      const isQrData = input.startsWith('{') && input.endsWith('}');
-      const qrToken = isQrData ? input : undefined;
-      const heroCode = isQrData ? undefined : input;
-      
-      const data = await validateVoucher(qrToken, heroCode);
-      const rpcResult = data[0];
-
-      if (!rpcResult) {
-        throw new Error('Resposta inválida do servidor.');
+      const data = await staffService.lookupClient(term);
+      if (data) {
+        setClient(data);
+      } else {
+        setErrorMsg('Cliente não encontrado. Verifique o código ou CPF.');
       }
-
-      let userProfile: User | null = null;
-      if (rpcResult.user_id) {
-        const profileData = await getUserProfileById(rpcResult.user_id);
-        if (profileData) {
-          userProfile = {
-            id: profileData.user_id,
-            name: profileData.display_name,
-            customerCode: profileData.hero_code,
-            avatarUrl: profileData.avatar_url,
-            email: profileData.email || '',
-            cpf: '', whatsapp: '', birthDate: '', role: 'client'
-          };
-        }
-      }
-      
-      setResult({
-        success: rpcResult.ok,
-        message: rpcResult.message,
-        user: userProfile || undefined,
-      });
-
-    } catch (error: any) {
-      setResult({ success: false, message: error.message || 'Erro ao validar.' });
+    } catch (err) {
+      setErrorMsg('Erro de conexão ao buscar cliente.');
     } finally {
       setLoading(false);
     }
-  }, [navigate]);
+  }, []);
+
+  const handleRedeem = async () => {
+    if (!client) return;
+
+    if (!confirm(`Confirmar entrega do burger para ${client.display_name}?`)) return;
+
+    setRedeeming(true);
+    setSuccessMsg(null);
+    setErrorMsg(null);
+
+    try {
+      const res = await staffService.redeemVoucherByCode(client.hero_code);
+      
+      if (res.ok) {
+        setSuccessMsg('Resgate realizado com sucesso! 🎉');
+        // Atualiza os dados do cliente para refletir que não tem mais voucher pendente
+        handleLookup(client.hero_code);
+      } else {
+        // Traduz mensagens técnicas para amigáveis
+        let msg = res.message;
+        if (msg === 'subscription_inactive') msg = 'Assinatura do cliente não está ativa.';
+        if (msg === 'no_voucher_available') msg = 'Cliente não possui voucher disponível para este mês.';
+        if (msg === 'already_redeemed') msg = 'Voucher deste mês já foi resgatado.';
+        
+        setErrorMsg(msg);
+      }
+    } catch (err) {
+      setErrorMsg('Erro ao processar resgate.');
+    } finally {
+      setRedeeming(false);
+    }
+  };
+
+  const onScan = (scannedText: string) => {
+    setIsScannerOpen(false);
+    handleLookup(scannedText);
+  };
+
+  // Cores e ícones dinâmicos baseados no status
+  const getSubStatusUI = (active: boolean) => active 
+    ? { text: 'Ativa', color: 'text-green-600', bg: 'bg-green-100', icon: CheckCircle2 }
+    : { text: 'Inativa/Pendente', color: 'text-red-600', bg: 'bg-red-100', icon: XCircle };
+
+  const getVoucherStatusUI = (hasVoucher: boolean, subActive: boolean) => {
+    if (!subActive) return { text: 'Bloqueado', color: 'text-slate-400', bg: 'bg-slate-100', icon: ShieldAlert };
+    return hasVoucher
+      ? { text: 'Disponível', color: 'text-blue-600', bg: 'bg-blue-100', icon: ShieldCheck }
+      : { text: 'Já Utilizado', color: 'text-amber-600', bg: 'bg-amber-100', icon: AlertTriangle };
+  };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col p-4 pt-12">
-      <div className="max-w-md mx-auto w-full">
-        <div className="text-center mb-8">
-          <img 
-            src="https://ik.imagekit.io/lflb43qwh/Heros/images.jpg" 
-            alt="BurgerHero Logo" 
-            className="w-24 h-24 rounded-full mx-auto mb-6 border-4 border-white shadow-lg" 
-          />
-          <h2 className="text-3xl font-black text-slate-800">Leitor <span className="text-hero-primary">Hero</span></h2>
-          <p className="text-slate-500 mt-1">Valide vouchers ou veja perfis de clientes.</p>
-        </div>
-
-        <Card className="mb-6">
-          <CardBody className="p-6 space-y-4">
-            <Button size="lg" className="w-full flex items-center justify-center gap-3 rounded-2xl" onClick={() => setIsScannerOpen(true)}>
-              <QrCode size={24} />
-              <span className="text-base">Escanear QR Code</span>
-            </Button>
-            <div className="relative py-2">
-              <div className="absolute inset-0 flex items-center"><span className="w-full border-t border-slate-100"></span></div>
-              <div className="relative flex justify-center text-xs uppercase"><span className="bg-white px-2 text-slate-400 font-bold">Ou</span></div>
-            </div>
-            <form onSubmit={(e) => { e.preventDefault(); handleValidate(query); }} className="flex gap-2">
-              <Input placeholder="Ex: BH-12345" value={query} onChange={e => setQuery(e.target.value)} className="rounded-2xl" />
-              <Button type="submit" variant="secondary" isLoading={loading} className="rounded-2xl"><Search size={20} /></Button>
-            </form>
-          </CardBody>
-        </Card>
-
-        {result && (
-          <Card className={`border-4 ${result.success ? 'border-green-500' : 'border-red-500'}`}>
-            <CardBody className="p-8 flex flex-col items-center text-center space-y-6">
-              {result.success ? (
-                <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center"><ShieldCheck size={32} /></div>
-              ) : (
-                <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center"><ShieldAlert size={32} /></div>
-              )}
-              <div>
-                <h3 className={`text-2xl font-black ${result.success ? 'text-green-700' : 'text-red-700'}`}>
-                  {result.success ? 'RESGATE CONFIRMADO' : 'FALHA NO RESGATE'}
-                </h3>
-                <p className="font-bold text-slate-500">{result.message}</p>
-              </div>
-              {result.user && (
-                <div className="w-full bg-slate-50 p-4 rounded-2xl flex items-center gap-4 text-left cursor-pointer hover:bg-slate-100 transition-colors" onClick={() => navigate(`/staff/client/${result.user?.customerCode}`)}>
-                  <div className="w-12 h-12 bg-slate-200 rounded-xl overflow-hidden">
-                    <img src={result.user.avatarUrl || `https://picsum.photos/seed/${result.user.id}/100`} alt={result.user.name} />
-                  </div>
-                  <div>
-                    <p className="text-sm font-black">{result.user.name}</p>
-                    <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">{result.user.customerCode}</p>
-                  </div>
-                </div>
-              )}
-              <Button variant="ghost" onClick={() => setResult(null)}>Fechar</Button>
-            </CardBody>
-          </Card>
-        )}
+    <div className="space-y-6">
+      <div className="text-center">
+        <h2 className="text-2xl font-black text-slate-800 dark:text-white">Validação <span className="text-hero-primary">Hero</span></h2>
+        <p className="text-slate-500 text-sm">Identifique o herói para liberar o benefício.</p>
       </div>
 
-      <Modal isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} title="Aponte para o QR Code" size="fullscreen">
-        <div className="w-full h-full flex flex-col items-center justify-center relative">
-          <QrScanner onScan={(txt) => { setIsScannerOpen(false); handleValidate(txt); }} />
-          <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black/70 to-transparent text-center">
-            <Button variant="secondary" onClick={() => setIsScannerOpen(false)} className="bg-white/90 text-slate-800">Cancelar</Button>
+      {/* Área de Busca */}
+      <Card>
+        <CardBody className="p-4 space-y-4">
+          <Button 
+            size="lg" 
+            className="w-full h-14 text-lg rounded-2xl shadow-lg shadow-hero-primary/20" 
+            onClick={() => setIsScannerOpen(true)}
+          >
+            <QrCode size={24} className="mr-2" /> Escanear QR Code
+          </Button>
+
+          <div className="relative flex items-center py-2">
+            <div className="flex-grow border-t border-slate-200 dark:border-slate-700"></div>
+            <span className="flex-shrink-0 mx-4 text-xs font-bold text-slate-400 uppercase">Ou digite</span>
+            <div className="flex-grow border-t border-slate-200 dark:border-slate-700"></div>
+          </div>
+
+          <form onSubmit={(e) => { e.preventDefault(); handleLookup(query); }} className="flex gap-2">
+            <Input 
+              placeholder="Hero Code ou CPF (apenas números)" 
+              value={query} 
+              onChange={e => setQuery(e.target.value)} 
+              className="rounded-xl h-12"
+            />
+            <Button type="submit" variant="secondary" isLoading={loading} className="rounded-xl w-14 h-12 flex items-center justify-center">
+              <Search size={20} />
+            </Button>
+          </form>
+        </CardBody>
+      </Card>
+
+      {/* Feedback de Erro Geral */}
+      {errorMsg && !client && (
+        <div className="bg-red-50 text-red-600 p-4 rounded-xl flex items-center gap-3 border border-red-100 animate-in fade-in slide-in-from-top-2">
+          <ShieldAlert size={24} />
+          <p className="font-bold text-sm">{errorMsg}</p>
+        </div>
+      )}
+
+      {/* Cartão do Cliente Encontrado */}
+      {client && (
+        <div className="animate-in fade-in slide-in-from-bottom-4">
+          <Card className="overflow-hidden border-0 shadow-2xl">
+            {/* Header com Avatar */}
+            <div className="bg-slate-900 p-6 flex flex-col items-center text-center relative">
+               <div className="w-24 h-24 rounded-full border-4 border-white bg-slate-200 overflow-hidden shadow-lg mb-3 relative">
+                 <img src={client.avatar_url || `https://picsum.photos/seed/${client.user_id}/200`} alt={client.display_name} className="w-full h-full object-cover" />
+                 {client.subscription_active && (
+                   <div className="absolute bottom-0 right-0 w-6 h-6 bg-green-500 rounded-full border-2 border-white"></div>
+                 )}
+               </div>
+               <h3 className="text-xl font-black text-white">{client.display_name}</h3>
+               <div className="inline-block bg-white/10 px-3 py-1 rounded-full mt-2">
+                 <p className="text-xs font-mono font-bold text-slate-300 tracking-widest">{client.hero_code}</p>
+               </div>
+            </div>
+
+            <CardBody className="p-6 space-y-6 bg-white dark:bg-slate-800">
+              
+              {/* Status Grid */}
+              <div className="grid grid-cols-2 gap-4">
+                {(() => {
+                  const subUI = getSubStatusUI(client.subscription_active);
+                  const voucherUI = getVoucherStatusUI(client.has_current_voucher, client.subscription_active);
+                  
+                  return (
+                    <>
+                      <div className={`p-3 rounded-xl border flex flex-col items-center text-center gap-2 ${subUI.bg} border-transparent`}>
+                        <CreditCard size={20} className={subUI.color} />
+                        <div>
+                          <p className="text-[10px] font-bold uppercase text-slate-500 opacity-70">Assinatura</p>
+                          <p className={`text-sm font-black ${subUI.color}`}>{subUI.text}</p>
+                        </div>
+                      </div>
+                      <div className={`p-3 rounded-xl border flex flex-col items-center text-center gap-2 ${voucherUI.bg} border-transparent`}>
+                        <voucherUI.icon size={20} className={voucherUI.color} />
+                        <div>
+                          <p className="text-[10px] font-bold uppercase text-slate-500 opacity-70">Voucher Mês</p>
+                          <p className={`text-sm font-black ${voucherUI.color}`}>{voucherUI.text}</p>
+                        </div>
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
+
+              {/* Mensagens de Sucesso/Erro Pós Ação */}
+              {successMsg && (
+                <div className="bg-green-50 text-green-700 p-4 rounded-xl text-center font-bold border border-green-200">
+                  {successMsg}
+                </div>
+              )}
+              {errorMsg && client && (
+                <div className="bg-red-50 text-red-600 p-3 rounded-xl text-center font-bold text-sm border border-red-200">
+                  {errorMsg}
+                </div>
+              )}
+
+              {/* Ações */}
+              <div className="pt-2">
+                <Button 
+                  size="lg" 
+                  className="w-full h-14 text-base rounded-2xl"
+                  onClick={handleRedeem}
+                  disabled={!client.subscription_active || !client.has_current_voucher || redeeming}
+                  isLoading={redeeming}
+                  variant={(!client.subscription_active || !client.has_current_voucher) ? 'secondary' : 'primary'}
+                >
+                  {redeeming ? 'Validando...' : 'Validar Resgate'}
+                </Button>
+                
+                {(!client.subscription_active || !client.has_current_voucher) && (
+                  <p className="text-center text-xs text-slate-400 mt-3 font-medium">
+                    {!client.subscription_active ? 'Assinatura inativa. Oriente o cliente.' : 'Voucher indisponível ou já utilizado.'}
+                  </p>
+                )}
+              </div>
+
+              {client.cpf && (
+                <div className="text-center border-t border-slate-100 pt-4">
+                  <p className="text-xs text-slate-400">CPF: ***.{client.cpf.slice(3,6)}.{client.cpf.slice(6,9)}-**</p>
+                </div>
+              )}
+            </CardBody>
+          </Card>
+        </div>
+      )}
+
+      {/* Scanner Modal */}
+      <Modal isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} title="Escanear Cartão" size="fullscreen">
+        <div className="w-full h-full flex flex-col relative bg-black">
+          <div className="flex-1 relative">
+            <QrScanner onScan={onScan} onError={(err) => console.log(err)} />
+            
+            {/* Overlay Gráfico */}
+            <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
+               <div className="w-64 h-64 border-2 border-white/30 rounded-3xl relative">
+                  <div className="absolute top-0 left-0 w-8 h-8 border-l-4 border-t-4 border-hero-primary -translate-x-1 -translate-y-1"></div>
+                  <div className="absolute top-0 right-0 w-8 h-8 border-r-4 border-t-4 border-hero-primary translate-x-1 -translate-y-1"></div>
+                  <div className="absolute bottom-0 left-0 w-8 h-8 border-l-4 border-b-4 border-hero-primary -translate-x-1 translate-y-1"></div>
+                  <div className="absolute bottom-0 right-0 w-8 h-8 border-r-4 border-b-4 border-hero-primary translate-x-1 translate-y-1"></div>
+               </div>
+            </div>
+          </div>
+          <div className="p-6 bg-slate-900 text-center">
+            <p className="text-white font-medium mb-4">Aponte para o QR Code do cliente</p>
+            <Button variant="secondary" onClick={() => setIsScannerOpen(false)} className="w-full bg-slate-800 text-white border-slate-700">
+              Cancelar
+            </Button>
           </div>
         </div>
       </Modal>
