@@ -1,7 +1,6 @@
 import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { Card, CardBody, CardHeader } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
-import { Input } from '../components/ui/Input';
 import { useAuthStore } from '../store/authStore';
 import { useThemeStore } from '../store/themeStore';
 import { useCardStore, FONT_OPTIONS, COLOR_OPTIONS } from '../store/cardStore';
@@ -15,7 +14,8 @@ import { supabase } from '../lib/supabaseClient';
 import {
   updateProfileName,
   uploadAndSyncAvatar,
-  updateCardSettings
+  updateCardSettings,
+  ensureHeroIdentity
 } from '../services/users.service';
 import { templatesService } from '../services/templates.service';
 import HeroCard from '../components/HeroCard';
@@ -27,18 +27,15 @@ import { useNavigate } from 'react-router-dom';
 const Profile: React.FC = () => {
   const user = useAuthStore(state => state.user);
   const updateUser = useAuthStore(state => state.updateUser);
-  const logout = useAuthStore(state => state.logout);
   const refreshUserFromDb = useAuthStore(state => state.refreshUserFromDb);
-
+  const logout = useAuthStore(state => state.logout);
   const navigate = useNavigate();
 
-  // Global Themes
   const globalHeroTheme = useThemeStore(state => state.heroTheme);
   const setHeroTheme = useThemeStore(state => state.setHeroTheme);
   const globalMode = useThemeStore(state => state.mode);
   const setMode = useThemeStore(state => state.setMode);
 
-  // Global Card Prefs
   const {
     selectedTemplateId,
     selectedFont,
@@ -48,7 +45,6 @@ const Profile: React.FC = () => {
     availableTemplates
   } = useCardStore();
 
-  // Local State
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   const [isEditingName, setIsEditingName] = useState(false);
@@ -71,19 +67,13 @@ const Profile: React.FC = () => {
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
-  // Efeito para buscar templates e inicializar o estado de rascunho (draft)
   useEffect(() => {
     if (!user?.id) return;
 
-    // ✅ Auto-reparo: garante que customerCode/avatar/name venham do banco caso faltem no store
-    refreshUserFromDb(user.id);
-
-    // Templates
     templatesService.getActiveTemplates().then(dbTemplates => {
       setTemplates(templatesService.mapToStoreFormat(dbTemplates));
     });
 
-    // Subscription
     (async () => {
       try {
         const mockSub = subscriptionMockService.getActiveSubscription(user.id);
@@ -92,7 +82,7 @@ const Profile: React.FC = () => {
             status: 'active',
             currentPeriodStart: mockSub.startedAt,
             currentPeriodEnd: mockSub.nextBillingDate,
-          });
+          } as any);
         } else {
           const supaSub = await getSubscriptionStatus(user.id);
           setSub(supaSub);
@@ -102,7 +92,6 @@ const Profile: React.FC = () => {
       }
     })();
 
-    // Inicializa o rascunho com os dados dos stores globais
     const initialState: DraftSettings = {
       templateId: selectedTemplateId || (availableTemplates[0]?.id ?? ''),
       fontFamily: selectedFont,
@@ -111,19 +100,26 @@ const Profile: React.FC = () => {
       heroTheme: globalHeroTheme,
       mode: globalMode,
     };
+
     setDraft(initialState);
     setLastSavedState(initialState);
     setEditName(user.name);
 
+    // ✅ Se não tem ID, gera e sincroniza
+    (async () => {
+      try {
+        if (!user.customerCode) {
+          const code = await ensureHeroIdentity(user.id);
+          if (code) updateUser({ customerCode: code });
+        }
+        await refreshUserFromDb(user.id);
+      } catch (e) {
+        console.warn('Falha ao garantir identidade do herói no Profile:', e);
+      }
+    })();
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
-
-  // Mantém o input de edição atualizado se user.name mudar por refreshUserFromDb
-  useEffect(() => {
-    if (user?.name && !isEditingName) {
-      setEditName(user.name);
-    }
-  }, [user?.name, isEditingName]);
 
   const hasUnsavedChanges = useMemo(() => {
     if (!draft || !lastSavedState) return false;
@@ -135,7 +131,6 @@ const Profile: React.FC = () => {
     const newDraft = { ...draft, [key]: value };
     setDraft(newDraft);
 
-    // Aplica temas visualmente enquanto edita
     if (key === 'heroTheme') setHeroTheme(value);
     if (key === 'mode') setMode(value);
   };
@@ -156,7 +151,6 @@ const Profile: React.FC = () => {
 
       setLastSavedState(draft);
 
-      // Sincroniza o estado global permanentemente
       useCardStore.getState().setAll({
         templateId: draft.templateId,
         font: draft.fontFamily,
@@ -166,9 +160,9 @@ const Profile: React.FC = () => {
 
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
-      alert("Erro ao salvar configurações. Verifique sua conexão.");
+      alert(`Erro ao salvar configurações: ${e?.message || 'Verifique sua conexão.'}`);
     } finally {
       setIsSavingSettings(false);
     }
@@ -184,7 +178,6 @@ const Profile: React.FC = () => {
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file && user) {
-      // Preview imediato (otimista)
       const reader = new FileReader();
       reader.onload = (e) => updateUser({ avatarUrl: e.target?.result as string });
       reader.readAsDataURL(file);
@@ -193,16 +186,12 @@ const Profile: React.FC = () => {
       try {
         const finalUrl = await uploadAndSyncAvatar(user.id, file);
         if (finalUrl) {
-          // Atualiza com a URL final do servidor para garantir persistência
           updateUser({ avatarUrl: finalUrl });
-
-          // ✅ reforça sincronização (principalmente se perfil ainda não existia e foi criado via upsert)
           await refreshUserFromDb(user.id);
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error(err);
-        alert('Erro ao enviar imagem. Tente novamente.');
-        // (opcional) recarrega do banco para voltar ao estado anterior
+        alert(`Erro ao enviar imagem: ${err?.message || 'Tente novamente.'}`);
         await refreshUserFromDb(user.id);
       } finally {
         setUploadingAvatar(false);
@@ -222,21 +211,17 @@ const Profile: React.FC = () => {
     setIsSavingName(true);
     const oldName = user.name;
 
-    // Otimista
     updateUser({ name: newName });
     setIsEditingName(false);
 
     try {
       await updateProfileName(user.id, newName);
-
-      // ✅ reforça sincronização
       await refreshUserFromDb(user.id);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      // Reverte em caso de erro
       updateUser({ name: oldName });
       setEditName(oldName);
-      alert('Não foi possível salvar o nome. Tente novamente.');
+      alert(`Não foi possível salvar o nome: ${err?.message || 'Tente novamente.'}`);
     } finally {
       setIsSavingName(false);
     }
@@ -244,12 +229,13 @@ const Profile: React.FC = () => {
 
   const handleExportCard = () => {
     if (cardRef.current === null) return;
-    toPng(cardRef.current, { cacheBust: true, pixelRatio: 2 }).then((url) => {
-      const a = document.createElement('a');
-      a.download = `hero-card.png`;
-      a.href = url;
-      a.click();
-    });
+    toPng(cardRef.current, { cacheBust: true, pixelRatio: 2 })
+      .then((url) => {
+        const a = document.createElement('a');
+        a.download = `hero-card.png`;
+        a.href = url;
+        a.click();
+      });
   };
 
   const handleLogout = async () => {
@@ -311,23 +297,15 @@ const Profile: React.FC = () => {
         </div>
       )}
 
-      {/* Profile Header Section */}
       <div className="flex flex-col items-center">
-        <div
-          className="relative group cursor-pointer"
-          onClick={() => !uploadingAvatar && fileInputRef.current?.click()}
-        >
+        <div className="relative group cursor-pointer" onClick={() => !uploadingAvatar && fileInputRef.current?.click()}>
           <div className={`w-28 h-28 rounded-full border-4 border-white dark:border-slate-800 shadow-xl bg-slate-200 overflow-hidden relative transition-all ${uploadingAvatar ? 'opacity-50' : ''}`}>
             {uploadingAvatar && (
               <div className="absolute inset-0 flex items-center justify-center bg-black/40 z-10 backdrop-blur-sm">
                 <Loader2 className="animate-spin text-white" size={32} />
               </div>
             )}
-            <img
-              src={user?.avatarUrl || 'https://picsum.photos/seed/hero/200'}
-              alt="Profile"
-              className="w-full h-full object-cover"
-            />
+            <img src={user?.avatarUrl || 'https://picsum.photos/seed/hero/200'} alt="Profile" className="w-full h-full object-cover" />
           </div>
 
           <div className="absolute inset-0 bg-black/30 rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
@@ -386,13 +364,12 @@ const Profile: React.FC = () => {
           <div className={`bg-slate-50 dark:bg-slate-800 px-4 py-1.5 rounded-full flex items-center gap-2 border border-slate-100 dark:border-slate-700 ${!isActive && 'opacity-50'}`}>
             <Fingerprint size={14} className="text-hero-primary" />
             <p className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">
-              {isActive ? `ID: ${user?.customerCode || '—'}` : 'Visitante'}
+              {isActive ? `ID: ${user?.customerCode || '--'}` : 'Visitante'}
             </p>
           </div>
         </div>
       </div>
 
-      {/* Editor do Cartão */}
       <Card>
         <CardHeader>
           <div className="flex items-center gap-2 font-black text-xs uppercase tracking-widest text-slate-400">
@@ -472,7 +449,6 @@ const Profile: React.FC = () => {
         </CardBody>
       </Card>
 
-      {/* Tema e Modo */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Card>
           <CardHeader>
