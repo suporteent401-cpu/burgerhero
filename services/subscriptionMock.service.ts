@@ -1,66 +1,90 @@
-import { Plan } from '../types';
+import { subscriptionsService } from './subscriptions.service';
 
-const PENDING_PLAN_KEY = 'bh_pending_plan';
-const SUB_PREFIX = 'burgerhero_subscription_';
+type PendingPlan = {
+  planSlug: string;
+  createdAt: string;
+};
 
-export interface MockSubscription {
-  planId: string;
-  planName: string;
-  status: 'active' | 'canceled' | 'past_due';
-  startedAt: string;
-  nextBillingDate: string;
-  priceCents: number;
-}
+type ActiveMock = {
+  status: 'active';
+  startedAt: string;       // ISO
+  nextBillingDate: string; // ISO
+};
+
+const LS_PENDING = 'bh_pending_plan';
+const LS_ACTIVE_PREFIX = 'bh_active_mock_sub:'; // + userId
 
 export const subscriptionMockService = {
-  // --- Gestão de Plano Pendente (Fluxo de Compra) ---
-
-  setPendingPlan: (plan: { id: string; name: string; priceCents: number }) => {
-    localStorage.setItem(PENDING_PLAN_KEY, JSON.stringify(plan));
+  // ====== PENDING PLAN (para fluxo Plans -> Checkout) ======
+  setPendingPlan(planSlug: string) {
+    const payload: PendingPlan = { planSlug, createdAt: new Date().toISOString() };
+    localStorage.setItem(LS_PENDING, JSON.stringify(payload));
   },
 
-  getPendingPlan: (): { id: string; name: string; priceCents: number } | null => {
-    const data = localStorage.getItem(PENDING_PLAN_KEY);
-    return data ? JSON.parse(data) : null;
-  },
-
-  clearPendingPlan: () => {
-    localStorage.removeItem(PENDING_PLAN_KEY);
-  },
-
-  // --- Gestão de Assinatura Ativa (Mock por Usuário) ---
-
-  setActiveSubscription: (userId: string, planData: { id: string; name: string; priceCents: number }) => {
-    const now = new Date();
-    const nextMonth = new Date(now);
-    nextMonth.setDate(now.getDate() + 30);
-
-    const sub: MockSubscription = {
-      planId: planData.id,
-      planName: planData.name,
-      priceCents: planData.priceCents,
-      status: 'active',
-      startedAt: now.toISOString(),
-      nextBillingDate: nextMonth.toISOString()
-    };
-    
-    // Salva com a chave padronizada solicitada
-    localStorage.setItem(`${SUB_PREFIX}${userId}`, JSON.stringify(sub));
-  },
-
-  getActiveSubscription: (userId: string): MockSubscription | null => {
-    const data = localStorage.getItem(`${SUB_PREFIX}${userId}`);
-    if (!data) return null;
+  getPendingPlan(): PendingPlan | null {
     try {
-      return JSON.parse(data) as MockSubscription;
-    } catch (e) {
-      console.error("Erro ao ler assinatura mock", e);
+      const raw = localStorage.getItem(LS_PENDING);
+      return raw ? (JSON.parse(raw) as PendingPlan) : null;
+    } catch {
       return null;
     }
   },
 
-  isSubscriptionActive: (userId: string): boolean => {
-    const sub = subscriptionMockService.getActiveSubscription(userId);
-    return sub?.status === 'active';
-  }
+  clearPendingPlan() {
+    localStorage.removeItem(LS_PENDING);
+  },
+
+  // ====== ACTIVE MOCK (para o app inteiro confiar no mesmo “ativo”) ======
+  // 1) primeiro tenta localStorage (mock)
+  // 2) se não tiver, tenta a tabela subscriptions (real) via subscriptionsService
+  async getActiveSubscription(userId: string): Promise<ActiveMock | null> {
+    const key = `${LS_ACTIVE_PREFIX}${userId}`;
+
+    // 1) Mock no localStorage
+    try {
+      const raw = localStorage.getItem(key);
+      if (raw) {
+        const parsed = JSON.parse(raw) as ActiveMock;
+        if (parsed?.status === 'active') return parsed;
+      }
+    } catch {
+      // ignora
+    }
+
+    // 2) Banco (subscriptions)
+    try {
+      const sub = await subscriptionsService.getMySubscription();
+      if (!sub) return null;
+
+      const isActive = sub.status === 'active';
+      if (!isActive) return null;
+
+      const startedAt = sub.current_period_start || new Date().toISOString();
+      const nextBillingDate =
+        sub.current_period_end || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+
+      return { status: 'active', startedAt, nextBillingDate };
+    } catch {
+      return null;
+    }
+  },
+
+  // Ativa o mock de verdade (RPC + grava localStorage para o app ficar consistente)
+  async activate(planSlug: string, userId: string, days = 30): Promise<void> {
+    await subscriptionsService.activateMock(planSlug, days);
+
+    const startedAt = new Date().toISOString();
+    const nextBillingDate = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+
+    const key = `${LS_ACTIVE_PREFIX}${userId}`;
+    const payload: ActiveMock = { status: 'active', startedAt, nextBillingDate };
+    localStorage.setItem(key, JSON.stringify(payload));
+
+    // opcional: forçar refresh (se existir RPC no banco)
+    await subscriptionsService.refreshMyStatus();
+  },
+
+  clearActiveMock(userId: string) {
+    localStorage.removeItem(`${LS_ACTIVE_PREFIX}${userId}`);
+  },
 };
