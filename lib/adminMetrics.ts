@@ -1,39 +1,162 @@
-import { TrendingUp, TrendingDown, UserPlus, UserMinus, CreditCard, Gift, Zap, BarChart, PieChart, AlertTriangle, Sparkles, Clock, Award } from 'lucide-react';
+import { supabase } from '../lib/supabaseClient';
+import {
+  TrendingUp,
+  UserPlus,
+  UserMinus,
+  CreditCard,
+  Gift,
+  Award,
+  AlertTriangle,
+  Sparkles,
+  Clock,
+} from 'lucide-react';
 
-// Simula uma chamada de API com delay
-export const getAdminDashboardMetrics = async (period: string) => {
-  await new Promise(res => setTimeout(res, 1200)); // Simula delay de rede
+type Period = '7d' | '30d' | 'month';
 
-  // Lógica de mock baseada no período (simplificada)
-  const multiplier = period === '7d' ? 0.25 : period === '30d' ? 1 : 1.1;
+type RpcResponse = {
+  kpis: {
+    activeSubscribers: number;
+    newSubscriptions: number;
+    cancellations: number;
+    mrrCents: number;
+    monthlyRedemptions: number;
+    monthlyRedemptionRate: number; // 0..1
+  };
+  charts: {
+    popularPlans: Array<{ name: string; percentage: number }>;
+    redemptionsByDay: { labels: string[]; data: number[] };
+    activesOverTime: { labels: string[]; data: number[] };
+  };
+  insights: Array<{ key: string; value: any }>;
+};
+
+const safeEmpty = () => ({
+  kpis: {
+    activeSubscribers: 0,
+    newSubscriptions: 0,
+    cancellations: 0,
+    mrrCents: 0,
+    monthlyRedemptions: 0,
+    monthlyRedemptionRate: 0,
+  },
+  charts: {
+    popularPlans: [],
+    redemptionsByDay: { labels: ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'], data: [0, 0, 0, 0, 0, 0, 0] },
+    activesOverTime: { labels: ['-30d', '-20d', '-10d', 'Hoje'], data: [0, 0, 0, 0] },
+  },
+  insights: [],
+});
+
+const formatBRL = (cents: number) => {
+  const value = (Number(cents || 0) / 100);
+  return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+};
+
+const pct = (v: number) => `${(Number(v || 0)).toFixed(1)}%`;
+
+export const getAdminDashboardMetrics = async (period: Period) => {
+  try {
+    const { data, error } = await supabase.rpc('admin_dashboard_metrics', { p_period: period });
+
+    if (error) {
+      console.error('[adminMetrics] admin_dashboard_metrics RPC error:', error);
+      const fallback = safeEmpty();
+      return buildUiPayload(fallback);
+    }
+
+    const parsed = (data || safeEmpty()) as RpcResponse;
+    return buildUiPayload(parsed);
+  } catch (e) {
+    console.error('[adminMetrics] exception:', e);
+    const fallback = safeEmpty();
+    return buildUiPayload(fallback);
+  }
+};
+
+function buildUiPayload(r: RpcResponse) {
+  const active = Number(r.kpis.activeSubscribers || 0);
+  const redemptions = Number(r.kpis.monthlyRedemptions || 0);
+  const rate = Number(r.kpis.monthlyRedemptionRate || 0);
+
+  // insights do banco (mínimos)
+  const topPlan = r.charts.popularPlans?.[0]?.name || '';
+  const ratePct = pct(rate * 100);
 
   return {
     kpis: [
-      { title: 'Assinantes Ativos', value: '1,284', delta: '+1.2%', icon: TrendingUp, tooltip: 'Total de assinaturas com status ATIVO.' },
-      { title: 'Novas Assinaturas', value: `${Math.floor(88 * multiplier)}`, delta: '+15%', icon: UserPlus, tooltip: 'Novos clientes no período selecionado.' },
-      { title: 'Cancelamentos', value: `${Math.floor(12 * multiplier)}`, delta: '-3%', icon: UserMinus, tooltip: 'Clientes que cancelaram no período.' },
-      { title: 'MRR Estimado', value: 'R$ 42.850', delta: '+8%', icon: CreditCard, tooltip: 'Receita Mensal Recorrente (Monthly Recurring Revenue).' },
-      { title: 'Resgates do Mês', value: '852', delta: '+5.4%', icon: Gift, tooltip: 'Vouchers de hambúrguer resgatados no mês atual.' },
-      { title: 'Taxa de Resgate', value: '66.3%', delta: '+2.1%', icon: Award, tooltip: 'Percentual de assinantes ativos que resgataram o burger do mês.' },
+      {
+        title: 'Assinantes Ativos',
+        value: active.toLocaleString('pt-BR'),
+        delta: '—',
+        icon: TrendingUp,
+        tooltip: 'Total de assinaturas com status ATIVO e período vigente.',
+      },
+      {
+        title: 'Novas Assinaturas',
+        value: Number(r.kpis.newSubscriptions || 0).toLocaleString('pt-BR'),
+        delta: '—',
+        icon: UserPlus,
+        tooltip: 'Assinaturas criadas dentro do período selecionado.',
+      },
+      {
+        title: 'Cancelamentos',
+        value: Number(r.kpis.cancellations || 0).toLocaleString('pt-BR'),
+        delta: '—',
+        icon: UserMinus,
+        tooltip: 'Assinaturas com status CANCELED no período selecionado.',
+      },
+      {
+        title: 'MRR Estimado',
+        value: formatBRL(Number(r.kpis.mrrCents || 0)),
+        delta: '—',
+        icon: CreditCard,
+        tooltip: 'Soma do preço dos planos dos assinantes ativos (estimativa).',
+      },
+      {
+        title: 'Resgates do Mês',
+        value: redemptions.toLocaleString('pt-BR'),
+        delta: '—',
+        icon: Gift,
+        tooltip: 'Total de vouchers resgatados no mês atual (UTC).',
+      },
+      {
+        title: 'Taxa de Resgate',
+        value: ratePct,
+        delta: '—',
+        icon: Award,
+        tooltip: 'Resgates do mês / assinantes ativos.',
+      },
     ],
+
     insights: [
-      { icon: AlertTriangle, title: 'Risco de Churn Elevado', description: '18 usuários não resgatam há 2 meses. Considere uma campanha de reengajamento.', color: 'amber' },
-      { icon: Sparkles, title: 'Plano Vingador Converte Mais', description: 'O Plano Vingador teve 45% mais adesões que o Justiceiro nos últimos 7 dias.', color: 'blue' },
-      { icon: Clock, title: 'Pico de Resgates às 19h', description: 'Sextas e Sábados entre 19h e 20h são os horários de maior movimento.', color: 'purple' },
+      {
+        icon: AlertTriangle,
+        title: 'Taxa de Resgate do Mês',
+        description: `Taxa atual: ${ratePct}.`,
+        color: 'amber',
+      },
+      {
+        icon: Sparkles,
+        title: 'Plano mais popular',
+        description: topPlan ? `No momento, o plano mais popular é: ${topPlan}.` : 'Ainda sem dados suficientes de planos.',
+        color: 'blue',
+      },
+      {
+        icon: Clock,
+        title: 'Distribuição de Resgates',
+        description: 'Confira o gráfico por dia da semana para ajustar equipe e operação.',
+        color: 'purple',
+      },
     ],
+
     charts: {
-      activesOverTime: {
-        labels: ['-30d', '-20d', '-10d', 'Hoje'],
-        data: [800, 1000, 950, 1284].map(v => Math.round(v * multiplier)),
-      },
-      redemptionsByDay: {
-        labels: ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'],
-        data: [60, 25, 30, 45, 70, 95, 110],
-      },
-      popularPlans: [
-        { name: 'Plano Vingador', percentage: 68, color: 'bg-hero-primary' },
-        { name: 'Plano Justiceiro', percentage: 32, color: 'bg-slate-400' },
-      ]
-    }
+      activesOverTime: r.charts.activesOverTime || safeEmpty().charts.activesOverTime,
+      redemptionsByDay: r.charts.redemptionsByDay || safeEmpty().charts.redemptionsByDay,
+      popularPlans: (r.charts.popularPlans || []).map((p) => ({
+        name: p.name,
+        percentage: Number(p.percentage || 0),
+        color: 'bg-hero-primary',
+      })),
+    },
   };
-};
+}
