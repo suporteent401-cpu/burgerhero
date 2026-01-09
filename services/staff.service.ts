@@ -1,15 +1,13 @@
 import { supabase } from '../lib/supabaseClient';
 
-export interface StaffLookupResult {
+export type StaffLookupResult = {
   user_id: string;
   display_name: string;
   email: string;
-  cpf: string;
-  hero_code: string;
+  cpf: string | null;
+  hero_code: string | null;
   avatar_url: string | null;
-  subscription_status: string | null;
-  next_billing_date: string | null;
-}
+};
 
 export const staffService = {
   async lookupClient(query: string): Promise<StaffLookupResult | null> {
@@ -20,10 +18,12 @@ export const staffService = {
 
     if (error) {
       console.error('RPC staff_lookup_client error:', error);
-      throw error;
+      return null;
     }
 
-    const row = Array.isArray(data) ? data[0] : data;
-    return (row as StaffLookupResult) || null;
+    if (Array.isArray(data) && data.length > 0) return data[0] as StaffLookupResult;
+    if (data && !Array.isArray(data)) return data as StaffLookupResult;
+
+    return null;
   },
 };
