@@ -1,19 +1,17 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { Card, CardBody } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { useAuthStore } from '../store/authStore';
 import { QrCode, Lock, CheckCircle2, Calendar, Utensils, Loader2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { getCurrentVoucher, getVoucherHistory } from '../services/voucher.service';
-import { subscriptionMockService } from '../services/subscriptionMock.service';
+
+const normalizeStatus = (s?: string | null) => String(s || '').toLowerCase();
 
 const Voucher: React.FC = () => {
   const user = useAuthStore((state) => state.user);
-  const navigate = useNavigate();
 
-  const [isSubActive, setIsSubActive] = useState<boolean>(false);
-  const [currentVoucher, setCurrentVoucher] = useState<any | null>(null);
+  const [snap, setSnap] = useState<any | null>(null);
   const [history, setHistory] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -28,19 +26,17 @@ const Voucher: React.FC = () => {
     const fetchData = async () => {
       setLoading(true);
       try {
-        const [voucherData, historyData, activeSub] = await Promise.all([
+        const [voucherSnap, historyData] = await Promise.all([
           getCurrentVoucher(user.id),
           getVoucherHistory(user.id),
-          subscriptionMockService.getActiveSubscription(user.id),
         ]);
 
-        setCurrentVoucher(voucherData);
+        setSnap(voucherSnap);
 
-        // assinatura ativa de forma consistente com o resto do app
-        setIsSubActive(!!activeSub && activeSub.status === 'active');
-
-        const pastVouchers = historyData.filter((v) => v.id !== voucherData?.id);
-        setHistory(pastVouchers.slice(0, 2));
+        // histórico: remove o voucher do mês se estiver no histórico
+        const currentVoucherId = voucherSnap?.voucher?.id;
+        const past = (historyData || []).filter((v: any) => v?.id !== currentVoucherId);
+        setHistory(past.slice(0, 2));
       } catch (error) {
         console.error('Erro ao buscar dados do voucher:', error);
       } finally {
@@ -51,30 +47,28 @@ const Voucher: React.FC = () => {
     fetchData();
   }, [user?.id]);
 
-  const hasVoucherThisMonth = !!currentVoucher;
+  const subActive = !!snap?.eligibility?.subscriptionActive;
+  const dropActive = !!snap?.eligibility?.dropActive;
+
+  const voucher = snap?.voucher;
+  const burger = snap?.burger;
+
+  const hasVoucherThisMonth = !!voucher?.id;
 
   const isRedeemed = useMemo(() => {
-    // 1) se existir redeemed_at, já foi
-    if (currentVoucher?.redeemed_at) return true;
+    if (!voucher) return false;
+    if (voucher.redeemed_at) return true;
+    return normalizeStatus(voucher.status) === 'redeemed';
+  }, [voucher]);
 
-    // 2) se existir registro em voucher_redemptions, já foi
-    const redemptions = currentVoucher?.voucher_redemptions;
-    if (Array.isArray(redemptions) && redemptions.length > 0) return true;
+  const isEligible = subActive && dropActive && hasVoucherThisMonth && !isRedeemed;
 
-    return false;
-  }, [currentVoucher]);
-
-  // ✅ Regra certa:
-  // apto = assinatura ativa + existe voucher do mês + não resgatado
-  const isEligible = isSubActive && hasVoucherThisMonth && !isRedeemed;
-
-  // imagem/nome do burger do mês (se não tiver drop ainda, cai em placeholder)
   const burgerImage =
-    currentVoucher?.monthly_drop?.burger?.image_url ||
+    burger?.image_url ||
     'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?ixlib=rb-4.0.3&auto=format&fit=crop&w=800&q=80';
 
-  const burgerName = currentVoucher?.monthly_drop?.burger?.name;
-  const burgerDescription = currentVoucher?.monthly_drop?.burger?.description;
+  const burgerName = burger?.name;
+  const burgerDescription = burger?.description;
 
   if (loading) {
     return (
@@ -125,9 +119,13 @@ const Voucher: React.FC = () => {
             <div className="bg-hero-primary text-white px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest shadow-lg shadow-hero-primary/40 animate-pulse">
               Disponível
             </div>
-          ) : !isSubActive ? (
+          ) : !subActive ? (
             <div className="bg-red-500/90 backdrop-blur-md text-white px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest flex items-center gap-1.5">
               <Lock size={12} /> Bloqueado
+            </div>
+          ) : !dropActive ? (
+            <div className="bg-slate-900/70 backdrop-blur-md text-white px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest border border-white/20">
+              Drop Indisponível
             </div>
           ) : (
             <div className="bg-slate-900/70 backdrop-blur-md text-white px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest border border-white/20">
@@ -141,22 +139,21 @@ const Voucher: React.FC = () => {
             <span className="text-hero-primary font-black text-[10px] uppercase tracking-[0.2em] mb-1 block">
               Burger do Mês
             </span>
+
             <h3 className="text-2xl font-black text-white leading-tight mb-1">
               {isRedeemed ? 'Missão Cumprida' : burgerName || 'Drop Indisponível'}
             </h3>
 
             <p className="text-slate-300 text-xs max-w-sm line-clamp-2 leading-relaxed">
               {isRedeemed
-                ? `Você resgatou este drop em ${new Date(
-                    currentVoucher?.redeemed_at ||
-                      currentVoucher?.voucher_redemptions?.[0]?.created_at ||
-                      new Date().toISOString()
-                  ).toLocaleDateString()}.`
+                ? `Você resgatou este drop em ${new Date(voucher?.redeemed_at || new Date().toISOString()).toLocaleDateString()}.`
                 : isEligible && burgerDescription
                 ? burgerDescription
-                : isSubActive && !hasVoucherThisMonth
-                ? 'Seu plano está ativo. Aguardando liberação do drop.'
-                : !isSubActive
+                : subActive && dropActive && !hasVoucherThisMonth
+                ? 'Seu plano está ativo. Aguardando emissão do voucher do mês.'
+                : subActive && !dropActive
+                ? 'O drop ainda não foi liberado pelo BurgerHero.'
+                : !subActive
                 ? 'Sua assinatura está inativa. Reative para liberar o benefício.'
                 : 'Aguardando liberação do drop.'}
             </p>
@@ -165,7 +162,7 @@ const Voucher: React.FC = () => {
           <div className="pt-1">
             {isEligible ? (
               <Button
-                onClick={() => navigate('/app/qrcode')}
+                onClick={() => (window.location.href = '/app/qrcode')}
                 className="w-full bg-white text-slate-900 hover:bg-slate-100 border-none h-10 text-sm rounded-xl shadow-lg hover:shadow-xl hover:scale-[1.02] transition-all font-bold"
               >
                 <QrCode className="mr-2 text-hero-primary" size={16} /> Usar no Balcão
@@ -177,9 +174,9 @@ const Voucher: React.FC = () => {
               >
                 Já Utilizado
               </Button>
-            ) : !isSubActive ? (
+            ) : !subActive ? (
               <Button
-                onClick={() => navigate('/plans')}
+                onClick={() => (window.location.href = '/plans')}
                 className="w-full bg-red-600 hover:bg-red-700 text-white border-none h-10 rounded-xl shadow-lg shadow-red-900/20 text-xs font-bold"
               >
                 Reativar Assinatura
@@ -204,14 +201,15 @@ const Voucher: React.FC = () => {
 
         <Card className="border-none shadow-none bg-transparent">
           <CardBody className="p-0 space-y-4">
-            {history.map((voucher) => (
+            {history.map((v: any) => (
               <div
-                key={voucher.id}
+                key={v.id}
                 className="relative pl-8 before:absolute before:left-[11px] before:top-8 before:bottom-[-16px] before:w-[2px] before:bg-slate-200 dark:before:bg-slate-800 last:before:hidden"
               >
                 <div className="absolute left-0 top-1 w-6 h-6 rounded-full bg-slate-200 dark:bg-slate-800 flex items-center justify-center z-10">
                   <div className="w-1.5 h-1.5 rounded-full bg-slate-400"></div>
                 </div>
+
                 <div className="bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-100 dark:border-slate-800 flex items-center justify-between opacity-60">
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 bg-slate-100 dark:bg-slate-800 rounded-lg flex items-center justify-center text-slate-400 dark:text-slate-500">
@@ -219,10 +217,10 @@ const Voucher: React.FC = () => {
                     </div>
                     <div>
                       <p className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                        Resgate de {new Date(voucher.created_at).toLocaleString('pt-BR', { month: 'long' })}
+                        Resgate de {new Date(v.created_at).toLocaleString('pt-BR', { month: 'long' })}
                       </p>
                       <p className="text-xs text-slate-400 dark:text-slate-500 capitalize">
-                        {String(voucher.status || 'registrado')}
+                        {String(v.status || 'registrado')}
                       </p>
                     </div>
                   </div>
