@@ -1,81 +1,58 @@
+// services/staff.service.ts
 import { supabase } from '../lib/supabaseClient';
 
 export type StaffLookupResult = {
   user_id: string;
   display_name: string;
-  email: string;
+  email: string | null;
   cpf: string | null;
-  hero_code: string | null;
+  hero_code: string;
   avatar_url: string | null;
-
-  // capa do cartão (mesma do perfil)
   card_image_url: string | null;
-
-  // assinatura
   subscription_active: boolean;
-  subscription_status: string | null;
-  next_billing_date: string | null;
-
-  // voucher do mês
+  voucher_status: 'available' | 'redeemed' | 'none' | string;
   has_current_voucher: boolean;
-  voucher_status: string | null; // available | redeemed | none | blocked | ...
-};
-
-export type RedeemResult = {
-  ok: boolean;
-  message: string;
-  user_id: string | null;
-  voucher_id: string | null;
-  status: string | null;
+  voucher_redeemed: boolean;
+  month_date: string | null;
 };
 
 export const staffService = {
   async lookupClient(query: string): Promise<StaffLookupResult | null> {
-    const q = String(query || '').trim();
-    if (!q) return null;
-
-    const { data, error } = await supabase.rpc('staff_lookup_client', { p_query: q });
+    const { data, error } = await supabase.rpc('staff_lookup_client', { p_query: query });
 
     if (error) {
-      console.error('RPC staff_lookup_client error:', error);
-      return null;
+      // padroniza mensagens comuns
+      const msg = (error.message || '').toLowerCase();
+      if (msg.includes('jwt') || msg.includes('expired')) throw new Error('SESSION_EXPIRED');
+      throw error;
     }
 
-    if (Array.isArray(data) && data.length > 0) return data[0] as StaffLookupResult;
-    if (data && !Array.isArray(data)) return data as StaffLookupResult;
-
-    return null;
+    if (!data || data.length === 0) return null;
+    return data[0] as StaffLookupResult;
   },
 
-  async redeemVoucherByCode(heroCode: string, restaurantId?: string): Promise<RedeemResult> {
-    const code = String(heroCode || '').trim();
-    if (!code) {
-      return { ok: false, message: 'missing_code', user_id: null, voucher_id: null, status: null };
-    }
-
-    const { data, error } = await supabase.rpc('redeem_voucher', {
-      p_hero_code: code,
-      p_restaurant_id: restaurantId || null,
+  async redeemVoucherByCode(heroCode: string, restaurantId?: string) {
+    const { data, error } = await supabase.rpc('staff_redeem_voucher', {
+      p_qr_token: null,
+      p_hero_code: heroCode,
+      p_restaurant_id: restaurantId ?? null,
     });
 
     if (error) {
-      console.error('RPC redeem_voucher error:', error);
-      return {
-        ok: false,
-        message: error.message || 'Erro de comunicação',
-        user_id: null,
-        voucher_id: null,
-        status: null,
-      };
+      const msg = (error.message || '').toLowerCase();
+      if (msg.includes('jwt') || msg.includes('expired')) return { ok: false, message: 'session_expired' };
+      return { ok: false, message: error.message || 'error' };
     }
 
-    const row = Array.isArray(data) ? (data[0] as any) : (data as any);
+    // rpc returns table -> array com 1 item
+    const row = Array.isArray(data) ? data[0] : data;
+
     return {
-      ok: Boolean(row?.ok),
-      message: String(row?.message || 'unknown'),
-      user_id: row?.user_id ?? null,
-      voucher_id: row?.voucher_id ?? null,
-      status: row?.status ?? null,
+      ok: !!row?.ok,
+      message: row?.message || 'error',
+      client_id: row?.client_id || null,
+      voucher_id: row?.voucher_id || null,
+      voucher_status: row?.voucher_status || null,
     };
   },
 };
