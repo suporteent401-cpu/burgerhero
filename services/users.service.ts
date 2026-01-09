@@ -1,8 +1,8 @@
 import { supabase } from '@/lib/supabaseClient';
 
-/* ============================
+/* ======================================================
  * TIPOS
- * ============================ */
+ * ====================================================== */
 
 export interface UserSettings {
   heroTheme: string;
@@ -25,9 +25,9 @@ export interface UserProfile {
   settings: UserSettings;
 }
 
-/* ============================
- * DEFAULT SETTINGS (BLINDAGEM)
- * ============================ */
+/* ======================================================
+ * DEFAULT SETTINGS (BLINDAGEM TOTAL)
+ * ====================================================== */
 
 const DEFAULT_SETTINGS: UserSettings = {
   heroTheme: 'default',
@@ -38,9 +38,9 @@ const DEFAULT_SETTINGS: UserSettings = {
   mode: 'dark',
 };
 
-/* ============================
- * HELPERS INTERNOS
- * ============================ */
+/* ======================================================
+ * HELPER INTERNO
+ * ====================================================== */
 
 function withSafeSettings(profile: any): UserProfile {
   return {
@@ -57,9 +57,9 @@ function withSafeSettings(profile: any): UserProfile {
   };
 }
 
-/* ============================
- * PERFIL POR ID (SAFE)
- * ============================ */
+/* ======================================================
+ * PERFIL POR ID
+ * ====================================================== */
 
 export async function getUserProfileById(
   userId: string
@@ -78,9 +78,9 @@ export async function getUserProfileById(
   return withSafeSettings(data[0]);
 }
 
-/* ============================
- * PERFIL COMPLETO (CONTRATO DO AUTH)
- * ============================ */
+/* ======================================================
+ * PERFIL COMPLETO (USADO NO AUTH)
+ * ====================================================== */
 
 export async function getFullUserProfile(
   userId: string
@@ -88,9 +88,9 @@ export async function getFullUserProfile(
   return getUserProfileById(userId);
 }
 
-/* ============================
+/* ======================================================
  * PERFIL VIA SESSÃO (LOGIN)
- * ============================ */
+ * ====================================================== */
 
 export async function ensureProfileFromSession(): Promise<UserProfile | null> {
   const {
@@ -102,9 +102,34 @@ export async function ensureProfileFromSession(): Promise<UserProfile | null> {
   return getFullUserProfile(session.user.id);
 }
 
-/* ============================
+/* ======================================================
+ * PERFIL PÚBLICO POR CÓDIGO (🔥 EXPORT FALTANTE)
+ * ====================================================== */
+
+export async function getPublicProfileByCode(
+  code: string
+): Promise<UserProfile | null> {
+  const normalized = code.trim().toUpperCase();
+
+  const { data, error } = await supabase
+    .from('user_profiles')
+    .select('*')
+    .or(
+      `hero_code.eq.${normalized},customer_id_public.eq.${normalized}`
+    )
+    .limit(1);
+
+  if (error || !data?.length) {
+    console.error('[getPublicProfileByCode]', error);
+    return null;
+  }
+
+  return withSafeSettings(data[0]);
+}
+
+/* ======================================================
  * UPDATE NOME
- * ============================ */
+ * ====================================================== */
 
 export async function updateProfileName(
   userId: string,
@@ -123,9 +148,9 @@ export async function updateProfileName(
   return true;
 }
 
-/* ============================
+/* ======================================================
  * CHECK CPF
- * ============================ */
+ * ====================================================== */
 
 export async function checkCpfExists(cpf: string): Promise<boolean> {
   const cleanCpf = cpf.replace(/\D/g, '');
@@ -144,9 +169,9 @@ export async function checkCpfExists(cpf: string): Promise<boolean> {
   return !!data?.length;
 }
 
-/* ============================
+/* ======================================================
  * AVATAR
- * ============================ */
+ * ====================================================== */
 
 export async function uploadAndSyncAvatar(
   userId: string,
@@ -175,9 +200,9 @@ export async function uploadAndSyncAvatar(
   return avatarUrl;
 }
 
-/* ============================
- * HERO IDENTITY (SEM GERAR)
- * ============================ */
+/* ======================================================
+ * HERO IDENTITY (SEM GERAR NOVO CÓDIGO)
+ * ====================================================== */
 
 export async function ensureHeroIdentity(userId: string): Promise<{
   hero_code: string | null;
@@ -200,9 +225,9 @@ export async function ensureHeroIdentity(userId: string): Promise<{
   };
 }
 
-/* ============================
+/* ======================================================
  * CARD SETTINGS
- * ============================ */
+ * ====================================================== */
 
 export async function updateCardSettings(
   userId: string,
@@ -215,7 +240,6 @@ export async function updateCardSettings(
     .limit(1);
 
   const current = data?.[0]?.settings ?? DEFAULT_SETTINGS;
-
   const merged = { ...current, ...settings };
 
   const { error } = await supabase
