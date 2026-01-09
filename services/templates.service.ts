@@ -45,6 +45,24 @@ export const templatesService = {
     if (error) throw error;
   },
 
+  // Admin: Upload de imagem
+  async uploadTemplateImage(file: File): Promise<string> {
+    const fileExt = file.name.split('.').pop();
+    const fileName = `tpl-${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
+    
+    const { error: uploadError } = await supabase.storage
+      .from('card-templates')
+      .upload(fileName, file);
+
+    if (uploadError) throw uploadError;
+
+    const { data } = supabase.storage
+      .from('card-templates')
+      .getPublicUrl(fileName);
+      
+    return data.publicUrl;
+  },
+
   // Admin: Criar novo
   async createTemplate(name: string, preview_url: string): Promise<CardTemplateDB | null> {
     const { data, error } = await supabase
