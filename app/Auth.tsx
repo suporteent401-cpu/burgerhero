@@ -23,6 +23,15 @@ const normalizeRole = (input: any): Role => {
 
 const normalizeCpf = (cpf: string) => (cpf ? cpf.replace(/[^\d]/g, '') : '');
 
+const DEFAULT_SETTINGS = {
+  cardTemplateId: null as string | null,
+  fontStyle: 'Inter',
+  fontColor: '#FFFFFF',
+  fontSize: 22,
+  heroTheme: 'sombra-noturna',
+  mode: 'system' as 'light' | 'dark' | 'system',
+};
+
 const Auth: React.FC = () => {
   const [isLogin, setIsLogin] = useState(true);
   const [step, setStep] = useState(1);
@@ -41,15 +50,19 @@ const Auth: React.FC = () => {
 
   const password = watch('password');
 
-  const applySettingsAndLoadTemplates = async (settings: any) => {
-    useThemeStore.getState().setHeroTheme(settings.heroTheme);
-    useThemeStore.getState().setMode(settings.mode);
+  const applySettingsAndLoadTemplates = async (settingsRaw: any) => {
+    const settings = settingsRaw ?? DEFAULT_SETTINGS;
+
+    useThemeStore.getState().setHeroTheme(settings.heroTheme || DEFAULT_SETTINGS.heroTheme);
+    useThemeStore.getState().setMode(settings.mode || DEFAULT_SETTINGS.mode);
+
     useCardStore.getState().setAll({
       templateId: settings.cardTemplateId || undefined,
-      font: settings.fontStyle,
-      color: settings.fontColor,
-      fontSize: settings.fontSize,
+      font: settings.fontStyle || DEFAULT_SETTINGS.fontStyle,
+      color: settings.fontColor || DEFAULT_SETTINGS.fontColor,
+      fontSize: settings.fontSize || DEFAULT_SETTINGS.fontSize,
     });
+
     useThemeStore.getState().applyTheme();
 
     try {
@@ -124,13 +137,13 @@ const Auth: React.FC = () => {
         // 1) tenta carregar perfil normalmente
         let full = await getFullUserProfile(signInData.session.user);
 
-        // 2) se falhar (muito comum em usuário novo), roda bootstrap e tenta de novo
+        // 2) se falhar, tenta bootstrap e recarrega
         if (!full) {
           console.warn('Falha ao carregar perfil no login. Tentando bootstrap...');
           await ensureBootstrap({
             name: (signInData.session.user.user_metadata as any)?.full_name || 'Hero',
             email: signInData.session.user.email || data.email,
-            cpf: '00000000000', // fallback seguro: NÃO deve acontecer; ideal é CPF existir em user_profiles.
+            cpf: '00000000000',
           });
 
           full = await getFullUserProfile(signInData.session.user);
@@ -147,7 +160,7 @@ const Auth: React.FC = () => {
           return;
         }
 
-        // Se ainda assim não veio, manda pro app e o provider tenta
+        // fallback: deixa o provider tentar
         navigate('/app', { replace: true });
         return;
       }
@@ -180,7 +193,6 @@ const Auth: React.FC = () => {
 
       if (signUpError) throw signUpError;
 
-      // Se exigir confirmação de e-mail, não vem session
       if (signUpData.user && !signUpData.session) {
         setLoading(false);
         alert('Cadastro realizado com sucesso! Verifique seu e-mail para confirmar a conta antes de entrar.');
@@ -192,7 +204,6 @@ const Auth: React.FC = () => {
         throw new Error('Erro ao estabelecer sessão após cadastro.');
       }
 
-      // ✅ Bootstrap garantido no banco (app_users + user_profiles)
       const boot = await ensureBootstrap({
         name: fullUserData.name,
         email: fullUserData.email,
@@ -253,84 +264,32 @@ const Auth: React.FC = () => {
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
               {isLogin ? (
                 <>
-                  <Input
-                    label="E-mail"
-                    placeholder="heroi@email.com"
-                    icon={<Mail size={18} />}
-                    {...register('email', { required: true })}
-                  />
-                  <Input
-                    label="Senha"
-                    type="password"
-                    placeholder="••••••••"
-                    icon={<Lock size={18} />}
-                    {...register('password', { required: true })}
-                  />
+                  <Input label="E-mail" placeholder="heroi@email.com" icon={<Mail size={18} />} {...register('email', { required: true })} />
+                  <Input label="Senha" type="password" placeholder="••••••••" icon={<Lock size={18} />} {...register('password', { required: true })} />
                 </>
               ) : (
                 <>
                   {step === 1 ? (
                     <>
-                      <Input
-                        label="Nome Completo"
-                        placeholder="Bruce Wayne"
-                        icon={<UserIcon size={18} />}
-                        {...register('name', { required: true })}
-                      />
-                      <Input
-                        label="CPF"
-                        placeholder="000.000.000-00"
-                        icon={<CreditCard size={18} />}
-                        {...register('cpf', { required: true, minLength: 11 })}
-                      />
+                      <Input label="Nome Completo" placeholder="Bruce Wayne" icon={<UserIcon size={18} />} {...register('name', { required: true })} />
+                      <Input label="CPF" placeholder="000.000.000-00" icon={<CreditCard size={18} />} {...register('cpf', { required: true, minLength: 11 })} />
                       {errors.cpf && <p className="text-red-500 text-xs">CPF é obrigatório.</p>}
                     </>
                   ) : (
                     <>
-                      <Input
-                        label="WhatsApp"
-                        placeholder="(11) 99999-9999"
-                        icon={<Phone size={18} />}
-                        {...register('whatsapp', { required: true })}
-                      />
-                      <Input
-                        label="E-mail"
-                        type="email"
-                        placeholder="heroi@email.com"
-                        icon={<Mail size={18} />}
-                        {...register('email', { required: true })}
-                      />
-                      <Input
-                        label="Nascimento"
-                        type="date"
-                        icon={<Calendar size={18} />}
-                        {...register('birthDate', { required: true })}
-                      />
-                      <Input
-                        label="Senha"
-                        type="password"
-                        placeholder="Mínimo 6 caracteres"
-                        icon={<Lock size={18} />}
-                        {...register('password', { required: true, minLength: 6 })}
-                      />
-                      {errors.password && (
-                        <p className="text-red-500 text-xs -mt-2 ml-1">A senha deve ter no mínimo 6 caracteres.</p>
-                      )}
+                      <Input label="WhatsApp" placeholder="(11) 99999-9999" icon={<Phone size={18} />} {...register('whatsapp', { required: true })} />
+                      <Input label="E-mail" type="email" placeholder="heroi@email.com" icon={<Mail size={18} />} {...register('email', { required: true })} />
+                      <Input label="Nascimento" type="date" icon={<Calendar size={18} />} {...register('birthDate', { required: true })} />
+                      <Input label="Senha" type="password" placeholder="Mínimo 6 caracteres" icon={<Lock size={18} />} {...register('password', { required: true, minLength: 6 })} />
+                      {errors.password && <p className="text-red-500 text-xs -mt-2 ml-1">A senha deve ter no mínimo 6 caracteres.</p>}
                       <Input
                         label="Confirmar Senha"
                         type="password"
                         placeholder="Repita a senha"
                         icon={<Lock size={18} />}
-                        {...register('confirmPassword', {
-                          required: true,
-                          validate: (value) => value === password || 'As senhas não coincidem',
-                        })}
+                        {...register('confirmPassword', { required: true, validate: (value) => value === password || 'As senhas não coincidem' })}
                       />
-                      {errors.confirmPassword && (
-                        <p className="text-red-500 text-xs -mt-2 ml-1">
-                          {(errors.confirmPassword as any).message}
-                        </p>
-                      )}
+                      {errors.confirmPassword && <p className="text-red-500 text-xs -mt-2 ml-1">{(errors.confirmPassword as any).message}</p>}
                       <div className="flex items-start gap-2 pt-2">
                         <input type="checkbox" className="mt-1" {...register('terms', { required: true })} />
                         <label className="text-xs text-slate-500">Aceito os termos e condições de uso da BurgerHero.</label>
