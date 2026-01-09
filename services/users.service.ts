@@ -1,199 +1,213 @@
-import { supabase } from '../lib/supabaseClient';
-import { User as AppUser, Role, HeroTheme } from '../types';
-import { User as SupabaseUser } from '@supabase/supabase-js';
+import { supabase } from '@/lib/supabaseClient';
 
-export interface FullUserProfile {
-  profile: AppUser;
-  settings: {
-    cardTemplateId: string | null;
-    fontStyle: string;
-    fontColor: string;
-    fontSize: number;
-    heroTheme: HeroTheme;
-    mode: 'light' | 'dark' | 'system';
-  } | null;
+/**
+ * Tipos básicos
+ */
+export interface UserProfile {
+  user_id: string;
+  display_name: string | null;
+  email: string | null;
+  cpf: string | null;
+  hero_code: string | null;
+  customer_id_public: string | null;
+  avatar_url: string | null;
+  role?: string | null;
+  settings?: UserSettings;
 }
 
-export const getFullUserProfile = async (user: SupabaseUser): Promise<FullUserProfile> => {
-  const userId = user.id;
+export interface UserSettings {
+  heroTheme: string;
+  cardTemplateId: string | null;
+  fontStyle: string;
+  fontColor: string;
+  fontSize: number;
+  mode: 'light' | 'dark';
+}
 
-  const { data: userProfileData, error: profileError } = await supabase
-    .from('user_profiles')
-    .select('*')
-    .eq('user_id', userId)
-    .single();
-
-  if (profileError) throw profileError;
-
-  const { data: roleData } = await supabase
-    .from('app_users')
-    .select('role')
-    .eq('id', userId)
-    .single();
-
-  const { data: settingsData } = await supabase
-    .from('hero_card_settings')
-    .select('*')
-    .eq('user_id', userId)
-    .maybeSingle();
-
-  const profile: AppUser = {
-    id: userId,
-    name: userProfileData?.display_name || user.user_metadata?.full_name || 'Herói',
-    email: userProfileData?.email || user.email || '',
-    cpf: userProfileData?.cpf || '',
-    avatarUrl: userProfileData?.avatar_url || user.user_metadata?.avatar_url || null,
-    // ✅ PADRÃO: sempre priorizar hero_code (imutável/real)
-    // fallback apenas para evitar tela vazia em dados antigos
-    customerCode: userProfileData?.hero_code || userProfileData?.customer_id_public || '',
-    role: (roleData?.role as Role) || 'client',
-  };
-
-  const settings = settingsData ? {
-    cardTemplateId: settingsData.card_template_id ?? null,
-    fontStyle: settingsData.font_style ?? 'Inter',
-    fontColor: settingsData.font_color ?? '#FFFFFF',
-    fontSize: settingsData.font_size ?? 16,
-    heroTheme: (settingsData.hero_theme as HeroTheme) ?? 'classic',
-    mode: (settingsData.mode as any) ?? 'system',
-  } : null;
-
-  return { profile, settings };
+/**
+ * SETTINGS PADRÃO (NUNCA QUEBRA LOGIN)
+ */
+const DEFAULT_SETTINGS: UserSettings = {
+  heroTheme: 'default',
+  cardTemplateId: null,
+  fontStyle: 'inter',
+  fontColor: '#ffffff',
+  fontSize: 14,
+  mode: 'dark',
 };
 
-export const getUserProfileById = async (userId: string) => {
+/**
+ * 🔐 GET USER PROFILE BY ID (SAFE)
+ * - NÃO usa .single()
+ * - SEMPRE retorna settings válidos
+ */
+export async function getUserProfileById(
+  userId: string
+): Promise<UserProfile | null> {
   const { data, error } = await supabase
     .from('user_profiles')
     .select('*')
     .eq('user_id', userId)
-    .maybeSingle();
+    .limit(1);
 
   if (error) {
-    console.error('Error fetching user profile by ID:', error);
+    console.error('[getUserProfileById] error:', error);
     return null;
   }
-  return data;
-};
 
-export const updateProfileName = async (userId: string, displayName: string) => {
+  const profile = data?.[0];
+  if (!profile) return null;
+
+  return {
+    ...profile,
+    settings: {
+      heroTheme: profile.settings?.heroTheme ?? DEFAULT_SETTINGS.heroTheme,
+      cardTemplateId:
+        profile.settings?.cardTemplateId ?? DEFAULT_SETTINGS.cardTemplateId,
+      fontStyle: profile.settings?.fontStyle ?? DEFAULT_SETTINGS.fontStyle,
+      fontColor: profile.settings?.fontColor ?? DEFAULT_SETTINGS.fontColor,
+      fontSize: profile.settings?.fontSize ?? DEFAULT_SETTINGS.fontSize,
+      mode: profile.settings?.mode ?? DEFAULT_SETTINGS.mode,
+    },
+  };
+}
+
+/**
+ * 🔍 GET USER PROFILE FROM SESSION
+ * Usado no login / bootstrap do app
+ */
+export async function ensureProfileFromSession(): Promise<UserProfile | null> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  if (!session?.user?.id) return null;
+
+  return getUserProfileById(session.user.id);
+}
+
+/**
+ * ✏️ UPDATE DISPLAY NAME
+ */
+export async function updateProfileName(
+  userId: string,
+  displayName: string
+): Promise<boolean> {
   const { error } = await supabase
     .from('user_profiles')
     .update({ display_name: displayName })
     .eq('user_id', userId);
 
-  if (error) throw error;
-};
+  if (error) {
+    console.error('[updateProfileName]', error);
+    return false;
+  }
 
-// Alias para compatibilidade
-export const updateUserName = updateProfileName;
+  return true;
+}
 
-export const getCardSettings = async (userId: string) => {
-  const { data, error } = await supabase
-    .from('hero_card_settings')
-    .select('*')
-    .eq('user_id', userId)
-    .single();
-
-  if (error) return null;
-  return data;
-};
-
-export const updateCardSettings = async (userId: string, settings: any) => {
-  const payload: any = {};
-  if (settings.templateId) payload.card_template_id = settings.templateId;
-  if (settings.fontFamily) payload.font_style = settings.fontFamily;
-  if (settings.fontColor) payload.font_color = settings.fontColor;
-  if (settings.fontSize) payload.font_size = settings.fontSize;
-  if (settings.heroTheme) payload.hero_theme = settings.heroTheme;
-  if (settings.mode) payload.mode = settings.mode;
-
-  const { error } = await supabase
-    .from('hero_card_settings')
-    .update(payload)
-    .eq('user_id', userId);
-
-  if (error) throw error;
-};
-
-export const checkCpfExists = async (cpf: string): Promise<boolean> => {
+/**
+ * 🆔 CHECK CPF EXISTS
+ */
+export async function checkCpfExists(cpf: string): Promise<boolean> {
   const cleanCpf = cpf.replace(/\D/g, '');
-  if (!cleanCpf) return false;
-  
-  const { count, error } = await supabase
+
+  const { data, error } = await supabase
     .from('user_profiles')
-    .select('user_id', { count: 'exact', head: true })
-    .eq('cpf', cleanCpf);
+    .select('user_id')
+    .eq('cpf', cleanCpf)
+    .limit(1);
 
-  if (error) return false;
-  return (count || 0) > 0;
-};
+  if (error) {
+    console.error('[checkCpfExists]', error);
+    return false;
+  }
 
-export const uploadAndSyncAvatar = async (userId: string, file: File): Promise<string | null> => {
-  // Usar bucket "avatars" ou "images" conforme configuração do projeto.
-  // Aqui assumo 'images' como padrão comum ou 'avatars' se existir. 
-  // Vou tentar 'avatars' primeiro.
-  const bucketName = 'avatars'; 
+  return !!data?.length;
+}
+
+/**
+ * 🖼️ UPLOAD AVATAR + SYNC PROFILE
+ */
+export async function uploadAndSyncAvatar(
+  userId: string,
+  file: File
+): Promise<string | null> {
   const fileExt = file.name.split('.').pop();
-  const fileName = `${userId}-${Date.now()}.${fileExt}`;
-  const filePath = `user-avatars/${fileName}`;
+  const filePath = `avatars/${userId}.${fileExt}`;
 
   const { error: uploadError } = await supabase.storage
-    .from(bucketName)
+    .from('avatars')
     .upload(filePath, file, { upsert: true });
 
   if (uploadError) {
-    console.error('Upload failed:', uploadError);
-    throw uploadError;
+    console.error('[uploadAvatar]', uploadError);
+    return null;
   }
 
-  const { data } = supabase.storage.from(bucketName).getPublicUrl(filePath);
-  const publicUrl = data.publicUrl;
+  const { data } = supabase.storage.from('avatars').getPublicUrl(filePath);
+  const avatarUrl = data.publicUrl;
 
-  const { error: updateError } = await supabase
+  await supabase
     .from('user_profiles')
-    .update({ avatar_url: publicUrl })
+    .update({ avatar_url: avatarUrl })
     .eq('user_id', userId);
 
-  if (updateError) throw updateError;
-
-  return publicUrl;
-};
-
-export const ensureHeroIdentity = async (userId: string): Promise<string | null> => {
-  // Chama a RPC que garante e retorna o hero_code
-  // A RPC usa auth.uid(), então precisamos estar logados.
-  // Se userId for passado apenas para log, ok.
-  const { data, error } = await supabase.rpc('ensure_hero_identity');
-  if (error) {
-    console.error('ensure_hero_identity error:', error);
-    return null;
-  }
-  return data as string;
-};
-
-export const ensureProfileFromSession = async (user: SupabaseUser) => {
-  const { error } = await supabase.rpc('ensure_user_profile', {
-    p_display_name: user.user_metadata?.full_name || 'Hero',
-    p_email: user.email,
-    p_cpf: null // CPF opcional neste fluxo
-  });
-  if (error) console.error('ensureProfileFromSession warning:', error);
-};
-
-export interface PublicProfile {
-  display_name: string;
-  avatar_url: string | null;
-  customer_code: string;
-  subscription_status: string | null;
-  created_at: string;
+  return avatarUrl;
 }
 
-export const getPublicProfileByCode = async (code: string): Promise<PublicProfile | null> => {
-  const { data, error } = await supabase.rpc('get_public_profile_by_code', { p_code: code });
-  if (error) {
-    console.error('Erro ao buscar perfil público:', error);
-    return null;
+/**
+ * 🛡️ ENSURE HERO IDENTITY (NÃO GERA NOVO CÓDIGO)
+ */
+export async function ensureHeroIdentity(
+  userId: string
+): Promise<{ hero_code: string | null; customer_id_public: string | null }> {
+  const { data, error } = await supabase
+    .from('user_profiles')
+    .select('hero_code, customer_id_public')
+    .eq('user_id', userId)
+    .limit(1);
+
+  if (error || !data?.[0]) {
+    console.error('[ensureHeroIdentity]', error);
+    return { hero_code: null, customer_id_public: null };
   }
-  if (Array.isArray(data) && data.length > 0) return data[0] as PublicProfile;
-  return null;
-};
+
+  return {
+    hero_code: data[0].hero_code,
+    customer_id_public: data[0].customer_id_public,
+  };
+}
+
+/**
+ * 🎴 UPDATE CARD SETTINGS (SAFE)
+ */
+export async function updateCardSettings(
+  userId: string,
+  settings: Partial<UserSettings>
+): Promise<boolean> {
+  const { data } = await supabase
+    .from('user_profiles')
+    .select('settings')
+    .eq('user_id', userId)
+    .limit(1);
+
+  const currentSettings = data?.[0]?.settings ?? DEFAULT_SETTINGS;
+
+  const newSettings = {
+    ...currentSettings,
+    ...settings,
+  };
+
+  const { error } = await supabase
+    .from('user_profiles')
+    .update({ settings: newSettings })
+    .eq('user_id', userId);
+
+  if (error) {
+    console.error('[updateCardSettings]', error);
+    return false;
+  }
+
+  return true;
+}
