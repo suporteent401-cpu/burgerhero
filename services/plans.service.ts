@@ -3,9 +3,9 @@ import { Plan } from '../types';
 
 /**
  * PlansService
- * - NÃO quebra chamadas existentes: expõe listAllPlans(), listActivePlans(), createPlan(), updatePlan().
- * - Agora tenta ler de uma VIEW "plans_with_stats" (assinantes/popularidade em tempo real),
- *   com fallback seguro para tabela "plans" se a view não existir.
+ * - Tenta ler de uma VIEW "plans_with_stats" (assinantes/popularidade em tempo real).
+ * - Fallback seguro para tabela "plans" se a view não existir ou falhar.
+ * - Escritas (create/update) sempre vão na tabela "plans".
  */
 
 type DbPlanRow = {
@@ -21,9 +21,6 @@ type DbPlanRow = {
   // stats (da view)
   subscriber_count?: number | null;
   popularity?: number | null;
-
-  // caso exista no seu schema
-  slug?: string | null;
 };
 
 const mapDbToPlan = (p: DbPlanRow): Plan => {
@@ -38,7 +35,7 @@ const mapDbToPlan = (p: DbPlanRow): Plan => {
     subscriberCount: Number(p.subscriber_count ?? 0),
     popularity: Number(p.popularity ?? 0),
 
-    // snake_case opcionais (compat)
+    // snake_case opcionais (compatibilidade)
     price_cents: p.price_cents,
     image_url: p.image_url || '',
     is_active: Boolean(p.is_active),
@@ -56,9 +53,9 @@ const mapPlanToDbPayload = (plan: Partial<Plan>) => {
   if (typeof (plan as any).description === 'string') payload.description = (plan as any).description;
   if (Array.isArray((plan as any).benefits)) payload.benefits = (plan as any).benefits;
   if (typeof (plan as any).imageUrl === 'string') payload.image_url = (plan as any).imageUrl;
-  if (typeof (plan as any).active === 'boolean') payload.is_active = (plan as any).active;
-
-  // compat: alguns pontos do app enviam is_active direto
+  
+  // Tratamento robusto para o boolean active/is_active
+  if (typeof plan.active === 'boolean') payload.is_active = plan.active;
   if (typeof (plan as any).is_active === 'boolean') payload.is_active = (plan as any).is_active;
 
   return payload;
@@ -73,20 +70,23 @@ async function selectPlansFrom(source: 'plans_with_stats' | 'plans', onlyActive:
 export const plansService = {
   /**
    * Lista TODOS os planos (ativos e inativos) — usado no Admin.
+   * Tenta view primeiro, fallback para tabela.
    */
   async listAllPlans(): Promise<Plan[]> {
     // 1) tenta view (tempo real)
     const tryView = await selectPlansFrom('plans_with_stats', false);
-    if (!tryView.error) {
-      return (tryView.data || []).map(mapDbToPlan);
+    if (!tryView.error && tryView.data) {
+      return tryView.data.map(mapDbToPlan);
     }
 
-    console.warn('[PlansService] plans_with_stats não disponível, usando plans (fallback):', tryView.error);
+    if (tryView.error) {
+      console.warn('[PlansService] View plans_with_stats indisponível, usando fallback:', tryView.error.message);
+    }
 
     // 2) fallback tabela
     const { data, error } = await selectPlansFrom('plans', false);
     if (error) {
-      console.error('[PlansService] Erro ao listar TODOS os planos:', error);
+      console.error('[PlansService] Erro fatal ao listar planos:', error);
       return [];
     }
     return (data || []).map(mapDbToPlan);
@@ -94,27 +94,26 @@ export const plansService = {
 
   /**
    * Lista apenas planos ativos — usado no /plans público.
+   * Tenta view primeiro, fallback para tabela.
    */
   async listActivePlans(): Promise<Plan[]> {
     // 1) tenta view (tempo real)
     const tryView = await selectPlansFrom('plans_with_stats', true);
-    if (!tryView.error) {
-      return (tryView.data || []).map(mapDbToPlan);
+    if (!tryView.error && tryView.data) {
+      return tryView.data.map(mapDbToPlan);
     }
-
-    console.warn('[PlansService] plans_with_stats não disponível, usando plans (fallback):', tryView.error);
 
     // 2) fallback tabela
     const { data, error } = await selectPlansFrom('plans', true);
     if (error) {
-      console.error('[PlansService] Erro ao listar planos ativos:', error);
+      console.error('[PlansService] Erro fatal ao listar planos ativos:', error);
       return [];
     }
     return (data || []).map(mapDbToPlan);
   },
 
   /**
-   * Cria um plano.
+   * Cria um plano na tabela oficial (public.plans).
    */
   async createPlan(plan: Partial<Plan>): Promise<Plan | null> {
     const payload = mapPlanToDbPayload(plan);
@@ -134,7 +133,7 @@ export const plansService = {
   },
 
   /**
-   * Atualiza um plano.
+   * Atualiza um plano na tabela oficial (public.plans).
    */
   async updatePlan(planId: string, updates: Partial<Plan>): Promise<Plan | null> {
     const payload = mapPlanToDbPayload(updates);
