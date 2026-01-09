@@ -29,20 +29,27 @@ export const SupabaseAuthProvider: React.FC<AuthProviderProps> = ({ children }) 
     isInitializingRef.current = true;
 
     const applySettingsAndLoadTemplates = async (settings: any) => {
-      // 1) Aplica configurações do usuário
-      if (settings?.heroTheme) useThemeStore.getState().setHeroTheme(settings.heroTheme);
-      if (settings?.mode) useThemeStore.getState().setMode(settings.mode);
+      const safe = settings ?? {
+        cardTemplateId: null,
+        fontStyle: 'Inter',
+        fontColor: '#FFFFFF',
+        fontSize: 22,
+        heroTheme: 'sombra-noturna',
+        mode: 'system',
+      };
+
+      if (safe?.heroTheme) useThemeStore.getState().setHeroTheme(safe.heroTheme);
+      if (safe?.mode) useThemeStore.getState().setMode(safe.mode);
 
       useCardStore.getState().setAll({
-        templateId: settings?.cardTemplateId || undefined,
-        font: settings?.fontStyle || undefined,
-        color: settings?.fontColor || undefined,
-        fontSize: settings?.fontSize || undefined,
+        templateId: safe?.cardTemplateId || undefined,
+        font: safe?.fontStyle || undefined,
+        color: safe?.fontColor || undefined,
+        fontSize: safe?.fontSize || undefined,
       });
 
       useThemeStore.getState().applyTheme();
 
-      // 2) Carrega templates ativos do banco
       try {
         const dbTemplates = await templatesService.getActiveTemplates();
         if (dbTemplates.length > 0) {
@@ -55,8 +62,8 @@ export const SupabaseAuthProvider: React.FC<AuthProviderProps> = ({ children }) 
 
     const buildLoginFromSession = async (sessionUser: any) => {
       let full = await getFullUserProfile(sessionUser);
-      
-      // 🔥 AUTO-CURA: Se não achou perfil, tenta criar agora
+
+      // 🔥 AUTO-CURA: Se não achou perfil, tenta criar agora (sem RPC problemática)
       if (!full) {
         console.warn('Perfil incompleto detectado. Tentando auto-cura...');
         try {
@@ -80,7 +87,10 @@ export const SupabaseAuthProvider: React.FC<AuthProviderProps> = ({ children }) 
     const initAuth = async () => {
       setLoading(true);
       try {
-        const { data: { session }, error } = await supabase.auth.getSession();
+        const {
+          data: { session },
+          error,
+        } = await supabase.auth.getSession();
 
         if (error || !session?.user) {
           logout();
@@ -90,8 +100,10 @@ export const SupabaseAuthProvider: React.FC<AuthProviderProps> = ({ children }) 
         const safeProfile = await buildLoginFromSession(session.user);
 
         if (!safeProfile) {
-          console.warn('[SupabaseAuthProvider] Perfil não pôde ser recuperado. Realizando logout de limpeza.');
-          logout(); // Segurança: se falhar tudo, sai.
+          console.warn(
+            '[SupabaseAuthProvider] Perfil não pôde ser recuperado. Realizando logout de limpeza.'
+          );
+          logout();
           return;
         }
 
@@ -106,7 +118,9 @@ export const SupabaseAuthProvider: React.FC<AuthProviderProps> = ({ children }) 
 
     initAuth();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'INITIAL_SESSION') return;
 
       if (event === 'SIGNED_OUT') {
@@ -119,9 +133,9 @@ export const SupabaseAuthProvider: React.FC<AuthProviderProps> = ({ children }) 
         try {
           const safeProfile = await buildLoginFromSession(session.user);
           if (!safeProfile) {
-             console.error('Falha crítica ao montar perfil no evento de Auth. Logout forçado.');
-             logout();
-             return;
+            console.error('Falha crítica ao montar perfil no evento de Auth. Logout forçado.');
+            logout();
+            return;
           }
 
           login(safeProfile);
