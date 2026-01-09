@@ -94,9 +94,11 @@ export const getFullUserProfile = async (user: SupabaseUser): Promise<FullUserPr
           cardTemplateId: settingsData.card_template_id ?? null,
           fontStyle: settingsData.font_style ?? DEFAULT_SETTINGS.fontStyle,
           fontColor: settingsData.font_color ?? DEFAULT_SETTINGS.fontColor,
-          fontSize: settingsData.font_size ?? DEFAULT_SETTINGS.fontSize,
+          // Mapeamento correto: font_size_px -> fontSize
+          fontSize: settingsData.font_size_px ?? DEFAULT_SETTINGS.fontSize,
           heroTheme: (settingsData.hero_theme as HeroTheme) ?? DEFAULT_SETTINGS.heroTheme,
-          mode: (settingsData.mode as any) ?? DEFAULT_SETTINGS.mode,
+          // Mapeamento correto: theme_mode -> mode
+          mode: (settingsData.theme_mode as any) ?? DEFAULT_SETTINGS.mode,
         }
       : { ...DEFAULT_SETTINGS };
 
@@ -153,9 +155,14 @@ export const updateCardSettings = async (userId: string, settings: any) => {
   if (settings.templateId !== undefined) payload.card_template_id = settings.templateId ?? null;
   if (settings.fontFamily !== undefined) payload.font_style = settings.fontFamily;
   if (settings.fontColor !== undefined) payload.font_color = settings.fontColor;
-  if (settings.fontSize !== undefined) payload.font_size = settings.fontSize;
+  
+  // Mapeamento correto: fontSize -> font_size_px
+  if (settings.fontSize !== undefined) payload.font_size_px = settings.fontSize;
+  
   if (settings.heroTheme !== undefined) payload.hero_theme = settings.heroTheme;
-  if (settings.mode !== undefined) payload.mode = settings.mode;
+  
+  // Mapeamento correto: mode -> theme_mode
+  if (settings.mode !== undefined) payload.theme_mode = settings.mode;
 
   const { error } = await supabase.from('hero_card_settings').update(payload).eq('user_id', userId);
   if (error) throw error;
