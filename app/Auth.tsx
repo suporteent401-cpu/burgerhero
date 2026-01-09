@@ -8,7 +8,7 @@ import { Mail, Lock, User as UserIcon, Calendar, Phone, CreditCard } from 'lucid
 import { useAuthStore } from '../store/authStore';
 import { motion } from 'framer-motion';
 import { supabase } from '../lib/supabaseClient';
-import { getFullUserProfile, checkCpfExists } from '../services/users.service';
+import { getFullUserProfile, checkCpfExists, ensureUserBootstrap } from '../services/users.service';
 import { subscriptionMockService } from '../services/subscriptionMock.service';
 import { useThemeStore } from '../store/themeStore';
 import { useCardStore } from '../store/cardStore';
@@ -41,15 +41,27 @@ const Auth: React.FC = () => {
 
   const password = watch('password');
 
+  // ✅ Agora aceita settings nulo e aplica defaults sem quebrar
   const applySettingsAndLoadTemplates = async (settings: any) => {
-    useThemeStore.getState().setHeroTheme(settings.heroTheme);
-    useThemeStore.getState().setMode(settings.mode);
+    const safe = settings ?? {
+      cardTemplateId: null,
+      fontStyle: 'Inter',
+      fontColor: '#FFFFFF',
+      fontSize: 22,
+      heroTheme: 'sombra-noturna',
+      mode: 'system',
+    };
+
+    useThemeStore.getState().setHeroTheme(safe.heroTheme);
+    useThemeStore.getState().setMode(safe.mode);
+
     useCardStore.getState().setAll({
-      templateId: settings.cardTemplateId || undefined,
-      font: settings.fontStyle,
-      color: settings.fontColor,
-      fontSize: settings.fontSize,
+      templateId: safe.cardTemplateId || undefined,
+      font: safe.fontStyle,
+      color: safe.fontColor,
+      fontSize: safe.fontSize,
     });
+
     useThemeStore.getState().applyTheme();
 
     try {
@@ -72,32 +84,6 @@ const Auth: React.FC = () => {
     if (role === 'admin') navigate('/admin', { replace: true });
     else if (role === 'staff') navigate('/staff', { replace: true });
     else navigate('/app', { replace: true });
-  };
-
-  const ensureBootstrap = async (payload: {
-    name: string;
-    email: string;
-    cpf: string;
-    birthDate?: string | null;
-    whatsapp?: string | null;
-  }) => {
-    const cpf = normalizeCpf(payload.cpf);
-
-    const { data, error } = await supabase.rpc('ensure_user_bootstrap', {
-      p_display_name: payload.name,
-      p_email: payload.email,
-      p_cpf: cpf,
-      p_birthdate: payload.birthDate ? payload.birthDate : null,
-      p_whatsapp: payload.whatsapp ? payload.whatsapp : null,
-    });
-
-    if (error) {
-      console.error('RPC ensure_user_bootstrap falhou:', error);
-      return { ok: false, message: error.message };
-    }
-
-    const result = Array.isArray(data) ? data[0] : data;
-    return result || { ok: true };
   };
 
   const onSubmit = async (data: any) => {
@@ -124,13 +110,17 @@ const Auth: React.FC = () => {
         // 1) tenta carregar perfil normalmente
         let full = await getFullUserProfile(signInData.session.user);
 
-        // 2) se falhar (muito comum em usuário novo), roda bootstrap e tenta de novo
+        // 2) se não existir perfil (usuário novo / inconsistente), faz bootstrap via UPSERT
         if (!full) {
-          console.warn('Falha ao carregar perfil no login. Tentando bootstrap...');
-          await ensureBootstrap({
-            name: (signInData.session.user.user_metadata as any)?.full_name || 'Hero',
+          console.warn('Falha ao carregar perfil no login. Tentando bootstrap direto...');
+          await ensureUserBootstrap({
+            userId: signInData.session.user.id,
             email: signInData.session.user.email || data.email,
-            cpf: '00000000000', // fallback seguro: NÃO deve acontecer; ideal é CPF existir em user_profiles.
+            displayName: (signInData.session.user.user_metadata as any)?.full_name || 'Herói',
+            avatarUrl: (signInData.session.user.user_metadata as any)?.avatar_url || null,
+            cpf: null,
+            birthdate: null,
+            role: 'client',
           });
 
           full = await getFullUserProfile(signInData.session.user);
@@ -192,18 +182,16 @@ const Auth: React.FC = () => {
         throw new Error('Erro ao estabelecer sessão após cadastro.');
       }
 
-      // ✅ Bootstrap garantido no banco (app_users + user_profiles)
-      const boot = await ensureBootstrap({
-        name: fullUserData.name,
+      // ✅ Bootstrap garantido no banco (sem RPC problemática)
+      await ensureUserBootstrap({
+        userId: signUpData.session.user.id,
         email: fullUserData.email,
+        displayName: fullUserData.name,
         cpf: fullUserData.cpf,
-        birthDate: fullUserData.birthDate || null,
-        whatsapp: fullUserData.whatsapp || null,
+        birthdate: fullUserData.birthDate || null,
+        avatarUrl: null,
+        role: 'client',
       });
-
-      if (!boot?.ok) {
-        console.warn('Bootstrap retornou alerta:', boot?.message);
-      }
 
       const full = await getFullUserProfile(signUpData.session.user);
 
@@ -333,7 +321,9 @@ const Auth: React.FC = () => {
                       )}
                       <div className="flex items-start gap-2 pt-2">
                         <input type="checkbox" className="mt-1" {...register('terms', { required: true })} />
-                        <label className="text-xs text-slate-500">Aceito os termos e condições de uso da BurgerHero.</label>
+                        <label className="text-xs text-slate-500">
+                          Aceito os termos e condições de uso da BurgerHero.
+                        </label>
                       </div>
                     </>
                   )}
