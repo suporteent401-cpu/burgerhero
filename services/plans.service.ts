@@ -4,7 +4,8 @@ import { Plan } from '../types';
 /**
  * PlansService
  * - NÃO quebra chamadas existentes: expõe listAllPlans(), listActivePlans(), createPlan(), updatePlan().
- * - Mantém mapeamento consistente para o formato usado pelo Admin (camelCase).
+ * - Agora tenta ler de uma VIEW "plans_with_stats" (assinantes/popularidade em tempo real),
+ *   com fallback seguro para tabela "plans" se a view não existir.
  */
 
 type DbPlanRow = {
@@ -16,8 +17,13 @@ type DbPlanRow = {
   image_url?: string | null;
   is_active?: boolean | null;
   created_at?: string | null;
+
+  // stats (da view)
   subscriber_count?: number | null;
   popularity?: number | null;
+
+  // caso exista no seu schema
+  slug?: string | null;
 };
 
 const mapDbToPlan = (p: DbPlanRow): Plan => {
@@ -58,21 +64,31 @@ const mapPlanToDbPayload = (plan: Partial<Plan>) => {
   return payload;
 };
 
+async function selectPlansFrom(source: 'plans_with_stats' | 'plans', onlyActive: boolean) {
+  let q = supabase.from(source).select('*').order('price_cents', { ascending: true });
+  if (onlyActive) q = q.eq('is_active', true);
+  return q;
+}
+
 export const plansService = {
   /**
    * Lista TODOS os planos (ativos e inativos) — usado no Admin.
    */
   async listAllPlans(): Promise<Plan[]> {
-    const { data, error } = await supabase
-      .from('plans')
-      .select('*')
-      .order('price_cents', { ascending: true });
+    // 1) tenta view (tempo real)
+    const tryView = await selectPlansFrom('plans_with_stats', false);
+    if (!tryView.error) {
+      return (tryView.data || []).map(mapDbToPlan);
+    }
 
+    console.warn('[PlansService] plans_with_stats não disponível, usando plans (fallback):', tryView.error);
+
+    // 2) fallback tabela
+    const { data, error } = await selectPlansFrom('plans', false);
     if (error) {
       console.error('[PlansService] Erro ao listar TODOS os planos:', error);
       return [];
     }
-
     return (data || []).map(mapDbToPlan);
   },
 
@@ -80,17 +96,20 @@ export const plansService = {
    * Lista apenas planos ativos — usado no /plans público.
    */
   async listActivePlans(): Promise<Plan[]> {
-    const { data, error } = await supabase
-      .from('plans')
-      .select('*')
-      .eq('is_active', true)
-      .order('price_cents', { ascending: true });
+    // 1) tenta view (tempo real)
+    const tryView = await selectPlansFrom('plans_with_stats', true);
+    if (!tryView.error) {
+      return (tryView.data || []).map(mapDbToPlan);
+    }
 
+    console.warn('[PlansService] plans_with_stats não disponível, usando plans (fallback):', tryView.error);
+
+    // 2) fallback tabela
+    const { data, error } = await selectPlansFrom('plans', true);
     if (error) {
       console.error('[PlansService] Erro ao listar planos ativos:', error);
       return [];
     }
-
     return (data || []).map(mapDbToPlan);
   },
 
