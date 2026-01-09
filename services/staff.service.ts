@@ -55,4 +55,30 @@ export const staffService = {
       voucher_status: row?.voucher_status || null,
     };
   },
+
+  /**
+   * Conta quantos vouchers o staff logado resgatou desde o início do dia (UTC 00:00)
+   */
+  async getShiftRedemptionsCount(): Promise<number> {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return 0;
+
+    // Define o início do dia em UTC para filtrar o turno atual
+    const today = new Date();
+    today.setUTCHours(0, 0, 0, 0);
+    const isoDate = today.toISOString();
+
+    const { count, error } = await supabase
+      .from('voucher_redemptions')
+      .select('*', { count: 'exact', head: true })
+      .eq('staff_id', user.id)
+      .gte('redeemed_at', isoDate);
+
+    if (error) {
+      console.error('Erro ao contar resgates do turno:', error);
+      return 0;
+    }
+
+    return count || 0;
+  }
 };

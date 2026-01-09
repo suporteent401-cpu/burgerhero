@@ -1,12 +1,20 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Card, CardBody } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { useAuthStore } from '../store/authStore';
-import { QrCode, Award, UserCheck } from 'lucide-react';
+import { QrCode, Award, UserCheck, Loader2 } from 'lucide-react';
+import { staffService } from '../services/staff.service';
 
 const StaffHome: React.FC = () => {
   const user = useAuthStore(state => state.user);
+  const [shiftCount, setShiftCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    staffService.getShiftRedemptionsCount()
+      .then(setShiftCount)
+      .catch(err => console.error(err));
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -38,7 +46,13 @@ const StaffHome: React.FC = () => {
             <Award size={20} className="text-hero-primary" />
             <span className="font-bold text-sm">Resgates no Turno</span>
           </div>
-          <span className="text-2xl font-black tracking-tighter">14</span>
+          <span className="text-2xl font-black tracking-tighter">
+            {shiftCount === null ? (
+              <Loader2 className="animate-spin w-5 h-5" />
+            ) : (
+              shiftCount
+            )}
+          </span>
         </CardBody>
       </Card>
     </div>
