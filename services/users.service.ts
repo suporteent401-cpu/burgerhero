@@ -61,7 +61,21 @@ export const getFullUserProfile = async (user: SupabaseUser): Promise<FullUserPr
   return { profile, settings };
 };
 
-export const updateUserName = async (userId: string, displayName: string) => {
+export const getUserProfileById = async (userId: string) => {
+  const { data, error } = await supabase
+    .from('user_profiles')
+    .select('*')
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (error) {
+    console.error('Error fetching user profile by ID:', error);
+    return null;
+  }
+  return data;
+};
+
+export const updateProfileName = async (userId: string, displayName: string) => {
   const { error } = await supabase
     .from('user_profiles')
     .update({ display_name: displayName })
@@ -69,6 +83,9 @@ export const updateUserName = async (userId: string, displayName: string) => {
 
   if (error) throw error;
 };
+
+// Alias para compatibilidade
+export const updateUserName = updateProfileName;
 
 export const getCardSettings = async (userId: string) => {
   const { data, error } = await supabase
@@ -79,6 +96,88 @@ export const getCardSettings = async (userId: string) => {
 
   if (error) return null;
   return data;
+};
+
+export const updateCardSettings = async (userId: string, settings: any) => {
+  const payload: any = {};
+  if (settings.templateId) payload.card_template_id = settings.templateId;
+  if (settings.fontFamily) payload.font_style = settings.fontFamily;
+  if (settings.fontColor) payload.font_color = settings.fontColor;
+  if (settings.fontSize) payload.font_size = settings.fontSize;
+  if (settings.heroTheme) payload.hero_theme = settings.heroTheme;
+  if (settings.mode) payload.mode = settings.mode;
+
+  const { error } = await supabase
+    .from('hero_card_settings')
+    .update(payload)
+    .eq('user_id', userId);
+
+  if (error) throw error;
+};
+
+export const checkCpfExists = async (cpf: string): Promise<boolean> => {
+  const cleanCpf = cpf.replace(/\D/g, '');
+  if (!cleanCpf) return false;
+  
+  const { count, error } = await supabase
+    .from('user_profiles')
+    .select('user_id', { count: 'exact', head: true })
+    .eq('cpf', cleanCpf);
+
+  if (error) return false;
+  return (count || 0) > 0;
+};
+
+export const uploadAndSyncAvatar = async (userId: string, file: File): Promise<string | null> => {
+  // Usar bucket "avatars" ou "images" conforme configuração do projeto.
+  // Aqui assumo 'images' como padrão comum ou 'avatars' se existir. 
+  // Vou tentar 'avatars' primeiro.
+  const bucketName = 'avatars'; 
+  const fileExt = file.name.split('.').pop();
+  const fileName = `${userId}-${Date.now()}.${fileExt}`;
+  const filePath = `user-avatars/${fileName}`;
+
+  const { error: uploadError } = await supabase.storage
+    .from(bucketName)
+    .upload(filePath, file, { upsert: true });
+
+  if (uploadError) {
+    console.error('Upload failed:', uploadError);
+    throw uploadError;
+  }
+
+  const { data } = supabase.storage.from(bucketName).getPublicUrl(filePath);
+  const publicUrl = data.publicUrl;
+
+  const { error: updateError } = await supabase
+    .from('user_profiles')
+    .update({ avatar_url: publicUrl })
+    .eq('user_id', userId);
+
+  if (updateError) throw updateError;
+
+  return publicUrl;
+};
+
+export const ensureHeroIdentity = async (userId: string): Promise<string | null> => {
+  // Chama a RPC que garante e retorna o hero_code
+  // A RPC usa auth.uid(), então precisamos estar logados.
+  // Se userId for passado apenas para log, ok.
+  const { data, error } = await supabase.rpc('ensure_hero_identity');
+  if (error) {
+    console.error('ensure_hero_identity error:', error);
+    return null;
+  }
+  return data as string;
+};
+
+export const ensureProfileFromSession = async (user: SupabaseUser) => {
+  const { error } = await supabase.rpc('ensure_user_profile', {
+    p_display_name: user.user_metadata?.full_name || 'Hero',
+    p_email: user.email,
+    p_cpf: null // CPF opcional neste fluxo
+  });
+  if (error) console.error('ensureProfileFromSession warning:', error);
 };
 
 export interface PublicProfile {
