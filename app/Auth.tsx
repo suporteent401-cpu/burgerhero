@@ -8,12 +8,12 @@ import { Mail, Lock, User as UserIcon, Calendar, Phone, CreditCard } from 'lucid
 import { useAuthStore } from '../store/authStore';
 import { motion } from 'framer-motion';
 import { supabase } from '../lib/supabaseClient';
-import { getFullUserProfile, checkCpfExists } from '../services/users.service';
+import { getFullUserProfile, checkCpfExists, ensureProfileFromSession } from '../services/users.service';
 import { subscriptionMockService } from '../services/subscriptionMock.service';
 import { useThemeStore } from '../store/themeStore';
 import { useCardStore } from '../store/cardStore';
 import { templatesService } from '../services/templates.service';
-import type { Role } from '../types';
+import type { Role, HeroTheme } from '../types';
 
 const normalizeRole = (input: any): Role => {
   const r = String(input || '').toLowerCase();
@@ -28,7 +28,7 @@ const DEFAULT_SETTINGS = {
   fontStyle: 'Inter',
   fontColor: '#FFFFFF',
   fontSize: 22,
-  heroTheme: 'sombra-noturna',
+  heroTheme: 'sombra-noturna' as HeroTheme,
   mode: 'system' as 'light' | 'dark' | 'system',
 };
 
@@ -50,17 +50,17 @@ const Auth: React.FC = () => {
 
   const password = watch('password');
 
-  const applySettingsAndLoadTemplates = async (settingsRaw: any) => {
-    const settings = settingsRaw ?? DEFAULT_SETTINGS;
+  const applySettingsAndLoadTemplates = async (settings: any) => {
+    const safe = settings || DEFAULT_SETTINGS;
 
-    useThemeStore.getState().setHeroTheme(settings.heroTheme || DEFAULT_SETTINGS.heroTheme);
-    useThemeStore.getState().setMode(settings.mode || DEFAULT_SETTINGS.mode);
+    useThemeStore.getState().setHeroTheme(safe.heroTheme || DEFAULT_SETTINGS.heroTheme);
+    useThemeStore.getState().setMode(safe.mode || DEFAULT_SETTINGS.mode);
 
     useCardStore.getState().setAll({
-      templateId: settings.cardTemplateId || undefined,
-      font: settings.fontStyle || DEFAULT_SETTINGS.fontStyle,
-      color: settings.fontColor || DEFAULT_SETTINGS.fontColor,
-      fontSize: settings.fontSize || DEFAULT_SETTINGS.fontSize,
+      templateId: safe.cardTemplateId ?? undefined,
+      font: safe.fontStyle || DEFAULT_SETTINGS.fontStyle,
+      color: safe.fontColor || DEFAULT_SETTINGS.fontColor,
+      fontSize: safe.fontSize || DEFAULT_SETTINGS.fontSize,
     });
 
     useThemeStore.getState().applyTheme();
@@ -125,27 +125,20 @@ const Auth: React.FC = () => {
         });
 
         if (authError) {
-          throw new Error(
-            authError.message === 'Invalid login credentials' ? 'Credenciais inválidas.' : authError.message
-          );
+          throw new Error(authError.message === 'Invalid login credentials' ? 'Credenciais inválidas.' : authError.message);
         }
 
         if (!signInData.session) {
           throw new Error('Não foi possível iniciar a sessão.');
         }
 
-        // 1) tenta carregar perfil normalmente
+        // 1) tenta carregar perfil
         let full = await getFullUserProfile(signInData.session.user);
 
-        // 2) se falhar, tenta bootstrap e recarrega
+        // 2) se não veio, roda auto-cura SEM inventar CPF
         if (!full) {
-          console.warn('Falha ao carregar perfil no login. Tentando bootstrap...');
-          await ensureBootstrap({
-            name: (signInData.session.user.user_metadata as any)?.full_name || 'Hero',
-            email: signInData.session.user.email || data.email,
-            cpf: '00000000000',
-          });
-
+          console.warn('Falha ao carregar perfil no login. Tentando auto-cura...');
+          await ensureProfileFromSession(signInData.session.user);
           full = await getFullUserProfile(signInData.session.user);
         }
 
@@ -160,7 +153,6 @@ const Auth: React.FC = () => {
           return;
         }
 
-        // fallback: deixa o provider tentar
         navigate('/app', { replace: true });
         return;
       }
@@ -204,6 +196,7 @@ const Auth: React.FC = () => {
         throw new Error('Erro ao estabelecer sessão após cadastro.');
       }
 
+      // ✅ Bootstrap real (com cpf/whatsapp/birthdate reais)
       const boot = await ensureBootstrap({
         name: fullUserData.name,
         email: fullUserData.email,
@@ -254,9 +247,7 @@ const Auth: React.FC = () => {
           <h1 className="text-3xl font-black mb-2 tracking-tight text-white">
             Burger<span className="text-hero-primary">Hero</span>
           </h1>
-          <p className="text-slate-400 font-medium">
-            {isLogin ? 'Bem-vindo de volta, Herói!' : 'Crie sua identidade secreta'}
-          </p>
+          <p className="text-slate-400 font-medium">{isLogin ? 'Bem-vindo de volta, Herói!' : 'Crie sua identidade secreta'}</p>
         </div>
 
         <Card>
@@ -287,9 +278,14 @@ const Auth: React.FC = () => {
                         type="password"
                         placeholder="Repita a senha"
                         icon={<Lock size={18} />}
-                        {...register('confirmPassword', { required: true, validate: (value) => value === password || 'As senhas não coincidem' })}
+                        {...register('confirmPassword', {
+                          required: true,
+                          validate: (value) => value === password || 'As senhas não coincidem',
+                        })}
                       />
-                      {errors.confirmPassword && <p className="text-red-500 text-xs -mt-2 ml-1">{(errors.confirmPassword as any).message}</p>}
+                      {errors.confirmPassword && (
+                        <p className="text-red-500 text-xs -mt-2 ml-1">{(errors.confirmPassword as any).message}</p>
+                      )}
                       <div className="flex items-start gap-2 pt-2">
                         <input type="checkbox" className="mt-1" {...register('terms', { required: true })} />
                         <label className="text-xs text-slate-500">Aceito os termos e condições de uso da BurgerHero.</label>
