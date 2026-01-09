@@ -12,7 +12,8 @@ export type HeroTheme =
   | 'vermelho-heroi'
   | 'verde-neon'
   | 'laranja-vulcanico'
-  | 'azul-eletrico';
+  | 'azul-eletrico'
+  | 'preto-absoluto'; // Novo Tema
 
 export interface User {
   id: string;
@@ -40,7 +41,6 @@ export interface Subscription {
 }
 
 export interface Plan {
-  // Formato usado na UI/Admin (camelCase)
   id: string;
   name: string;
   priceCents: number;
@@ -50,9 +50,6 @@ export interface Plan {
   active: boolean;
   subscriberCount: number;
   popularity: number;
-
-  // Campos do banco (snake_case) opcionais — mantidos por compatibilidade
-  // (evita quebrar telas/serviços que ainda referenciam o formato do banco)
   price_cents?: number;
   image_url?: string;
   is_active?: boolean;

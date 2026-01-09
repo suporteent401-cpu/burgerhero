@@ -4,6 +4,7 @@
 
 :root {
   --primary-color: #1e40af; /* Default sombra-noturna */
+  --app-font-size: 1rem;
 }
 
 .theme-sombra-noturna { --primary-color: #1e40af; }
@@ -16,13 +17,23 @@
 .theme-verde-neon { --primary-color: #08FF01; }
 .theme-laranja-vulcanico { --primary-color: #FF4F02; }
 .theme-azul-eletrico { --primary-color: #0300FF; }
+.theme-preto-absoluto { --primary-color: #000000; }
 
 .bg-hero-primary { background-color: var(--primary-color); }
 .text-hero-primary { color: var(--primary-color); }
 .border-hero-primary { border-color: var(--primary-color); }
 
+html {
+  font-size: var(--app-font-size);
+}
+
 html, body, #root {
   height: 100%;
+}
+
+body {
+  font-family: 'Inter', sans-serif;
+  transition: background-color 0.3s, color 0.3s;
 }
 
 ::-webkit-scrollbar {

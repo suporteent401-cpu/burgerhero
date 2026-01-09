@@ -11,6 +11,7 @@ export interface FullUserProfile {
     fontSize: number;
     heroTheme: HeroTheme;
     mode: 'light' | 'dark' | 'system';
+    appFontSize: 'small' | 'medium' | 'large';
   };
 }
 
@@ -29,6 +30,7 @@ const DEFAULT_SETTINGS: FullUserProfile['settings'] = {
   fontSize: 22,
   heroTheme: 'sombra-noturna' as HeroTheme,
   mode: 'system',
+  appFontSize: 'medium',
 };
 
 const normalizeRole = (input: any): Role => {
@@ -37,11 +39,8 @@ const normalizeRole = (input: any): Role => {
   return 'client';
 };
 
-const normalizeCpf = (cpf: string) => (cpf ? cpf.replace(/[^\d]/g, '') : '');
-
 /**
  * Busca o perfil completo do usuário (perfil + role + settings)
- * SEMPRE retorna settings preenchido (nunca null) para não quebrar heroTheme.
  */
 export const getFullUserProfile = async (user: SupabaseUser): Promise<FullUserProfile | null> => {
   const userId = user.id;
@@ -56,26 +55,17 @@ export const getFullUserProfile = async (user: SupabaseUser): Promise<FullUserPr
     if (profileError) throw profileError;
     if (!userProfileData) return null;
 
-    const { data: roleData, error: roleError } = await supabase
+    const { data: roleData } = await supabase
       .from('app_users')
       .select('role')
       .eq('id', userId)
       .maybeSingle();
 
-    if (roleError) {
-      // não quebra login por causa disso; cai no default
-      console.warn('Warn fetching role:', roleError);
-    }
-
-    const { data: settingsData, error: settingsError } = await supabase
+    const { data: settingsData } = await supabase
       .from('hero_card_settings')
       .select('*')
       .eq('user_id', userId)
       .maybeSingle();
-
-    if (settingsError) {
-      console.warn('Warn fetching settings:', settingsError);
-    }
 
     const role = normalizeRole(roleData?.role);
 
@@ -94,11 +84,10 @@ export const getFullUserProfile = async (user: SupabaseUser): Promise<FullUserPr
           cardTemplateId: settingsData.card_template_id ?? null,
           fontStyle: settingsData.font_style ?? DEFAULT_SETTINGS.fontStyle,
           fontColor: settingsData.font_color ?? DEFAULT_SETTINGS.fontColor,
-          // Mapeamento correto: font_size_px -> fontSize
           fontSize: settingsData.font_size_px ?? DEFAULT_SETTINGS.fontSize,
           heroTheme: (settingsData.hero_theme as HeroTheme) ?? DEFAULT_SETTINGS.heroTheme,
-          // Mapeamento correto: theme_mode -> mode
           mode: (settingsData.theme_mode as any) ?? DEFAULT_SETTINGS.mode,
+          appFontSize: (settingsData.app_font_size as any) ?? DEFAULT_SETTINGS.appFontSize,
         }
       : { ...DEFAULT_SETTINGS };
 
@@ -109,28 +98,11 @@ export const getFullUserProfile = async (user: SupabaseUser): Promise<FullUserPr
   }
 };
 
-/**
- * Busca apenas os dados da tabela user_profiles
- */
 export const getUserProfileById = async (userId: string) => {
-  if (!userId || typeof userId !== 'string') return null;
-
-  const { data, error } = await supabase
-    .from('user_profiles')
-    .select('*')
-    .eq('user_id', userId)
-    .maybeSingle();
-
-  if (error) {
-    console.error('Error fetching user profile by ID:', error);
-    return null;
-  }
+  const { data } = await supabase.from('user_profiles').select('*').eq('user_id', userId).maybeSingle();
   return data;
 };
 
-/**
- * Atualiza o nome de exibição
- */
 export const updateProfileName = async (userId: string, displayName: string) => {
   const { error } = await supabase.from('user_profiles').update({ display_name: displayName }).eq('user_id', userId);
   if (error) throw error;
@@ -139,54 +111,29 @@ export const updateProfileName = async (userId: string, displayName: string) => 
 export const updateUserName = updateProfileName;
 
 /**
- * Busca configurações do cartão
- */
-export const getCardSettings = async (userId: string) => {
-  const { data, error } = await supabase.from('hero_card_settings').select('*').eq('user_id', userId).maybeSingle();
-  if (error) return null;
-  return data;
-};
-
-/**
- * Atualiza configurações do cartão
+ * Atualiza configurações do cartão e do app
  */
 export const updateCardSettings = async (userId: string, settings: any) => {
   const payload: any = {};
   if (settings.templateId !== undefined) payload.card_template_id = settings.templateId ?? null;
   if (settings.fontFamily !== undefined) payload.font_style = settings.fontFamily;
   if (settings.fontColor !== undefined) payload.font_color = settings.fontColor;
-  
-  // Mapeamento correto: fontSize -> font_size_px
   if (settings.fontSize !== undefined) payload.font_size_px = settings.fontSize;
-  
   if (settings.heroTheme !== undefined) payload.hero_theme = settings.heroTheme;
-  
-  // Mapeamento correto: mode -> theme_mode
   if (settings.mode !== undefined) payload.theme_mode = settings.mode;
+  if (settings.appFontSize !== undefined) payload.app_font_size = settings.appFontSize;
 
   const { error } = await supabase.from('hero_card_settings').update(payload).eq('user_id', userId);
   if (error) throw error;
 };
 
-/**
- * Verifica se CPF existe
- */
 export const checkCpfExists = async (cpf: string): Promise<boolean> => {
-  const cleanCpf = normalizeCpf(cpf);
+  const cleanCpf = cpf.replace(/[^\d]/g, '');
   if (!cleanCpf) return false;
-
-  const { count, error } = await supabase
-    .from('user_profiles')
-    .select('user_id', { count: 'exact', head: true })
-    .eq('cpf', cleanCpf);
-
-  if (error) return false;
+  const { count } = await supabase.from('user_profiles').select('user_id', { count: 'exact', head: true }).eq('cpf', cleanCpf);
   return (count || 0) > 0;
 };
 
-/**
- * Upload de avatar
- */
 export const uploadAndSyncAvatar = async (userId: string, file: File): Promise<string | null> => {
   const bucketName = 'avatars';
   const fileExt = file.name.split('.').pop();
@@ -194,79 +141,33 @@ export const uploadAndSyncAvatar = async (userId: string, file: File): Promise<s
   const filePath = `user-avatars/${fileName}`;
 
   const { error: uploadError } = await supabase.storage.from(bucketName).upload(filePath, file, { upsert: true });
-
-  if (uploadError) {
-    console.error('Upload failed:', uploadError);
-    throw uploadError;
-  }
+  if (uploadError) throw uploadError;
 
   const { data } = supabase.storage.from(bucketName).getPublicUrl(filePath);
   const publicUrl = data.publicUrl;
 
-  const { error: updateError } = await supabase.from('user_profiles').update({ avatar_url: publicUrl }).eq('user_id', userId);
-
-  if (updateError) throw updateError;
-
+  await supabase.from('user_profiles').update({ avatar_url: publicUrl }).eq('user_id', userId);
   return publicUrl;
 };
 
-/**
- * Garante e retorna o código de herói (se sua RPC existir)
- */
-export const ensureHeroIdentity = async (): Promise<string | null> => {
+export const ensureHeroIdentity = async (userId: string): Promise<string | null> => {
   const { data, error } = await supabase.rpc('ensure_hero_identity');
-  if (error) {
-    console.error('ensure_hero_identity error:', error);
-    return null;
-  }
+  if (error) return null;
   return data as string;
 };
 
-/**
- * Auto-cura/Bootstrap do usuário logado
- * (usa ensure_user_bootstrap, que é a RPC que você está chamando no Auth.tsx)
- */
 export const ensureProfileFromSession = async (user: SupabaseUser) => {
-  const { error } = await supabase.rpc('ensure_user_bootstrap', {
+  await supabase.rpc('ensure_user_bootstrap', {
     p_display_name: (user.user_metadata as any)?.full_name || 'Hero',
     p_email: user.email || '',
     p_cpf: '',
     p_birthdate: null,
     p_whatsapp: null,
   });
-
-  if (error) console.error('ensureProfileFromSession warning:', error);
 };
 
-/**
- * Perfil público por código
- */
 export const getPublicProfileByCode = async (code: string): Promise<PublicProfile | null> => {
-  const { data, error } = await supabase.rpc('get_public_profile_by_code', { p_code: code });
-
-  if (error) {
-    console.error('Erro ao buscar perfil público:', error);
-    return null;
-  }
-
+  const { data } = await supabase.rpc('get_public_profile_by_code', { p_code: code });
   if (Array.isArray(data) && data.length > 0) return data[0] as PublicProfile;
-  if (data && !Array.isArray(data)) return data as PublicProfile;
-
-  return null;
-};
-
-/**
- * Alguns lugares estavam tentando importar isso.
- * Mantém compatibilidade sem quebrar.
- */
-export const getFullUserProfileById = async (userId: string): Promise<FullUserProfile | null> => {
-  if (!userId) return null;
-
-  // tenta montar um "SupabaseUser fake" só com id para reusar lógica
-  // (isso evita ficar criando várias funções duplicadas)
-  const fakeUser = { id: userId, email: '' } as any as SupabaseUser;
-
-  // como getFullUserProfile depende de user_profiles + app_users + hero_card_settings,
-  // ela funciona desde que o RLS permita (admin via RPCs/listagens, etc).
-  return getFullUserProfile(fakeUser);
+  return data as PublicProfile;
 };
