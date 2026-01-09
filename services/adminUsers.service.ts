@@ -1,104 +1,85 @@
 import { supabase } from '../lib/supabaseClient';
 import { User } from '../types';
 
-export type AdminUsersFilters = {
-  status?: string | null;
-  role?: string | null;
-};
-
-export type AdminUserRow = {
+export interface AdminUserListItem {
   id: string;
-  display_name: string | null;
+  name: string;
   email: string;
-  role: string | null;
-  avatar_url: string | null;
-  hero_code: string | null;
-  subscription_status: string | null;
-  next_billing_date: string | null;
-  total_count: number;
-};
-
-export type AdminUsersListResponse = {
-  data: Array<{
-    id: string;
-    name: string;
-    email: string;
-    role: string;
-    avatarUrl: string | null;
-    customerCode: string;
-    subscriptionStatus: string | null;
-    nextBillingDate: string | null;
-  }>;
-  total: number;
-  totalPages: number;
-};
-
-export type AdminUserListItem = AdminUsersListResponse['data'][0];
+  role: string;
+  avatarUrl: string | null;
+  customerCode: string;
+  subscriptionStatus: string | null;
+  nextBillingDate: string | null;
+}
 
 export const adminUsersService = {
-  async listUsers(params: { page: number; search: string; limit: number; filters?: AdminUsersFilters }): Promise<AdminUsersListResponse> {
-    const page = Math.max(1, Number(params.page || 1));
-    const limit = Math.max(1, Number(params.limit || 10));
-    const search = (params.search || '').trim();
-    const filters = params.filters || {};
+  async listUsers(params: { page: number; search: string; limit: number; filters?: any }) {
+    const { page, search, limit, filters } = params;
 
-    try {
-      const { data, error } = await supabase.rpc('admin_list_users', {
-        p_page: page,
-        p_search: search,
-        p_limit: limit,
-        p_status: filters.status ?? null,
-        p_role: filters.role ?? null,
-      });
+    const { data, error } = await supabase.rpc('admin_list_users', {
+      p_page: page,
+      p_search: search,
+      p_limit: limit,
+      p_status: filters?.status || null,
+      p_role: filters?.role || null
+    });
 
-      if (error) throw error;
+    if (error) throw error;
 
-      const rows = (data || []) as AdminUserRow[];
-      const total = rows.length > 0 ? Number(rows[0].total_count || 0) : 0;
+    const users = (data || []).map((u: any) => ({
+      id: u.id,
+      name: u.display_name || 'Sem Nome',
+      email: u.email,
+      role: u.role,
+      avatarUrl: u.avatar_url,
+      customerCode: u.hero_code,
+      subscriptionStatus: u.subscription_status,
+      nextBillingDate: u.next_billing_date
+    }));
 
-      const mapped = rows.map((r) => ({
-        id: r.id,
-        name: r.display_name || 'Sem Nome',
-        email: r.email,
-        role: r.role || 'client',
-        avatarUrl: r.avatar_url || null,
-        customerCode: r.hero_code || '',
-        subscriptionStatus: r.subscription_status || null,
-        nextBillingDate: r.next_billing_date || null,
-      }));
+    const total = data?.[0]?.total_count || 0;
 
-      return {
-        data: mapped,
-        total,
-        totalPages: Math.max(1, Math.ceil(total / limit)),
-      };
-    } catch (e) {
-      console.error('[adminUsersService.listUsers] Falha RPC admin_list_users:', e);
-      return { data: [], total: 0, totalPages: 1 };
-    }
+    return {
+      data: users,
+      total,
+      totalPages: Math.ceil(total / limit)
+    };
   },
 
   async getUserDetails(userId: string) {
-    const { data: profile } = await supabase
+    // 1. Perfil
+    const { data: profile, error: profErr } = await supabase
       .from('user_profiles')
       .select('*')
       .eq('user_id', userId)
       .single();
 
-    if (!profile) throw new Error('Usuário não encontrado');
+    if (profErr || !profile) throw new Error('Usuário não encontrado');
 
+    // 2. Role
     const { data: appUser } = await supabase
       .from('app_users')
       .select('role')
       .eq('id', userId)
       .single();
 
-    const { data: sub } = await supabase
+    // 3. Assinatura + Plano (prioriza active e a mais recente)
+    const { data: subRows } = await supabase
       .from('subscriptions')
       .select('*, plan:plans(*)')
       .eq('user_id', userId)
-      .maybeSingle();
+      .order('current_period_end', { ascending: false, nullsFirst: false });
 
+    const sub = (subRows || []).sort((a: any, b: any) => {
+      const aActive = a?.status === 'active' ? 1 : 0;
+      const bActive = b?.status === 'active' ? 1 : 0;
+      if (aActive !== bActive) return bActive - aActive;
+      const aEnd = a?.current_period_end ? new Date(a.current_period_end).getTime() : 0;
+      const bEnd = b?.current_period_end ? new Date(b.current_period_end).getTime() : 0;
+      return bEnd - aEnd;
+    })[0];
+
+    // 4. Vouchers (últimos 5)
     const { data: redemptions } = await supabase
       .from('voucher_redemptions')
       .select('*')
@@ -124,7 +105,7 @@ export const adminUsersService = {
         currentPeriodEnd: sub.current_period_end
       } : null,
       plan: sub?.plan || null,
-      redemptionHistory: (redemptions || []).map((r: any) => ({
+      redemptionHistory: (redemptions || []).map(r => ({
         month: new Date(r.redeemed_at).toLocaleString('pt-BR', { month: 'long', year: 'numeric' }),
         redeemedAt: r.redeemed_at
       }))
