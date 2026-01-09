@@ -13,23 +13,7 @@ import {
 
 type Period = '7d' | '30d' | 'month';
 
-type RpcResponse = {
-  kpis: {
-    activeSubscribers: number;
-    newSubscriptions: number;
-    cancellations: number;
-    mrrCents: number;
-    monthlyRedemptions: number;
-    monthlyRedemptionRate: number; // 0..1
-  };
-  charts: {
-    popularPlans: Array<{ name: string; percentage: number }>;
-    redemptionsByDay: { labels: string[]; data: number[] };
-    activesOverTime: { labels: string[]; data: number[] };
-  };
-  insights: Array<{ key: string; value: any }>;
-};
-
+// Estrutura segura de fallback caso a API falhe ou retorne null
 const safeEmpty = () => ({
   kpis: {
     activeSubscribers: 0,
@@ -52,76 +36,74 @@ const formatBRL = (cents: number) => {
   return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 };
 
-const pct = (v: number) => `${(Number(v || 0)).toFixed(1)}%`;
+const pct = (v: number) => `${(Number(v || 0) * 100).toFixed(1)}%`;
 
 export const getAdminDashboardMetrics = async (period: Period) => {
   try {
     const { data, error } = await supabase.rpc('admin_dashboard_metrics', { p_period: period });
 
     if (error) {
-      console.error('[adminMetrics] admin_dashboard_metrics RPC error:', error);
-      const fallback = safeEmpty();
-      return buildUiPayload(fallback);
+      console.error('[AdminMetrics] RPC Error:', error);
+      return buildUiPayload(safeEmpty());
     }
 
-    const parsed = (data || safeEmpty()) as RpcResponse;
-    return buildUiPayload(parsed);
+    // Se vier null (banco vazio), usa fallback
+    return buildUiPayload(data || safeEmpty());
   } catch (e) {
-    console.error('[adminMetrics] exception:', e);
-    const fallback = safeEmpty();
-    return buildUiPayload(fallback);
+    console.error('[AdminMetrics] Exception:', e);
+    return buildUiPayload(safeEmpty());
   }
 };
 
-function buildUiPayload(r: RpcResponse) {
-  const active = Number(r.kpis.activeSubscribers || 0);
-  const redemptions = Number(r.kpis.monthlyRedemptions || 0);
-  const rate = Number(r.kpis.monthlyRedemptionRate || 0);
-
-  // insights do banco (mínimos)
-  const topPlan = r.charts.popularPlans?.[0]?.name || '';
-  const ratePct = pct(rate * 100);
+function buildUiPayload(r: any) {
+  // Garante acesso seguro às propriedades
+  const kpis = r?.kpis || safeEmpty().kpis;
+  const charts = r?.charts || safeEmpty().charts;
+  
+  // Lógica de apresentação para Insights
+  const topPlanName = charts.popularPlans?.[0]?.name || 'N/A';
+  const redeemRateVal = (kpis.monthlyRedemptionRate || 0) * 100;
 
   return {
     kpis: [
       {
         title: 'Assinantes Ativos',
-        value: active.toLocaleString('pt-BR'),
-        delta: '—',
+        value: Number(kpis.activeSubscribers || 0).toLocaleString('pt-BR'),
+        delta: '—', // Delta real exigiria comparação com período anterior (v2)
         icon: TrendingUp,
         tooltip: 'Total de assinaturas com status ATIVO e período vigente.',
       },
       {
         title: 'Novas Assinaturas',
-        value: Number(r.kpis.newSubscriptions || 0).toLocaleString('pt-BR'),
+        value: Number(kpis.newSubscriptions || 0).toLocaleString('pt-BR'),
         delta: '—',
         icon: UserPlus,
         tooltip: 'Assinaturas criadas dentro do período selecionado.',
       },
       {
         title: 'Cancelamentos',
-        value: Number(r.kpis.cancellations || 0).toLocaleString('pt-BR'),
+        value: Number(kpis.cancellations || 0).toLocaleString('pt-BR'),
         delta: '—',
         icon: UserMinus,
         tooltip: 'Assinaturas com status CANCELED no período selecionado.',
       },
       {
         title: 'MRR Estimado',
-        value: formatBRL(Number(r.kpis.mrrCents || 0)),
+        value: formatBRL(kpis.mrrCents),
         delta: '—',
         icon: CreditCard,
         tooltip: 'Soma do preço dos planos dos assinantes ativos (estimativa).',
       },
       {
         title: 'Resgates do Mês',
-        value: redemptions.toLocaleString('pt-BR'),
+        value: Number(kpis.monthlyRedemptions || 0).toLocaleString('pt-BR'),
         delta: '—',
         icon: Gift,
         tooltip: 'Total de vouchers resgatados no mês atual (UTC).',
       },
       {
         title: 'Taxa de Resgate',
-        value: ratePct,
+        value: pct(kpis.monthlyRedemptionRate),
         delta: '—',
         icon: Award,
         tooltip: 'Resgates do mês / assinantes ativos.',
@@ -131,28 +113,28 @@ function buildUiPayload(r: RpcResponse) {
     insights: [
       {
         icon: AlertTriangle,
-        title: 'Taxa de Resgate do Mês',
-        description: `Taxa atual: ${ratePct}.`,
+        title: 'Taxa de Resgate',
+        description: `A taxa atual é de ${redeemRateVal.toFixed(1)}%.`,
         color: 'amber',
       },
       {
         icon: Sparkles,
-        title: 'Plano mais popular',
-        description: topPlan ? `No momento, o plano mais popular é: ${topPlan}.` : 'Ainda sem dados suficientes de planos.',
+        title: 'Plano Destaque',
+        description: topPlanName !== 'N/A' ? `O plano ${topPlanName} é o favorito.` : 'Ainda sem dados suficientes.',
         color: 'blue',
       },
       {
         icon: Clock,
-        title: 'Distribuição de Resgates',
-        description: 'Confira o gráfico por dia da semana para ajustar equipe e operação.',
+        title: 'Pico de Atividade',
+        description: 'Veja o gráfico diário para alinhar a operação.',
         color: 'purple',
       },
     ],
 
     charts: {
-      activesOverTime: r.charts.activesOverTime || safeEmpty().charts.activesOverTime,
-      redemptionsByDay: r.charts.redemptionsByDay || safeEmpty().charts.redemptionsByDay,
-      popularPlans: (r.charts.popularPlans || []).map((p) => ({
+      activesOverTime: charts.activesOverTime || { labels: [], data: [] },
+      redemptionsByDay: charts.redemptionsByDay || { labels: [], data: [] },
+      popularPlans: (charts.popularPlans || []).map((p: any) => ({
         name: p.name,
         percentage: Number(p.percentage || 0),
         color: 'bg-hero-primary',
