@@ -4,12 +4,12 @@ import { useAuthStore } from '../store/authStore';
 import { useCardStore } from '../store/cardStore';
 import { subscriptionMockService } from '../services/subscriptionMock.service';
 import { Subscription } from '../types';
-import { Clock, Ticket, ChevronRight, QrCode, Tag, Copy, Sparkles } from 'lucide-react';
+import { Clock, Ticket, ChevronRight, QrCode, Tag, Copy, Sparkles, Utensils } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import HeroCard from '../components/HeroCard';
 import NearbyRestaurants from '../components/NearbyRestaurants';
 import { couponsService } from '../services/coupons.service';
-import { getCurrentVoucher } from '../services/voucher.service';
+import { getCurrentVoucher, getVoucherHistory } from '../services/voucher.service';
 
 const normalizeStatus = (s?: string | null) => String(s || '').toLowerCase();
 
@@ -20,8 +20,9 @@ const Home: React.FC = () => {
   const [sub, setSub] = useState<Subscription | null>(null);
   const [isSubActive, setIsSubActive] = useState<boolean>(false);
 
-  // Snapshot do voucher (fonte única para “burger do mês / disponível / resgatado / drop ativo”)
+  // Snapshot do voucher (fonte única)
   const [voucherSnap, setVoucherSnap] = useState<any | null>(null);
+  const [history, setHistory] = useState<any[]>([]);
 
   const [coupons, setCoupons] = useState<any[]>([]);
   const cardTemplate = getSelectedTemplate();
@@ -31,13 +32,12 @@ const Home: React.FC = () => {
 
     const fetchData = async () => {
       try {
-        // ✅ 1) Assinatura: fonte única (mock localStorage -> banco via subscriptionsService)
+        // 1) Assinatura
         const activeSub = await subscriptionMockService.getActiveSubscription(user.id);
         const active = !!activeSub && normalizeStatus(activeSub.status) === 'active';
 
         setIsSubActive(active);
 
-        // Mantém a estrutura do Subscription pro resto da Home
         if (activeSub) {
           setSub({
             status: 'active',
@@ -48,11 +48,20 @@ const Home: React.FC = () => {
           setSub({ status: 'inactive' } as any);
         }
 
-        // ✅ 2) Voucher snapshot canônico (mesma regra da tela Voucher)
-        const snap = await getCurrentVoucher(user.id);
+        // 2) Voucher snapshot e Histórico
+        const [snap, historyData] = await Promise.all([
+          getCurrentVoucher(user.id),
+          getVoucherHistory(user.id)
+        ]);
+        
         setVoucherSnap(snap);
+        
+        // Remove do histórico o voucher do mês atual se ele já existir lá, para não duplicar visualmente se quiser
+        // Mas como é "Atividades Recentes", pegamos apenas o último resgatado
+        const redeemedHistory = (historyData || []).filter((v: any) => v.redeemed_at !== null);
+        setHistory(redeemedHistory.slice(0, 1)); // Pega apenas o mais recente
 
-        // ✅ 3) Cupons
+        // 3) Cupons
         const availableCoupons = await couponsService.getAvailableCouponsForUser(active);
         setCoupons(availableCoupons || []);
       } catch (error) {
@@ -65,23 +74,30 @@ const Home: React.FC = () => {
 
   const isActive = useMemo(() => isSubActive || normalizeStatus((sub as any)?.status) === 'active', [isSubActive, sub]);
 
-  // Derivação canônica do “Burger do mês”
+  // Lógica unificada solicitada no prompt
   const burgerLabel = useMemo(() => {
-    if (!voucherSnap) return '--';
-
-    const dropActive = !!voucherSnap?.eligibility?.dropActive;
-    const subActive = !!voucherSnap?.eligibility?.subscriptionActive;
+    if (!voucherSnap) return 'Carregando...';
 
     const voucher = voucherSnap?.voucher;
-    const isRedeemed = !!voucher?.redeemed_at || normalizeStatus(voucher?.status) === 'redeemed';
+    const subActive = !!voucherSnap?.eligibility?.subscriptionActive;
+    const dropActive = !!voucherSnap?.eligibility?.dropActive;
     const hasVoucher = !!voucher?.id;
+    const isRedeemed = !!voucher?.redeemed_at || normalizeStatus(voucher?.status) === 'redeemed';
 
-    if (!subActive) return 'Aguardando';
-    if (!dropActive) return 'Bloqueado';
-    if (!hasVoucher) return 'Aguardando';
     if (isRedeemed) return 'Já utilizado';
-    return 'Disponível';
+    if (!subActive) return 'Bloqueado';
+    if (!dropActive) return 'Em breve';
+    if (hasVoucher && !isRedeemed) return 'Disponível';
+    
+    return 'Aguardando liberação';
   }, [voucherSnap]);
+
+  const burgerLabelColor = useMemo(() => {
+    if (burgerLabel === 'Disponível') return 'text-green-500 dark:text-green-400';
+    if (burgerLabel === 'Bloqueado') return 'text-red-500';
+    if (burgerLabel === 'Já utilizado') return 'text-slate-400';
+    return 'text-amber-500';
+  }, [burgerLabel]);
 
   const nextBilling = useMemo(() => {
     const dt =
@@ -158,7 +174,7 @@ const Home: React.FC = () => {
             <p className="text-slate-400 dark:text-slate-500 text-[10px] font-black uppercase tracking-wider mb-1">
               Burger do Mês
             </p>
-            <p className={`font-bold text-sm ${burgerLabel === 'Disponível' ? 'text-green-500 dark:text-green-400' : 'text-slate-400'}`}>
+            <p className={`font-bold text-sm ${burgerLabelColor}`}>
               {burgerLabel}
             </p>
           </CardBody>
@@ -186,7 +202,7 @@ const Home: React.FC = () => {
         </Link>
       </div>
 
-      {/* Recent Activity (mantive o seu mock) */}
+      {/* Recent Activity (Dados Reais) */}
       <div className="space-y-3 pt-2">
         <div className="flex justify-between items-center px-1">
           <h3 className="font-black text-slate-700 dark:text-slate-300 text-sm uppercase tracking-wide">Atividades Recentes</h3>
@@ -195,16 +211,30 @@ const Home: React.FC = () => {
         <Card>
           <CardBody className="p-0">
             <div className="divide-y divide-slate-50 dark:divide-slate-800">
-              <div className="p-4 flex items-center gap-4 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors cursor-pointer opacity-70">
-                <div className="w-10 h-10 bg-slate-100 dark:bg-slate-800 rounded-xl flex items-center justify-center text-slate-500 dark:text-slate-400">
-                  <Clock size={18} />
+              {history.length > 0 ? (
+                history.map((activity, idx) => (
+                  <div key={idx} className="p-4 flex items-center gap-4 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
+                    <div className="w-10 h-10 bg-slate-100 dark:bg-slate-800 rounded-xl flex items-center justify-center text-slate-500 dark:text-slate-400">
+                      {activity.monthly_drop?.burger ? <Utensils size={18} /> : <Clock size={18} />}
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-bold text-slate-800 dark:text-slate-200">
+                        {activity.monthly_drop?.burger?.name || 'Voucher Resgatado'}
+                      </p>
+                      <p className="text-xs text-slate-400 font-medium">
+                        {new Date(activity.redeemed_at).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                      </p>
+                    </div>
+                    <div className="bg-green-100 text-green-700 p-1 rounded-full">
+                      <ChevronRight size={14} />
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="p-6 text-center text-slate-400 text-xs">
+                  Nenhuma atividade recente.
                 </div>
-                <div className="flex-1">
-                  <p className="text-sm font-bold text-slate-800 dark:text-slate-200">Hambúrguer de Setembro</p>
-                  <p className="text-xs text-slate-400 font-medium">Resgatado em 12/09</p>
-                </div>
-                <ChevronRight size={16} className="text-slate-300 dark:text-slate-600" />
-              </div>
+              )}
             </div>
           </CardBody>
         </Card>

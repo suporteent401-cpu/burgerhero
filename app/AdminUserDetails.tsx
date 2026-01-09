@@ -30,6 +30,13 @@ const AdminUserDetails: React.FC = () => {
 
   const { user, subscription, plan, redemptionHistory } = data;
 
+  const isSubActive = subscription?.status === 'active' && 
+    new Date(subscription.currentPeriodEnd) > new Date();
+
+  const nextBilling = subscription 
+    ? (subscription.nextBillingDate || subscription.currentPeriodEnd) 
+    : null;
+
   return (
     <div className="space-y-8 pb-28">
       <Link to="/admin/users" className="flex items-center gap-2 font-bold text-slate-500 hover:text-hero-primary">
@@ -50,12 +57,12 @@ const AdminUserDetails: React.FC = () => {
             <CardHeader><h3 className="font-bold text-slate-700">Assinatura e Plano</h3></CardHeader>
             <CardBody className="grid grid-cols-2 md:grid-cols-3 gap-6">
               <DetailItem icon={ShieldCheck} label="Status" value={
-                <span className={`font-bold ${subscription?.status === 'active' ? 'text-green-600' : 'text-red-600'}`}>
-                  {subscription?.status?.toUpperCase() || 'INACTIVE'}
+                <span className={`font-bold ${isSubActive ? 'text-green-600' : 'text-red-600'}`}>
+                  {isSubActive ? 'ACTIVE' : (subscription?.status?.toUpperCase() || 'INACTIVE')}
                 </span>
               } />
               <DetailItem icon={CreditCard} label="Plano" value={plan?.name || 'N/A'} />
-              <DetailItem icon={Calendar} label="Próxima Cobrança" value={subscription?.nextBillingDate ? new Date(subscription.nextBillingDate).toLocaleDateString() : 'N/A'} />
+              <DetailItem icon={Calendar} label="Próxima Cobrança" value={nextBilling ? new Date(nextBilling).toLocaleDateString() : 'N/A'} />
             </CardBody>
           </Card>
 

@@ -5,11 +5,13 @@ import { useAuthStore } from '../store/authStore';
 import { QrCode, Lock, CheckCircle2, Calendar, Utensils, Loader2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { getCurrentVoucher, getVoucherHistory } from '../services/voucher.service';
+import { useNavigate } from 'react-router-dom';
 
 const normalizeStatus = (s?: string | null) => String(s || '').toLowerCase();
 
 const Voucher: React.FC = () => {
   const user = useAuthStore((state) => state.user);
+  const navigate = useNavigate();
 
   const [snap, setSnap] = useState<any | null>(null);
   const [history, setHistory] = useState<any[]>([]);
@@ -162,7 +164,7 @@ const Voucher: React.FC = () => {
           <div className="pt-1">
             {isEligible ? (
               <Button
-                onClick={() => (window.location.href = '/app/qrcode')}
+                onClick={() => navigate('/app/qrcode')}
                 className="w-full bg-white text-slate-900 hover:bg-slate-100 border-none h-10 text-sm rounded-xl shadow-lg hover:shadow-xl hover:scale-[1.02] transition-all font-bold"
               >
                 <QrCode className="mr-2 text-hero-primary" size={16} /> Usar no Balcão
@@ -176,7 +178,7 @@ const Voucher: React.FC = () => {
               </Button>
             ) : !subActive ? (
               <Button
-                onClick={() => (window.location.href = '/plans')}
+                onClick={() => navigate('/plans')}
                 className="w-full bg-red-600 hover:bg-red-700 text-white border-none h-10 rounded-xl shadow-lg shadow-red-900/20 text-xs font-bold"
               >
                 Reativar Assinatura
