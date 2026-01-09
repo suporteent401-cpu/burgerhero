@@ -9,14 +9,15 @@ export interface StaffLookupResult {
 
   subscription_active: boolean;
 
-  // continua pro botão habilitar/desabilitar
+  // Compatibilidade: continua existindo
   has_current_voucher: boolean;
 
-  // novo: status real vindo do banco
-  voucher_status: string | null;
-  current_voucher_id: string | null;
-  redeemed_at: string | null;
+  // Novo (mais correto)
+  voucher_status?: 'available' | 'redeemed' | 'expired' | 'blocked' | string | null;
+  current_voucher_id?: string | null;
+  redeemed_at?: string | null;
 
+  // Visual
   card_image_url?: string;
 }
 
@@ -27,9 +28,13 @@ export interface RedeemResult {
 }
 
 export const staffService = {
+  /**
+   * Busca um cliente por código do herói (ex: BH-XXXX) OU CPF.
+   * A RPC agora também aceita aliases de código sem alterar hero_code.
+   */
   async lookupClient(query: string): Promise<StaffLookupResult | null> {
     const { data, error } = await supabase.rpc('staff_lookup_client', {
-      p_query: query,
+      p_query: query
     });
 
     if (error) {
@@ -37,29 +42,13 @@ export const staffService = {
       throw error;
     }
 
-    // Supabase pode retornar array (set-returning) ou objeto (depende do client/config)
-    const row = Array.isArray(data) ? data[0] : data;
+    if (!Array.isArray(data) || data.length === 0) {
+      return null;
+    }
 
-    if (!row) return null;
+    const client = data[0] as StaffLookupResult;
 
-    const client: StaffLookupResult = {
-      user_id: row.user_id,
-      display_name: row.display_name,
-      cpf: row.cpf ?? null,
-      avatar_url: row.avatar_url ?? null,
-      hero_code: row.hero_code,
-
-      subscription_active: !!row.subscription_active,
-      has_current_voucher: !!row.has_current_voucher,
-
-      voucher_status: row.voucher_status ?? null,
-      current_voucher_id: row.current_voucher_id ?? null,
-      redeemed_at: row.redeemed_at ?? null,
-
-      card_image_url: undefined,
-    };
-
-    // Enriquecer imagem do cartão (sem quebrar o fluxo)
+    // Enriquecimento visual (não pode quebrar o fluxo)
     try {
       const { data: settings } = await supabase
         .from('hero_card_settings')
@@ -74,10 +63,12 @@ export const staffService = {
         .eq('user_id', client.user_id)
         .maybeSingle();
 
-      const templateData = (settings?.template as any) || null;
+      const templateData = (settings as any)?.template;
       const imageUrl = templateData?.preview_url || null;
 
-      if (imageUrl) client.card_image_url = imageUrl;
+      if (imageUrl) {
+        client.card_image_url = imageUrl;
+      }
     } catch (err) {
       console.warn('Não foi possível carregar a imagem do cartão do cliente:', err);
     }
@@ -85,9 +76,13 @@ export const staffService = {
     return client;
   },
 
+  /**
+   * Resgata o voucher do mês atual pelo código do herói.
+   * (Mantém compatível com seu fluxo atual)
+   */
   async redeemVoucherByCode(code: string): Promise<RedeemResult> {
     const { data, error } = await supabase.rpc('redeem_voucher_by_code', {
-      p_code: code,
+      p_code: code
     });
 
     if (error) {
@@ -96,5 +91,5 @@ export const staffService = {
     }
 
     return data as RedeemResult;
-  },
+  }
 };
