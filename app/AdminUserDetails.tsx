@@ -30,8 +30,18 @@ const AdminUserDetails: React.FC = () => {
 
   const { user, subscription, plan, redemptionHistory } = data;
 
+  // Lógica de status coerente
   const isSubActive = subscription?.status === 'active' && 
     new Date(subscription.currentPeriodEnd) > new Date();
+
+  // Se o status no banco é active mas a data passou, consideramos VENCIDO/PAST_DUE visualmente
+  const displayStatus = isSubActive 
+    ? 'ATIVO' 
+    : (subscription?.status === 'active' ? 'VENCIDO' : (subscription?.status?.toUpperCase() || 'INATIVO'));
+
+  const statusColor = isSubActive 
+    ? 'text-green-600' 
+    : (displayStatus === 'VENCIDO' ? 'text-amber-600' : 'text-red-600');
 
   const nextBilling = subscription 
     ? (subscription.nextBillingDate || subscription.currentPeriodEnd) 
@@ -57,8 +67,8 @@ const AdminUserDetails: React.FC = () => {
             <CardHeader><h3 className="font-bold text-slate-700">Assinatura e Plano</h3></CardHeader>
             <CardBody className="grid grid-cols-2 md:grid-cols-3 gap-6">
               <DetailItem icon={ShieldCheck} label="Status" value={
-                <span className={`font-bold ${isSubActive ? 'text-green-600' : 'text-red-600'}`}>
-                  {isSubActive ? 'ACTIVE' : (subscription?.status?.toUpperCase() || 'INACTIVE')}
+                <span className={`font-bold ${statusColor}`}>
+                  {displayStatus}
                 </span>
               } />
               <DetailItem icon={CreditCard} label="Plano" value={plan?.name || 'N/A'} />

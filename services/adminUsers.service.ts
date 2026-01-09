@@ -63,21 +63,47 @@ export const adminUsersService = {
       .eq('id', userId)
       .single();
 
-    // 3. Assinatura + Plano (prioriza active e a mais recente)
+    // 3. Assinatura (sem join automático falho)
     const { data: subRows } = await supabase
       .from('subscriptions')
-      .select('*, plan:plans(*)')
+      .select('*')
       .eq('user_id', userId)
       .order('current_period_end', { ascending: false, nullsFirst: false });
 
     const sub = (subRows || []).sort((a: any, b: any) => {
+      // Prioriza 'active'
       const aActive = a?.status === 'active' ? 1 : 0;
       const bActive = b?.status === 'active' ? 1 : 0;
       if (aActive !== bActive) return bActive - aActive;
+      
+      // Desempate por data (mais longe no futuro é melhor)
       const aEnd = a?.current_period_end ? new Date(a.current_period_end).getTime() : 0;
       const bEnd = b?.current_period_end ? new Date(b.current_period_end).getTime() : 0;
       return bEnd - aEnd;
     })[0];
+
+    // Busca o plano manualmente se houver assinatura
+    let planData = null;
+    if (sub && sub.plan_slug) {
+      // Tenta pelo ID (uuid)
+      const { data: pById } = await supabase
+        .from('plans')
+        .select('*')
+        .eq('id', sub.plan_slug)
+        .maybeSingle();
+      
+      if (pById) {
+        planData = pById;
+      } else {
+        // Fallback: tenta pelo nome (caso legado ou slug textual)
+        const { data: pByName } = await supabase
+          .from('plans')
+          .select('*')
+          .eq('name', sub.plan_slug)
+          .maybeSingle();
+        planData = pByName;
+      }
+    }
 
     // 4. Vouchers (últimos 5)
     const { data: redemptions } = await supabase
@@ -104,7 +130,7 @@ export const adminUsersService = {
         nextBillingDate: sub.next_billing_at,
         currentPeriodEnd: sub.current_period_end
       } : null,
-      plan: sub?.plan || null,
+      plan: planData,
       redemptionHistory: (redemptions || []).map(r => ({
         month: new Date(r.redeemed_at).toLocaleString('pt-BR', { month: 'long', year: 'numeric' }),
         redeemedAt: r.redeemed_at
