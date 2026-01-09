@@ -6,13 +6,14 @@ export interface StaffLookupResult {
   cpf: string | null;
   avatar_url: string | null;
   hero_code: string;
+
   subscription_active: boolean;
 
-  // compat (não quebra UI antiga)
+  // continua pro botão habilitar/desabilitar
   has_current_voucher: boolean;
 
-  // novo (fonte da verdade)
-  voucher_status: 'available' | 'redeemed' | 'none';
+  // novo: status real vindo do banco
+  voucher_status: string | null;
   current_voucher_id: string | null;
   redeemed_at: string | null;
 
@@ -28,7 +29,7 @@ export interface RedeemResult {
 export const staffService = {
   async lookupClient(query: string): Promise<StaffLookupResult | null> {
     const { data, error } = await supabase.rpc('staff_lookup_client', {
-      p_query: query
+      p_query: query,
     });
 
     if (error) {
@@ -36,31 +37,47 @@ export const staffService = {
       throw error;
     }
 
-    if (!Array.isArray(data) || data.length === 0) {
-      return null;
-    }
+    // Supabase pode retornar array (set-returning) ou objeto (depende do client/config)
+    const row = Array.isArray(data) ? data[0] : data;
 
-    const client = data[0] as StaffLookupResult;
+    if (!row) return null;
 
-    // Enriquecer com capa do cartão (não quebra fluxo se falhar)
+    const client: StaffLookupResult = {
+      user_id: row.user_id,
+      display_name: row.display_name,
+      cpf: row.cpf ?? null,
+      avatar_url: row.avatar_url ?? null,
+      hero_code: row.hero_code,
+
+      subscription_active: !!row.subscription_active,
+      has_current_voucher: !!row.has_current_voucher,
+
+      voucher_status: row.voucher_status ?? null,
+      current_voucher_id: row.current_voucher_id ?? null,
+      redeemed_at: row.redeemed_at ?? null,
+
+      card_image_url: undefined,
+    };
+
+    // Enriquecer imagem do cartão (sem quebrar o fluxo)
     try {
       const { data: settings } = await supabase
         .from('hero_card_settings')
-        .select(`
+        .select(
+          `
           card_template_id,
           template:hero_card_templates (
             preview_url
           )
-        `)
+        `
+        )
         .eq('user_id', client.user_id)
         .maybeSingle();
 
       const templateData = (settings?.template as any) || null;
       const imageUrl = templateData?.preview_url || null;
 
-      if (imageUrl) {
-        client.card_image_url = imageUrl;
-      }
+      if (imageUrl) client.card_image_url = imageUrl;
     } catch (err) {
       console.warn('Não foi possível carregar a imagem do cartão do cliente:', err);
     }
@@ -69,10 +86,8 @@ export const staffService = {
   },
 
   async redeemVoucherByCode(code: string): Promise<RedeemResult> {
-    // Se sua função no banco é redeem_voucher_staff, troque aqui.
-    // Como você mostrou que redeem_voucher_by_code já está OK e resgatou:
     const { data, error } = await supabase.rpc('redeem_voucher_by_code', {
-      p_code: code
+      p_code: code,
     });
 
     if (error) {
@@ -81,5 +96,5 @@ export const staffService = {
     }
 
     return data as RedeemResult;
-  }
+  },
 };
