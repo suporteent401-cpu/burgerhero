@@ -1,256 +1,143 @@
-import { supabase } from '@/lib/supabaseClient';
+// services/users.service.ts
+import { supabase } from '../lib/supabaseClient'
 
-/* ======================================================
- * TIPOS
- * ====================================================== */
-
-export interface UserSettings {
-  heroTheme: string;
-  cardTemplateId: string | null;
-  fontStyle: string;
-  fontColor: string;
-  fontSize: number;
-  mode: 'light' | 'dark';
-}
+/* ============================
+   Tipos
+============================ */
 
 export interface UserProfile {
-  user_id: string;
-  display_name: string | null;
-  email: string | null;
-  cpf: string | null;
-  hero_code: string | null;
-  customer_id_public: string | null;
-  avatar_url: string | null;
-  role?: string | null;
-  settings: UserSettings;
+  id: string
+  display_name: string | null
+  email: string | null
+  cpf: string | null
+  hero_code: string | null
+  avatar_url: string | null
+  role: 'admin' | 'staff' | 'client'
+  hero_theme: string
 }
 
-/* ======================================================
- * DEFAULT SETTINGS (BLINDAGEM TOTAL)
- * ====================================================== */
+/* ============================
+   Defaults (ANTI-CRASH)
+============================ */
 
-const DEFAULT_SETTINGS: UserSettings = {
-  heroTheme: 'default',
-  cardTemplateId: null,
-  fontStyle: 'inter',
-  fontColor: '#ffffff',
-  fontSize: 14,
-  mode: 'dark',
-};
+const DEFAULT_HERO_THEME = 'classic'
 
-/* ======================================================
- * HELPER INTERNO
- * ====================================================== */
-
-function withSafeSettings(profile: any): UserProfile {
+function normalizeProfile(row: any): UserProfile {
   return {
-    ...profile,
-    settings: {
-      heroTheme: profile?.settings?.heroTheme ?? DEFAULT_SETTINGS.heroTheme,
-      cardTemplateId:
-        profile?.settings?.cardTemplateId ?? DEFAULT_SETTINGS.cardTemplateId,
-      fontStyle: profile?.settings?.fontStyle ?? DEFAULT_SETTINGS.fontStyle,
-      fontColor: profile?.settings?.fontColor ?? DEFAULT_SETTINGS.fontColor,
-      fontSize: profile?.settings?.fontSize ?? DEFAULT_SETTINGS.fontSize,
-      mode: profile?.settings?.mode ?? DEFAULT_SETTINGS.mode,
-    },
-  };
-}
-
-/* ======================================================
- * PERFIL POR ID
- * ====================================================== */
-
-export async function getUserProfileById(
-  userId: string
-): Promise<UserProfile | null> {
-  const { data, error } = await supabase
-    .from('user_profiles')
-    .select('*')
-    .eq('user_id', userId)
-    .limit(1);
-
-  if (error || !data?.length) {
-    console.error('[getUserProfileById]', error);
-    return null;
+    id: row.id,
+    display_name: row.display_name ?? '',
+    email: row.email ?? '',
+    cpf: row.cpf ?? null,
+    hero_code: row.hero_code ?? null,
+    avatar_url: row.avatar_url ?? null,
+    role: row.role ?? 'client',
+    hero_theme: row.hero_theme ?? DEFAULT_HERO_THEME
   }
-
-  return withSafeSettings(data[0]);
 }
 
-/* ======================================================
- * PERFIL COMPLETO (USADO NO AUTH)
- * ====================================================== */
+/* ============================
+   Core getters
+============================ */
 
-export async function getFullUserProfile(
-  userId: string
-): Promise<UserProfile | null> {
-  return getUserProfileById(userId);
-}
-
-/* ======================================================
- * PERFIL VIA SESSÃO (LOGIN)
- * ====================================================== */
-
-export async function ensureProfileFromSession(): Promise<UserProfile | null> {
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-
-  if (!session?.user?.id) return null;
-
-  return getFullUserProfile(session.user.id);
-}
-
-/* ======================================================
- * PERFIL PÚBLICO POR CÓDIGO (🔥 EXPORT FALTANTE)
- * ====================================================== */
-
-export async function getPublicProfileByCode(
-  code: string
-): Promise<UserProfile | null> {
-  const normalized = code.trim().toUpperCase();
+export async function getUserProfileById(userId: string): Promise<UserProfile | null> {
+  if (!userId || typeof userId !== 'string') {
+    console.warn('[getUserProfileById] invalid userId:', userId)
+    return null
+  }
 
   const { data, error } = await supabase
     .from('user_profiles')
     .select('*')
-    .or(
-      `hero_code.eq.${normalized},customer_id_public.eq.${normalized}`
-    )
-    .limit(1);
+    .eq('id', userId)
+    .maybeSingle()
 
-  if (error || !data?.length) {
-    console.error('[getPublicProfileByCode]', error);
-    return null;
+  if (error || !data) {
+    console.error('[getUserProfileById]', error)
+    return null
   }
 
-  return withSafeSettings(data[0]);
+  return normalizeProfile(data)
 }
 
-/* ======================================================
- * UPDATE NOME
- * ====================================================== */
+/**
+ * USADO NO LOGIN
+ * → SEMPRE retorna UM perfil ou null
+ */
+export async function getFullUserProfile(userId: string): Promise<UserProfile | null> {
+  return getUserProfileById(userId)
+}
 
-export async function updateProfileName(
-  userId: string,
-  displayName: string
-): Promise<boolean> {
-  const { error } = await supabase
+/**
+ * PERFIL PÚBLICO PELO CÓDIGO DO HERÓI
+ */
+export async function getPublicProfileByCode(heroCode: string): Promise<UserProfile | null> {
+  if (!heroCode) return null
+
+  const { data, error } = await supabase
+    .from('user_profiles')
+    .select('*')
+    .eq('hero_code', heroCode)
+    .maybeSingle()
+
+  if (error || !data) {
+    console.error('[getPublicProfileByCode]', error)
+    return null
+  }
+
+  return normalizeProfile(data)
+}
+
+/* ============================
+   Utilidades usadas no app
+============================ */
+
+export async function updateProfileName(userId: string, displayName: string) {
+  return supabase
     .from('user_profiles')
     .update({ display_name: displayName })
-    .eq('user_id', userId);
-
-  if (error) {
-    console.error('[updateProfileName]', error);
-    return false;
-  }
-
-  return true;
+    .eq('id', userId)
 }
-
-/* ======================================================
- * CHECK CPF
- * ====================================================== */
-
-export async function checkCpfExists(cpf: string): Promise<boolean> {
-  const cleanCpf = cpf.replace(/\D/g, '');
-
-  const { data, error } = await supabase
-    .from('user_profiles')
-    .select('user_id')
-    .eq('cpf', cleanCpf)
-    .limit(1);
-
-  if (error) {
-    console.error('[checkCpfExists]', error);
-    return false;
-  }
-
-  return !!data?.length;
-}
-
-/* ======================================================
- * AVATAR
- * ====================================================== */
-
-export async function uploadAndSyncAvatar(
-  userId: string,
-  file: File
-): Promise<string | null> {
-  const ext = file.name.split('.').pop();
-  const path = `avatars/${userId}.${ext}`;
-
-  const { error: uploadError } = await supabase.storage
-    .from('avatars')
-    .upload(path, file, { upsert: true });
-
-  if (uploadError) {
-    console.error('[uploadAvatar]', uploadError);
-    return null;
-  }
-
-  const { data } = supabase.storage.from('avatars').getPublicUrl(path);
-  const avatarUrl = data.publicUrl;
-
-  await supabase
-    .from('user_profiles')
-    .update({ avatar_url: avatarUrl })
-    .eq('user_id', userId);
-
-  return avatarUrl;
-}
-
-/* ======================================================
- * HERO IDENTITY (SEM GERAR NOVO CÓDIGO)
- * ====================================================== */
-
-export async function ensureHeroIdentity(userId: string): Promise<{
-  hero_code: string | null;
-  customer_id_public: string | null;
-}> {
-  const { data, error } = await supabase
-    .from('user_profiles')
-    .select('hero_code, customer_id_public')
-    .eq('user_id', userId)
-    .limit(1);
-
-  if (error || !data?.length) {
-    console.error('[ensureHeroIdentity]', error);
-    return { hero_code: null, customer_id_public: null };
-  }
-
-  return {
-    hero_code: data[0].hero_code,
-    customer_id_public: data[0].customer_id_public,
-  };
-}
-
-/* ======================================================
- * CARD SETTINGS
- * ====================================================== */
 
 export async function updateCardSettings(
   userId: string,
-  settings: Partial<UserSettings>
-): Promise<boolean> {
-  const { data } = await supabase
+  settings: { hero_theme?: string }
+) {
+  return supabase
     .from('user_profiles')
-    .select('settings')
-    .eq('user_id', userId)
-    .limit(1);
+    .update({
+      hero_theme: settings.hero_theme ?? DEFAULT_HERO_THEME
+    })
+    .eq('id', userId)
+}
 
-  const current = data?.[0]?.settings ?? DEFAULT_SETTINGS;
-  const merged = { ...current, ...settings };
+/**
+ * BOOTSTRAP SEGURO
+ * NÃO referencia colunas inexistentes
+ */
+export async function ensureProfileFromSession(sessionUser: any) {
+  if (!sessionUser?.id) return null
 
-  const { error } = await supabase
-    .from('user_profiles')
-    .update({ settings: merged })
-    .eq('user_id', userId);
+  const existing = await getUserProfileById(sessionUser.id)
+  if (existing) return existing
 
-  if (error) {
-    console.error('[updateCardSettings]', error);
-    return false;
+  const insert = {
+    id: sessionUser.id,
+    email: sessionUser.email,
+    display_name: sessionUser.user_metadata?.name ?? '',
+    role: 'client',
+    hero_theme: DEFAULT_HERO_THEME
   }
 
-  return true;
+  const { data, error } = await supabase
+    .from('user_profiles')
+    .insert(insert)
+    .select()
+    .single()
+
+  if (error) {
+    console.error('[ensureProfileFromSession]', error)
+    return null
+  }
+
+  return normalizeProfile(data)
 }
