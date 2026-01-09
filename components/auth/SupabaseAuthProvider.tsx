@@ -5,7 +5,7 @@ import { useThemeStore } from '../../store/themeStore';
 import { useCardStore } from '../../store/cardStore';
 import { templatesService } from '../../services/templates.service';
 import { getFullUserProfile, ensureProfileFromSession } from '../../services/users.service';
-import type { Role } from '../../types';
+import type { Role, HeroTheme } from '../../types';
 
 interface AuthProviderProps {
   children: React.ReactNode;
@@ -22,7 +22,7 @@ const DEFAULT_SETTINGS = {
   fontStyle: 'Inter',
   fontColor: '#FFFFFF',
   fontSize: 22,
-  heroTheme: 'sombra-noturna',
+  heroTheme: 'sombra-noturna' as HeroTheme,
   mode: 'system' as 'light' | 'dark' | 'system',
 };
 
@@ -37,27 +37,27 @@ export const SupabaseAuthProvider: React.FC<AuthProviderProps> = ({ children }) 
     if (isInitializingRef.current) return;
     isInitializingRef.current = true;
 
-    const applySettingsAndLoadTemplates = async (settingsRaw: any) => {
-      const settings = settingsRaw ?? DEFAULT_SETTINGS;
+    const applySettingsAndLoadTemplates = async (settings: any) => {
+      const safe = settings || DEFAULT_SETTINGS;
 
-      if (settings?.heroTheme) useThemeStore.getState().setHeroTheme(settings.heroTheme);
+      if (safe?.heroTheme) useThemeStore.getState().setHeroTheme(safe.heroTheme);
       else useThemeStore.getState().setHeroTheme(DEFAULT_SETTINGS.heroTheme);
 
-      if (settings?.mode) useThemeStore.getState().setMode(settings.mode);
+      if (safe?.mode) useThemeStore.getState().setMode(safe.mode);
       else useThemeStore.getState().setMode(DEFAULT_SETTINGS.mode);
 
       useCardStore.getState().setAll({
-        templateId: settings?.cardTemplateId || undefined,
-        font: settings?.fontStyle || DEFAULT_SETTINGS.fontStyle,
-        color: settings?.fontColor || DEFAULT_SETTINGS.fontColor,
-        fontSize: settings?.fontSize || DEFAULT_SETTINGS.fontSize,
+        templateId: safe?.cardTemplateId ?? undefined,
+        font: safe?.fontStyle || DEFAULT_SETTINGS.fontStyle,
+        color: safe?.fontColor || DEFAULT_SETTINGS.fontColor,
+        fontSize: safe?.fontSize || DEFAULT_SETTINGS.fontSize,
       });
 
       useThemeStore.getState().applyTheme();
 
       try {
         const dbTemplates = await templatesService.getActiveTemplates();
-        if (dbTemplates && dbTemplates.length > 0) {
+        if (dbTemplates.length > 0) {
           useCardStore.getState().setTemplates(templatesService.mapToStoreFormat(dbTemplates));
         }
       } catch (err) {
@@ -101,7 +101,7 @@ export const SupabaseAuthProvider: React.FC<AuthProviderProps> = ({ children }) 
         const safeProfile = await buildLoginFromSession(session.user);
 
         if (!safeProfile) {
-          console.warn('[SupabaseAuthProvider] Perfil não pôde ser recuperado. Logout de limpeza.');
+          console.warn('[SupabaseAuthProvider] Perfil não pôde ser recuperado. Realizando logout de limpeza.');
           logout();
           return;
         }
