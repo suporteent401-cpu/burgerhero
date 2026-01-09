@@ -71,29 +71,29 @@ const AdminTemplates: React.FC = () => {
       {loading ? (
         <div className="flex justify-center p-10"><Loader2 className="animate-spin text-hero-primary" /></div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
           {templates.map(t => (
             <Card key={t.id} className="overflow-hidden group">
               <div className="aspect-[1.586/1] bg-slate-900 relative">
                 <img src={t.preview_url} alt={t.name} className="w-full h-full object-cover" />
-                <div className={`absolute top-2 right-2 px-2 py-1 text-xs font-bold rounded-full ${t.is_active ? 'bg-green-500 text-white' : 'bg-slate-500 text-white'}`}>
+                <div className={`absolute top-2 right-2 px-1.5 py-0.5 text-[10px] font-bold rounded-full ${t.is_active ? 'bg-green-500 text-white' : 'bg-slate-500 text-white'}`}>
                   {t.is_active ? 'Ativo' : 'Inativo'}
                 </div>
               </div>
-              <CardBody className="p-4">
-                <h3 className="font-bold text-lg text-slate-800 mb-1">{t.name}</h3>
-                <p className="text-xs text-slate-400 font-mono truncate mb-4">{t.id}</p>
+              <CardBody className="p-3">
+                <h3 className="font-bold text-sm text-slate-800 mb-1 truncate" title={t.name}>{t.name}</h3>
+                <p className="text-[10px] text-slate-400 font-mono truncate mb-3">{t.id}</p>
                 
                 <Button 
                   variant="outline" 
                   size="sm" 
-                  className="w-full"
+                  className="w-full h-8 text-xs"
                   onClick={() => handleToggle(t)}
                 >
                   {t.is_active ? (
-                    <><ToggleRight size={16} className="mr-2 text-green-600" /> Desativar</>
+                    <><ToggleRight size={14} className="mr-1.5 text-green-600" /> Desativar</>
                   ) : (
-                    <><ToggleLeft size={16} className="mr-2 text-slate-400" /> Ativar</>
+                    <><ToggleLeft size={14} className="mr-1.5 text-slate-400" /> Ativar</>
                   )}
                 </Button>
               </CardBody>
