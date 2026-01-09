@@ -5,12 +5,12 @@ import { useCardStore } from '../store/cardStore';
 import { getSubscriptionStatus } from '../services/clientHome.service';
 import { subscriptionMockService } from '../services/subscriptionMock.service';
 import { Subscription } from '../types';
-import { Clock, ChevronRight, QrCode, Ticket, Tag, Copy, Sparkles } from 'lucide-react';
+import { Clock, ChevronRight, QrCode, Ticket, Tag, Copy, Sparkles, Utensils } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import HeroCard from '../components/HeroCard';
 import NearbyRestaurants from '../components/NearbyRestaurants';
 import { couponsService } from '../services/coupons.service';
-import { getCurrentVoucher } from '../services/voucher.service';
+import { getCurrentVoucher, getVoucherHistory } from '../services/voucher.service';
 
 type UiBurgerStatus = 'DISPONIVEL' | 'JA_UTILIZADO' | 'BLOQUEADO' | 'EM_BREVE';
 
@@ -21,6 +21,7 @@ const Home: React.FC = () => {
   const [sub, setSub] = useState<Subscription | null>(null);
   const [nextBillingLabel, setNextBillingLabel] = useState<string>('--/--');
   const [coupons, setCoupons] = useState<any[]>([]);
+  const [history, setHistory] = useState<any[]>([]);
 
   // fonte canônica do “burger do mês”
   const [burgerStatus, setBurgerStatus] = useState<UiBurgerStatus>('EM_BREVE');
@@ -33,18 +34,18 @@ const Home: React.FC = () => {
 
     const fetchData = async () => {
       try {
-        // 1) Fonte canônica: voucher do mês + eligibility (usa is_subscription_active lá dentro)
-        const cv = await getCurrentVoucher(user.id);
+        // 1) Voucher do mês + Histórico
+        const [cv, hist] = await Promise.all([
+          getCurrentVoucher(user.id),
+          getVoucherHistory(user.id)
+        ]);
+
+        // Define histórico (limitado aos 3 últimos)
+        setHistory(hist ? hist.slice(0, 3) : []);
 
         const subActive = !!cv?.eligibility?.subscriptionActive;
         setIsActive(subActive);
 
-        // Burger status coerente:
-        // - se drop não está ativo => EM_BREVE (ou BLOQUEADO se quiser diferenciar)
-        // - se drop ativo e sub inativa => BLOQUEADO
-        // - se voucher existe e redeemed => JA_UTILIZADO
-        // - se voucher existe e available => DISPONIVEL
-        // - se sub ativa mas ainda não tem voucher (caso raro) => EM_BREVE
         const dropActive = !!cv?.eligibility?.dropActive;
         const v = cv?.voucher;
 
@@ -62,9 +63,7 @@ const Home: React.FC = () => {
         }
         setBurgerStatus(bs);
 
-        // 2) Próxima cobrança (mantém teu fluxo atual com fallback)
-        // - tenta mock/local (se existir)
-        // - senão tenta tabela subscriptions
+        // 2) Próxima cobrança
         const activeSub = await subscriptionMockService.getActiveSubscription(user.id);
 
         if (activeSub?.nextBillingDate) {
@@ -86,7 +85,7 @@ const Home: React.FC = () => {
           setNextBillingLabel(next ? new Date(next).toLocaleDateString() : '--/--');
         }
 
-        // 3) Cupons (campanhas) - depende apenas se está ativo ou não
+        // 3) Cupons (campanhas)
         const availableCoupons = await couponsService.getAvailableCouponsForUser(subActive);
         setCoupons(availableCoupons);
       } catch (error) {
@@ -199,7 +198,7 @@ const Home: React.FC = () => {
         </Link>
       </div>
 
-      {/* Atividades Recentes (placeholder - a gente vai ligar no histórico real depois) */}
+      {/* Atividades Recentes */}
       <div className="space-y-3 pt-2">
         <div className="flex justify-between items-center px-1">
           <h3 className="font-black text-slate-700 dark:text-slate-300 text-sm uppercase tracking-wide">
@@ -209,16 +208,33 @@ const Home: React.FC = () => {
         <Card>
           <CardBody className="p-0">
             <div className="divide-y divide-slate-50 dark:divide-slate-800">
-              <div className="p-4 flex items-center gap-4 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors cursor-pointer opacity-70">
-                <div className="w-10 h-10 bg-slate-100 dark:bg-slate-800 rounded-xl flex items-center justify-center text-slate-500 dark:text-slate-400">
-                  <Clock size={18} />
+              {history.length === 0 ? (
+                <div className="p-6 text-center text-slate-400 dark:text-slate-500 text-xs">
+                  <Clock className="mx-auto mb-2 opacity-50" size={24} />
+                  Nenhuma atividade registrada ainda.
                 </div>
-                <div className="flex-1">
-                  <p className="text-sm font-bold text-slate-800 dark:text-slate-200">Hambúrguer de Setembro</p>
-                  <p className="text-xs text-slate-400 font-medium">Resgatado em 12/09</p>
-                </div>
-                <ChevronRight size={16} className="text-slate-300 dark:text-slate-600" />
-              </div>
+              ) : (
+                history.map((item, i) => (
+                  <div key={item.id || i} className="p-4 flex items-center gap-4 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors opacity-90">
+                    <div className="w-10 h-10 bg-slate-100 dark:bg-slate-800 rounded-xl flex items-center justify-center text-slate-500 dark:text-slate-400">
+                      {item.status === 'redeemed' ? <Utensils size={18} /> : <Ticket size={18} />}
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-bold text-slate-800 dark:text-slate-200">
+                        {item.monthly_drop?.burger?.name || 'Drop Mensal'}
+                      </p>
+                      <p className="text-xs text-slate-400 font-medium">
+                        {item.status === 'redeemed' 
+                          ? `Resgatado em ${new Date(item.redeemed_at).toLocaleDateString()}`
+                          : `Gerado em ${new Date(item.created_at).toLocaleDateString()}`}
+                      </p>
+                    </div>
+                    <div className="text-[10px] font-bold uppercase text-slate-300 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded">
+                      {item.status === 'redeemed' ? 'Usado' : 'Aberto'}
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </CardBody>
         </Card>
