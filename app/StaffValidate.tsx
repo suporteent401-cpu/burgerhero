@@ -5,7 +5,7 @@ import { Input } from '../components/ui/Input';
 import { Modal } from '../components/ui/Modal';
 import {
   Search, QrCode, ShieldCheck, ShieldAlert,
-  CheckCircle2, XCircle, AlertTriangle, CreditCard
+  CheckCircle2, XCircle, AlertTriangle, CreditCard, PackageCheck
 } from 'lucide-react';
 import QrScanner from '../components/QrScanner';
 import { staffService, StaffLookupResult } from '../services/staff.service';
@@ -19,25 +19,19 @@ const StaffValidate: React.FC = () => {
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [isScannerOpen, setIsScannerOpen] = useState(false);
 
-  // Normaliza e extrai o código (Hero Code ou CPF limpo)
+  // Normaliza e extrai o código (Hero Code / CPF / ou BH de URL)
   const extractSearchTerm = (input: string): string | null => {
     if (!input) return null;
     const cleanInput = input.trim();
 
-    // Se vier URL do QR, tenta extrair BH-XXXXXX
-    const heroFromUrl = cleanInput.match(/(BH-[A-Z0-9]+)/i);
-    if (heroFromUrl) return heroFromUrl[1].toUpperCase();
-
-    // Hero Code direto
-    const heroCodeMatch = cleanInput.match(/^(BH-[A-Z0-9]+)$/i);
+    // Se veio URL ou texto com BH-XXXX, extrai
+    const heroCodeMatch = cleanInput.match(/(BH-[A-Z0-9]+)/i);
     if (heroCodeMatch) return heroCodeMatch[1].toUpperCase();
 
-    // CPF (somente números)
-    if (/^[\d.-]+$/.test(cleanInput)) {
-      return cleanInput.replace(/\D/g, '');
-    }
+    // CPF (números)
+    if (/^[\d.\-\/\s]+$/.test(cleanInput)) return cleanInput.replace(/\D/g, '');
 
-    // fallback
+    // Se o cara digitou só "4SYNB3", aceita também
     return cleanInput.toUpperCase();
   };
 
@@ -65,6 +59,16 @@ const StaffValidate: React.FC = () => {
     }
   }, []);
 
+  const formatRedeemedAt = (iso: string | null) => {
+    if (!iso) return '';
+    try {
+      const dt = new Date(iso);
+      return dt.toLocaleString();
+    } catch {
+      return '';
+    }
+  };
+
   const handleRedeem = async () => {
     if (!client) return;
 
@@ -78,14 +82,19 @@ const StaffValidate: React.FC = () => {
       const res = await staffService.redeemVoucherByCode(client.hero_code);
 
       if (res.ok) {
-        setSuccessMsg('✅ Entregue com sucesso! Voucher marcado como UTILIZADO.');
+        // Recarrega para puxar voucher_status/redeemed_at atualizados
         await handleLookup(client.hero_code);
+
+        // Depois do reload, monta mensagem de entrega
+        setSuccessMsg('✅ Entrega confirmada! Voucher marcado como ENTREGUE.');
       } else {
         let msg = res.message;
+
         if (msg === 'subscription_inactive') msg = 'Assinatura do cliente não está ativa.';
         if (msg === 'no_voucher_available') msg = 'Cliente não possui voucher disponível para este mês.';
-        if (msg === 'already_redeemed') msg = 'Voucher deste mês já foi resgatado.';
-        if (msg === 'client_not_found') msg = 'Cliente não encontrado (hero_code não existe).';
+        if (msg === 'already_redeemed') msg = 'Voucher deste mês já foi entregue anteriormente.';
+        if (msg === 'client_not_found') msg = 'Cliente não encontrado (código inválido).';
+
         setErrorMsg(msg);
       }
     } catch (err) {
@@ -101,37 +110,28 @@ const StaffValidate: React.FC = () => {
   };
 
   const getSubStatusUI = (active: boolean) => active
-    ? { text: 'Ativa', color: 'text-green-600', bg: 'bg-green-100', Icon: CheckCircle2 }
-    : { text: 'Inativa/Pendente', color: 'text-red-600', bg: 'bg-red-100', Icon: XCircle };
+    ? { text: 'Ativa', color: 'text-green-600', bg: 'bg-green-100', icon: CheckCircle2 }
+    : { text: 'Inativa/Pendente', color: 'text-red-600', bg: 'bg-red-100', icon: XCircle };
 
-  const getVoucherStatusUI = (voucher_status: 'available' | 'redeemed' | 'none', subActive: boolean) => {
-    if (!subActive) return { text: 'Bloqueado', color: 'text-slate-400', bg: 'bg-slate-100', Icon: ShieldAlert };
+  const getVoucherStatusUI = (subActive: boolean, voucherStatus: string | null) => {
+    if (!subActive) return { text: 'Bloqueado', color: 'text-slate-400', bg: 'bg-slate-100', icon: ShieldAlert };
 
-    if (voucher_status === 'available') {
-      return { text: 'Disponível', color: 'text-blue-600', bg: 'bg-blue-100', Icon: ShieldCheck };
+    if (!voucherStatus) {
+      return { text: 'Não Gerado', color: 'text-slate-600', bg: 'bg-slate-100', icon: AlertTriangle };
     }
 
-    if (voucher_status === 'redeemed') {
-      return { text: 'Já Utilizado', color: 'text-amber-600', bg: 'bg-amber-100', Icon: AlertTriangle };
+    if (voucherStatus === 'available') {
+      return { text: 'Disponível', color: 'text-blue-600', bg: 'bg-blue-100', icon: ShieldCheck };
     }
 
-    return { text: 'Não Gerado', color: 'text-slate-500', bg: 'bg-slate-100', Icon: ShieldAlert };
+    if (voucherStatus === 'redeemed') {
+      return { text: 'Entregue', color: 'text-amber-600', bg: 'bg-amber-100', icon: PackageCheck };
+    }
+
+    return { text: voucherStatus, color: 'text-slate-600', bg: 'bg-slate-100', icon: AlertTriangle };
   };
 
-  const formatBRDateTime = (iso: string) => {
-    try {
-      const d = new Date(iso);
-      return d.toLocaleString('pt-BR');
-    } catch {
-      return iso;
-    }
-  };
-
-  const canRedeem =
-    !!client &&
-    client.subscription_active &&
-    client.voucher_status === 'available' &&
-    !redeeming;
+  const canRedeem = !!client?.subscription_active && client?.voucher_status === 'available';
 
   return (
     <div className="space-y-6">
@@ -160,7 +160,7 @@ const StaffValidate: React.FC = () => {
 
           <form onSubmit={(e) => { e.preventDefault(); handleLookup(query); }} className="flex gap-2">
             <Input
-              placeholder="Hero Code (BH-XXXXXX) ou CPF (apenas números)"
+              placeholder="Hero Code (BH-XXXX) ou CPF (apenas números)"
               value={query}
               onChange={e => setQuery(e.target.value)}
               className="rounded-xl h-12"
@@ -228,7 +228,7 @@ const StaffValidate: React.FC = () => {
               <div className="grid grid-cols-2 gap-4">
                 {(() => {
                   const subUI = getSubStatusUI(client.subscription_active);
-                  const voucherUI = getVoucherStatusUI(client.voucher_status, client.subscription_active);
+                  const voucherUI = getVoucherStatusUI(client.subscription_active, client.voucher_status);
 
                   return (
                     <>
@@ -241,7 +241,7 @@ const StaffValidate: React.FC = () => {
                       </div>
 
                       <div className={`p-3 rounded-xl border flex flex-col items-center text-center gap-2 ${voucherUI.bg} border-transparent`}>
-                        <voucherUI.Icon size={20} className={voucherUI.color} />
+                        <voucherUI.icon size={20} className={voucherUI.color} />
                         <div>
                           <p className="text-[10px] font-bold uppercase text-slate-500 opacity-70">Voucher Mês</p>
                           <p className={`text-sm font-black ${voucherUI.color}`}>{voucherUI.text}</p>
@@ -252,15 +252,15 @@ const StaffValidate: React.FC = () => {
                 })()}
               </div>
 
-              {successMsg && (
-                <div className="bg-green-50 text-green-700 p-4 rounded-xl text-center font-bold border border-green-200">
-                  {successMsg}
+              {client.voucher_status === 'redeemed' && (
+                <div className="bg-amber-50 text-amber-800 p-3 rounded-xl text-center font-bold text-sm border border-amber-200">
+                  ✅ Já entregue em: {formatRedeemedAt(client.redeemed_at) || 'data não disponível'}
                 </div>
               )}
 
-              {client.voucher_status === 'redeemed' && client.redeemed_at && (
-                <div className="bg-amber-50 text-amber-800 p-4 rounded-xl text-center font-bold border border-amber-200">
-                  ✅ Voucher já foi entregue em: {formatBRDateTime(client.redeemed_at)}
+              {successMsg && (
+                <div className="bg-green-50 text-green-700 p-4 rounded-xl text-center font-bold border border-green-200">
+                  {successMsg}
                 </div>
               )}
 
@@ -275,7 +275,7 @@ const StaffValidate: React.FC = () => {
                   size="lg"
                   className="w-full h-14 text-base rounded-2xl"
                   onClick={handleRedeem}
-                  disabled={!canRedeem}
+                  disabled={!canRedeem || redeeming}
                   isLoading={redeeming}
                   variant={!canRedeem ? 'secondary' : 'primary'}
                 >
@@ -287,10 +287,8 @@ const StaffValidate: React.FC = () => {
                     {!client.subscription_active
                       ? 'Assinatura inativa. Oriente o cliente.'
                       : client.voucher_status === 'redeemed'
-                        ? 'Voucher já foi utilizado.'
-                        : client.voucher_status === 'none'
-                          ? 'Voucher ainda não foi gerado para o mês.'
-                          : 'Voucher indisponível.'}
+                        ? 'Voucher já foi entregue.'
+                        : 'Voucher indisponível ou ainda não gerado.'}
                   </p>
                 )}
               </div>
