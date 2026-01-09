@@ -13,6 +13,8 @@ import {
   XCircle,
   AlertTriangle,
   CreditCard,
+  User,
+  Gift
 } from 'lucide-react';
 import QrScanner from '../components/QrScanner';
 import { staffService, StaffLookupResult } from '../services/staff.service';
@@ -31,7 +33,8 @@ const StaffValidate: React.FC = () => {
 
   const [isScannerOpen, setIsScannerOpen] = useState(false);
 
-  // Modal "Entregue ✅"
+  // Modais
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const [deliveredOpen, setDeliveredOpen] = useState(false);
   const [deliveredInfo, setDeliveredInfo] = useState<{ name: string; code: string } | null>(null);
 
@@ -56,7 +59,7 @@ const StaffValidate: React.FC = () => {
     try {
       await supabase.auth.signOut();
     } catch {}
-    navigate('/auth'); // ajuste se sua rota for outra
+    navigate('/auth');
   };
 
   const handleLookup = useCallback(async (rawValue: string) => {
@@ -81,7 +84,6 @@ const StaffValidate: React.FC = () => {
 
       if (err?.message === 'SESSION_EXPIRED') {
         setErrorMsg('Sua sessão expirou. Faça login novamente.');
-        // faz relogin automático sem quebrar o app
         setTimeout(() => forceRelogin(), 700);
         return;
       }
@@ -106,7 +108,7 @@ const StaffValidate: React.FC = () => {
   const getSubStatusUI = (active: boolean) =>
     active
       ? { text: 'Ativa', color: 'text-green-600', bg: 'bg-green-100', icon: CheckCircle2 }
-      : { text: 'Inativa/Pendente', color: 'text-red-600', bg: 'bg-red-100', icon: XCircle };
+      : { text: 'Inativa', color: 'text-red-600', bg: 'bg-red-100', icon: XCircle };
 
   const getVoucherStatusUI = (clientData: StaffLookupResult) => {
     if (!clientData.subscription_active) {
@@ -120,20 +122,20 @@ const StaffValidate: React.FC = () => {
     if (st === 'redeemed') {
       return { text: 'Já Utilizado', color: 'text-amber-600', bg: 'bg-amber-100', icon: AlertTriangle };
     }
-    if (st) {
-      return { text: String(st), color: 'text-amber-600', bg: 'bg-amber-100', icon: AlertTriangle };
-    }
-
+    
     return clientData.has_current_voucher
       ? { text: 'Disponível', color: 'text-blue-600', bg: 'bg-blue-100', icon: ShieldCheck }
       : { text: 'Já Utilizado', color: 'text-amber-600', bg: 'bg-amber-100', icon: AlertTriangle };
   };
 
+  const openConfirmModal = () => {
+    if (!client) return;
+    setConfirmOpen(true);
+  };
+
   const handleRedeem = async () => {
     if (!client) return;
-
-    const okConfirm = confirm(`Confirmar entrega do burger para ${client.display_name}?`);
-    if (!okConfirm) return;
+    setConfirmOpen(false); // fecha modal de confirmação
 
     setRedeeming(true);
     setSuccessMsg(null);
@@ -143,12 +145,10 @@ const StaffValidate: React.FC = () => {
       const res = await staffService.redeemVoucherByCode(client.hero_code);
 
       if (res.ok) {
-        // 3) Mensagem clara de entregue ✅
         setDeliveredInfo({ name: client.display_name, code: client.hero_code });
         setDeliveredOpen(true);
-
         setSuccessMsg('Resgate realizado com sucesso! ✅');
-
+        
         // Atualiza status na tela
         await handleLookup(client.hero_code);
       } else {
@@ -174,7 +174,7 @@ const StaffValidate: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-20">
       <div className="text-center">
         <h2 className="text-2xl font-black text-slate-800 dark:text-white">
           Validação <span className="text-hero-primary">Hero</span>
@@ -206,7 +206,7 @@ const StaffValidate: React.FC = () => {
             className="flex gap-2"
           >
             <Input
-              placeholder="Código do herói (BH-XXXX) ou CPF (apenas números)"
+              placeholder="Código do herói (BH-XXXX) ou CPF"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               className="rounded-xl h-12"
@@ -313,7 +313,7 @@ const StaffValidate: React.FC = () => {
                 <Button
                   size="lg"
                   className="w-full h-14 text-base rounded-2xl"
-                  onClick={handleRedeem}
+                  onClick={openConfirmModal}
                   disabled={!client.subscription_active || !voucherIsAvailable || redeeming}
                   isLoading={redeeming}
                   variant={(!client.subscription_active || !voucherIsAvailable) ? 'secondary' : 'primary'}
@@ -340,6 +340,7 @@ const StaffValidate: React.FC = () => {
         </div>
       )}
 
+      {/* Modal de Scanner */}
       <Modal isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} title="Escanear Cartão" size="fullscreen">
         <div className="w-full h-full flex flex-col relative bg-black">
           <div className="flex-1 relative">
@@ -362,23 +363,66 @@ const StaffValidate: React.FC = () => {
         </div>
       </Modal>
 
-      {/* Modal Entregue ✅ */}
-      <Modal isOpen={deliveredOpen} onClose={() => setDeliveredOpen(false)} title="Entregue com sucesso" size="md">
-        <div className="p-4 space-y-3">
-          <div className="flex items-center gap-3 bg-green-50 border border-green-200 rounded-xl p-4">
-            <CheckCircle2 className="text-green-600" />
-            <div>
-              <p className="font-black text-green-800">Voucher marcado como ENTREGUE ✅</p>
-              {deliveredInfo && (
-                <p className="text-sm text-green-700">
-                  {deliveredInfo.name} • {deliveredInfo.code}
-                </p>
-              )}
+      {/* Modal de Confirmação */}
+      <Modal isOpen={confirmOpen} onClose={() => setConfirmOpen(false)} title="Confirmar Resgate">
+        <div className="p-4 space-y-6">
+          <div className="text-center">
+            <div className="w-20 h-20 bg-slate-100 rounded-full mx-auto mb-4 flex items-center justify-center overflow-hidden border-2 border-hero-primary">
+               {client?.avatar_url ? (
+                 <img src={client.avatar_url} className="w-full h-full object-cover" alt="Avatar" />
+               ) : (
+                 <User size={32} className="text-slate-400" />
+               )}
             </div>
+            <h3 className="text-xl font-black text-slate-800">{client?.display_name}</h3>
+            <p className="text-sm text-slate-500 font-mono">{client?.hero_code}</p>
           </div>
 
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex gap-3">
+            <AlertTriangle className="text-amber-600 flex-shrink-0" size={24} />
+            <p className="text-sm text-amber-800 font-medium">
+              Confirme a entrega do hambúrguer. Esta ação consumirá o voucher mensal do cliente e não poderá ser desfeita.
+            </p>
+          </div>
+
+          <div className="flex gap-3 pt-2">
+            <Button variant="ghost" onClick={() => setConfirmOpen(false)} className="flex-1">
+              Cancelar
+            </Button>
+            <Button onClick={handleRedeem} className="flex-1 shadow-lg shadow-hero-primary/20">
+              Confirmar Entrega
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Modal Sucesso (Entregue ✅) */}
+      <Modal isOpen={deliveredOpen} onClose={() => setDeliveredOpen(false)} title="Sucesso" size="md">
+        <div className="p-6 space-y-6 text-center">
+          <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto text-green-600 animate-in zoom-in duration-300">
+            <CheckCircle2 size={48} />
+          </div>
+          
+          <div>
+            <h3 className="text-2xl font-black text-slate-800">Voucher Validado!</h3>
+            <p className="text-slate-500 mt-2">O benefício foi registrado com sucesso.</p>
+          </div>
+
+          {deliveredInfo && (
+            <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-slate-500">Cliente</span>
+                <span className="font-bold text-slate-800">{deliveredInfo.name}</span>
+              </div>
+              <div className="flex items-center justify-between text-sm mt-2">
+                <span className="text-slate-500">Código</span>
+                <span className="font-mono font-bold text-slate-800">{deliveredInfo.code}</span>
+              </div>
+            </div>
+          )}
+
           <Button className="w-full h-12 rounded-xl" onClick={() => setDeliveredOpen(false)}>
-            Ok
+            Próximo Cliente
           </Button>
         </div>
       </Modal>
