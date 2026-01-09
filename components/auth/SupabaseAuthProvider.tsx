@@ -17,6 +17,15 @@ const normalizeRole = (input: any): Role => {
   return 'client';
 };
 
+const DEFAULT_SETTINGS = {
+  cardTemplateId: null as string | null,
+  fontStyle: 'Inter',
+  fontColor: '#FFFFFF',
+  fontSize: 22,
+  heroTheme: 'sombra-noturna',
+  mode: 'system' as 'light' | 'dark' | 'system',
+};
+
 export const SupabaseAuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const login = useAuthStore((s) => s.login);
   const logout = useAuthStore((s) => s.logout);
@@ -28,31 +37,27 @@ export const SupabaseAuthProvider: React.FC<AuthProviderProps> = ({ children }) 
     if (isInitializingRef.current) return;
     isInitializingRef.current = true;
 
-    const applySettingsAndLoadTemplates = async (settings: any) => {
-      const safe = settings ?? {
-        cardTemplateId: null,
-        fontStyle: 'Inter',
-        fontColor: '#FFFFFF',
-        fontSize: 22,
-        heroTheme: 'sombra-noturna',
-        mode: 'system',
-      };
+    const applySettingsAndLoadTemplates = async (settingsRaw: any) => {
+      const settings = settingsRaw ?? DEFAULT_SETTINGS;
 
-      if (safe?.heroTheme) useThemeStore.getState().setHeroTheme(safe.heroTheme);
-      if (safe?.mode) useThemeStore.getState().setMode(safe.mode);
+      if (settings?.heroTheme) useThemeStore.getState().setHeroTheme(settings.heroTheme);
+      else useThemeStore.getState().setHeroTheme(DEFAULT_SETTINGS.heroTheme);
+
+      if (settings?.mode) useThemeStore.getState().setMode(settings.mode);
+      else useThemeStore.getState().setMode(DEFAULT_SETTINGS.mode);
 
       useCardStore.getState().setAll({
-        templateId: safe?.cardTemplateId || undefined,
-        font: safe?.fontStyle || undefined,
-        color: safe?.fontColor || undefined,
-        fontSize: safe?.fontSize || undefined,
+        templateId: settings?.cardTemplateId || undefined,
+        font: settings?.fontStyle || DEFAULT_SETTINGS.fontStyle,
+        color: settings?.fontColor || DEFAULT_SETTINGS.fontColor,
+        fontSize: settings?.fontSize || DEFAULT_SETTINGS.fontSize,
       });
 
       useThemeStore.getState().applyTheme();
 
       try {
         const dbTemplates = await templatesService.getActiveTemplates();
-        if (dbTemplates.length > 0) {
+        if (dbTemplates && dbTemplates.length > 0) {
           useCardStore.getState().setTemplates(templatesService.mapToStoreFormat(dbTemplates));
         }
       } catch (err) {
@@ -63,7 +68,6 @@ export const SupabaseAuthProvider: React.FC<AuthProviderProps> = ({ children }) 
     const buildLoginFromSession = async (sessionUser: any) => {
       let full = await getFullUserProfile(sessionUser);
 
-      // 🔥 AUTO-CURA: Se não achou perfil, tenta criar agora (sem RPC problemática)
       if (!full) {
         console.warn('Perfil incompleto detectado. Tentando auto-cura...');
         try {
@@ -87,10 +91,7 @@ export const SupabaseAuthProvider: React.FC<AuthProviderProps> = ({ children }) 
     const initAuth = async () => {
       setLoading(true);
       try {
-        const {
-          data: { session },
-          error,
-        } = await supabase.auth.getSession();
+        const { data: { session }, error } = await supabase.auth.getSession();
 
         if (error || !session?.user) {
           logout();
@@ -100,9 +101,7 @@ export const SupabaseAuthProvider: React.FC<AuthProviderProps> = ({ children }) 
         const safeProfile = await buildLoginFromSession(session.user);
 
         if (!safeProfile) {
-          console.warn(
-            '[SupabaseAuthProvider] Perfil não pôde ser recuperado. Realizando logout de limpeza.'
-          );
+          console.warn('[SupabaseAuthProvider] Perfil não pôde ser recuperado. Logout de limpeza.');
           logout();
           return;
         }
@@ -118,9 +117,7 @@ export const SupabaseAuthProvider: React.FC<AuthProviderProps> = ({ children }) 
 
     initAuth();
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'INITIAL_SESSION') return;
 
       if (event === 'SIGNED_OUT') {
