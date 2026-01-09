@@ -9,15 +9,13 @@ export interface StaffLookupResult {
 
   subscription_active: boolean;
 
-  // Compatibilidade: continua existindo
+  // compat
   has_current_voucher: boolean;
 
-  // Novo (mais correto)
   voucher_status?: 'available' | 'redeemed' | 'expired' | 'blocked' | string | null;
   current_voucher_id?: string | null;
   redeemed_at?: string | null;
 
-  // Visual
   card_image_url?: string;
 }
 
@@ -27,28 +25,47 @@ export interface RedeemResult {
   voucher_id?: string | null;
 }
 
+function isAuthTokenProblem(msg: string) {
+  const m = (msg || '').toLowerCase();
+  return (
+    m.includes('invalid refresh token') ||
+    m.includes('refresh token not found') ||
+    m.includes('jwt') ||
+    m.includes('not authenticated') ||
+    m.includes('missing authorization')
+  );
+}
+
 export const staffService = {
-  /**
-   * Busca um cliente por código do herói (ex: BH-XXXX) OU CPF.
-   * A RPC agora também aceita aliases de código sem alterar hero_code.
-   */
   async lookupClient(query: string): Promise<StaffLookupResult | null> {
+    // Checa sessão antes (evita 400 maluco)
+    const { data: sessionData } = await supabase.auth.getSession();
+    if (!sessionData?.session) {
+      // força um erro “semântico” que a tela entende
+      throw new Error('SESSION_EXPIRED');
+    }
+
     const { data, error } = await supabase.rpc('staff_lookup_client', {
-      p_query: query
+      p_query: query,
     });
 
     if (error) {
-      console.error('Erro no lookup do cliente:', error);
-      throw error;
+      console.error('RPC staff_lookup_client error:', error);
+
+      // Se for token quebrado, manda a tela relogar
+      if (isAuthTokenProblem(error.message)) {
+        throw new Error('SESSION_EXPIRED');
+      }
+
+      // Qualquer outro erro real
+      throw new Error(error.message || 'RPC_FAILED');
     }
 
-    if (!Array.isArray(data) || data.length === 0) {
-      return null;
-    }
+    if (!Array.isArray(data) || data.length === 0) return null;
 
     const client = data[0] as StaffLookupResult;
 
-    // Enriquecimento visual (não pode quebrar o fluxo)
+    // Enriquecimento visual (não quebra fluxo)
     try {
       const { data: settings } = await supabase
         .from('hero_card_settings')
@@ -65,31 +82,32 @@ export const staffService = {
 
       const templateData = (settings as any)?.template;
       const imageUrl = templateData?.preview_url || null;
-
-      if (imageUrl) {
-        client.card_image_url = imageUrl;
-      }
+      if (imageUrl) client.card_image_url = imageUrl;
     } catch (err) {
-      console.warn('Não foi possível carregar a imagem do cartão do cliente:', err);
+      console.warn('Card template preview não carregou (ok ignorar):', err);
     }
 
     return client;
   },
 
-  /**
-   * Resgata o voucher do mês atual pelo código do herói.
-   * (Mantém compatível com seu fluxo atual)
-   */
   async redeemVoucherByCode(code: string): Promise<RedeemResult> {
+    const { data: sessionData } = await supabase.auth.getSession();
+    if (!sessionData?.session) {
+      return { ok: false, message: 'session_expired' };
+    }
+
     const { data, error } = await supabase.rpc('redeem_voucher_by_code', {
-      p_code: code
+      p_code: code,
     });
 
     if (error) {
-      console.error('Erro na redenção do voucher:', error);
+      console.error('RPC redeem_voucher_by_code error:', error);
+      if (isAuthTokenProblem(error.message)) {
+        return { ok: false, message: 'session_expired' };
+      }
       return { ok: false, message: error.message };
     }
 
     return data as RedeemResult;
-  }
+  },
 };
