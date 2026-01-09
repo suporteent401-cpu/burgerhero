@@ -12,8 +12,8 @@ export type SubscriptionDTO =
 
 /**
  * Status de assinatura do usuário (cliente).
- * - tenta ler da tabela subscriptions por user_id
- * - retorna null se não achar
+ * - Lê da tabela subscriptions por user_id
+ * - Retorna null se não achar
  */
 export const getSubscriptionStatus = async (userId: string): Promise<SubscriptionDTO> => {
   if (!userId) return null;
@@ -46,17 +46,35 @@ export type MonthlyBenefitDTO = {
   locked?: boolean;
 };
 
+const formatMonthLabel = (isoDateOrDate: string | Date | null | undefined) => {
+  if (!isoDateOrDate) return '';
+  const d = isoDateOrDate instanceof Date ? isoDateOrDate : new Date(isoDateOrDate);
+  if (Number.isNaN(d.getTime())) return '';
+  const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const yyyy = d.getUTCFullYear();
+  return `${mm}/${yyyy}`;
+};
+
+const getMonthDateUTC = () => {
+  const now = new Date();
+  // primeiro dia do mês em UTC, formato YYYY-MM-DD
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0, 0))
+    .toISOString()
+    .slice(0, 10);
+};
+
+/**
+ * Drop/benefício do mês atual (para Home/Voucher).
+ * - Busca por month_date (primeiro dia do mês)
+ * - NÃO depende da coluna month_label no banco (evita "estouro")
+ */
 export const getMonthlyBenefit = async (): Promise<MonthlyBenefitDTO | null> => {
   try {
-    // Pega o drop do mês atual (mais confiável do que "created_at")
-    const now = new Date();
-    const monthDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0, 0))
-      .toISOString()
-      .slice(0, 10);
+    const monthDate = getMonthDateUTC();
 
     const { data, error } = await supabase
       .from('monthly_drops')
-      .select('title, month_label, is_active, month_date')
+      .select('title, is_active, month_date')
       .eq('month_date', monthDate)
       .maybeSingle();
 
@@ -67,10 +85,12 @@ export const getMonthlyBenefit = async (): Promise<MonthlyBenefitDTO | null> => 
 
     if (!data) return null;
 
+    const md = data as any;
+
     return {
-      title: (data as any).title || 'Drop Mensal',
-      monthLabel: (data as any).month_label || '',
-      locked: (data as any).is_active === false,
+      title: md.title || 'Drop Mensal',
+      monthLabel: formatMonthLabel(md.month_date),
+      locked: md.is_active === false,
     };
   } catch (e) {
     console.error('[getMonthlyBenefit] exception:', e);
