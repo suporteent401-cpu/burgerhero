@@ -37,133 +37,11 @@ const normalizeRole = (input: any): Role => {
   return 'client';
 };
 
-const normalizeCpf = (cpf?: string | null) => (cpf ? String(cpf).replace(/[^\d]/g, '') : '');
-
-const mapSettingsRowToSettings = (row: any | null | undefined): FullUserProfile['settings'] => {
-  // ✅ Resiliente a variações de schema:
-  // - font_size OU font_size_px
-  // - mode OU theme_mode
-  // - hero_theme OU heroTheme (se vier errado de algum lugar)
-  const fontSizeRaw =
-    row?.font_size ??
-    row?.font_size_px ??
-    row?.fontSize ??
-    DEFAULT_SETTINGS.fontSize;
-
-  const modeRaw =
-    row?.mode ??
-    row?.theme_mode ??
-    DEFAULT_SETTINGS.mode;
-
-  const heroThemeRaw =
-    row?.hero_theme ??
-    row?.heroTheme ??
-    DEFAULT_SETTINGS.heroTheme;
-
-  return {
-    cardTemplateId: row?.card_template_id ?? row?.cardTemplateId ?? DEFAULT_SETTINGS.cardTemplateId,
-    fontStyle: row?.font_style ?? row?.fontStyle ?? DEFAULT_SETTINGS.fontStyle,
-    fontColor: row?.font_color ?? row?.fontColor ?? DEFAULT_SETTINGS.fontColor,
-    fontSize: typeof fontSizeRaw === 'number' ? fontSizeRaw : Number(fontSizeRaw) || DEFAULT_SETTINGS.fontSize,
-    heroTheme: (heroThemeRaw as HeroTheme) ?? DEFAULT_SETTINGS.heroTheme,
-    mode: (modeRaw as any) ?? DEFAULT_SETTINGS.mode,
-  };
-};
+const normalizeCpf = (cpf: string) => (cpf ? cpf.replace(/[^\d]/g, '') : '');
 
 /**
- * ✅ Garante (via UPSERT) que existam:
- * - user_profiles (mínimo)
- * - app_users (role)
- * - hero_card_settings (defaults)
- *
- * Isso evita depender da RPC ensure_user_bootstrap (que está falhando no seu banco).
- */
-export const ensureUserBootstrap = async (payload: {
-  userId: string;
-  email: string;
-  displayName?: string | null;
-  cpf?: string | null;
-  birthdate?: string | null;
-  avatarUrl?: string | null;
-  role?: Role;
-}) => {
-  const userId = payload.userId;
-  const email = payload.email || '';
-  const displayName = payload.displayName || 'Herói';
-  const cpf = normalizeCpf(payload.cpf);
-  const birthdate = payload.birthdate ?? null;
-  const avatarUrl = payload.avatarUrl ?? null;
-  const role: Role = normalizeRole(payload.role || 'client');
-
-  // 1) user_profiles (mínimo)
-  // OBS: não inclui whatsapp aqui (pois não existe na sua tabela atual)
-  const { error: upsertProfileError } = await supabase
-    .from('user_profiles')
-    .upsert(
-      {
-        user_id: userId,
-        display_name: displayName,
-        email,
-        cpf: cpf || null,
-        birthdate,
-        avatar_url: avatarUrl,
-      },
-      { onConflict: 'user_id' }
-    );
-
-  if (upsertProfileError) {
-    console.error('ensureUserBootstrap: upsert user_profiles falhou:', upsertProfileError);
-    // não dá throw aqui pra não quebrar login; só loga
-  }
-
-  // 2) app_users (role)
-  const { error: upsertAppUsersError } = await supabase
-    .from('app_users')
-    .upsert(
-      { id: userId, role },
-      { onConflict: 'id' }
-    );
-
-  if (upsertAppUsersError) {
-    console.error('ensureUserBootstrap: upsert app_users falhou:', upsertAppUsersError);
-  }
-
-  // 3) hero_card_settings (defaults)
-  // Respeita schema variável: tenta inserir com campos mais comuns.
-  // Se o banco tiver colunas diferentes, o select em getFullUserProfile vai garantir defaults mesmo assim.
-  const settingsInsert: any = {
-    user_id: userId,
-    card_template_id: DEFAULT_SETTINGS.cardTemplateId,
-    font_style: DEFAULT_SETTINGS.fontStyle,
-    font_color: DEFAULT_SETTINGS.fontColor,
-    hero_theme: DEFAULT_SETTINGS.heroTheme,
-  };
-
-  // tenta ambos: font_size e mode (se existir)
-  settingsInsert.font_size = DEFAULT_SETTINGS.fontSize;
-  settingsInsert.mode = DEFAULT_SETTINGS.mode;
-
-  const { error: upsertSettingsError } = await supabase
-    .from('hero_card_settings')
-    .upsert(settingsInsert, { onConflict: 'user_id' });
-
-  if (upsertSettingsError) {
-    // ✅ não quebra login caso a tabela/colunas sejam diferentes
-    console.warn('ensureUserBootstrap: upsert hero_card_settings aviso:', upsertSettingsError);
-  }
-
-  // 4) garante hero_code (se sua RPC existir e estiver ok)
-  try {
-    await ensureHeroIdentity(userId);
-  } catch (e) {
-    // não quebra
-  }
-
-  return { ok: true };
-};
-
-/**
- * ✅ Busca o perfil completo do usuário (perfil + role + settings) com defaults sempre.
+ * Busca o perfil completo do usuário (perfil + role + settings)
+ * - NUNCA retorna settings null (usa DEFAULT_SETTINGS)
  */
 export const getFullUserProfile = async (user: SupabaseUser): Promise<FullUserProfile | null> => {
   const userId = user.id;
@@ -178,27 +56,19 @@ export const getFullUserProfile = async (user: SupabaseUser): Promise<FullUserPr
     if (profileError) throw profileError;
     if (!userProfileData) return null;
 
-    const { data: roleData, error: roleError } = await supabase
+    // role: tenta app_users primeiro
+    const { data: roleData, error: roleErr } = await supabase
       .from('app_users')
       .select('role')
       .eq('id', userId)
       .maybeSingle();
 
-    if (roleError) {
-      // não quebra; só loga
-      console.warn('getFullUserProfile: erro ao buscar role em app_users:', roleError);
-    }
-
-    const { data: settingsData, error: settingsError } = await supabase
+    // settings: pode não existir ainda (usuário novo)
+    const { data: settingsData } = await supabase
       .from('hero_card_settings')
       .select('*')
       .eq('user_id', userId)
       .maybeSingle();
-
-    if (settingsError) {
-      // não quebra; defaults
-      console.warn('getFullUserProfile: erro ao buscar settings:', settingsError);
-    }
 
     const role = normalizeRole(roleData?.role);
 
@@ -208,12 +78,21 @@ export const getFullUserProfile = async (user: SupabaseUser): Promise<FullUserPr
       email: userProfileData.email || user.email || '',
       cpf: userProfileData.cpf || '',
       avatarUrl: userProfileData.avatar_url || (user.user_metadata as any)?.avatar_url || null,
-      // ✅ Padroniza: preferir hero_code; fallback customer_id_public
+      // prioridade: hero_code (imutável), senão customer_id_public
       customerCode: userProfileData.hero_code || userProfileData.customer_id_public || '',
       role,
     };
 
-    const settings = mapSettingsRowToSettings(settingsData);
+    const settings: FullUserProfile['settings'] = settingsData
+      ? {
+          cardTemplateId: settingsData.card_template_id ?? null,
+          fontStyle: settingsData.font_style ?? DEFAULT_SETTINGS.fontStyle,
+          fontColor: settingsData.font_color ?? DEFAULT_SETTINGS.fontColor,
+          fontSize: settingsData.font_size ?? DEFAULT_SETTINGS.fontSize,
+          heroTheme: (settingsData.hero_theme as HeroTheme) ?? DEFAULT_SETTINGS.heroTheme,
+          mode: (settingsData.mode as any) ?? DEFAULT_SETTINGS.mode,
+        }
+      : DEFAULT_SETTINGS;
 
     return { profile, settings };
   } catch (error) {
@@ -223,24 +102,10 @@ export const getFullUserProfile = async (user: SupabaseUser): Promise<FullUserPr
 };
 
 /**
- * ✅ Busca apenas os dados da tabela user_profiles (resiliente a chamadas erradas)
+ * Busca apenas os dados da tabela user_profiles
  */
-export const getUserProfileById = async (userIdOrUser: string | { id?: string } | any) => {
-  const userId =
-    typeof userIdOrUser === 'string'
-      ? userIdOrUser
-      : (userIdOrUser?.id as string | undefined);
-
-  if (!userId) {
-    console.error('getUserProfileById: userId inválido:', userIdOrUser);
-    return null;
-  }
-
-  const { data, error } = await supabase
-    .from('user_profiles')
-    .select('*')
-    .eq('user_id', userId)
-    .maybeSingle();
+export const getUserProfileById = async (userId: string) => {
+  const { data, error } = await supabase.from('user_profiles').select('*').eq('user_id', userId).maybeSingle();
 
   if (error) {
     console.error('Error fetching user profile by ID:', error);
@@ -250,14 +115,15 @@ export const getUserProfileById = async (userIdOrUser: string | { id?: string } 
 };
 
 /**
+ * Alias útil: alguns lugares chamam isso
+ */
+export const getUserProfileByUserId = getUserProfileById;
+
+/**
  * Atualiza o nome de exibição
  */
 export const updateProfileName = async (userId: string, displayName: string) => {
-  const { error } = await supabase
-    .from('user_profiles')
-    .update({ display_name: displayName })
-    .eq('user_id', userId);
-
+  const { error } = await supabase.from('user_profiles').update({ display_name: displayName }).eq('user_id', userId);
   if (error) throw error;
 };
 
@@ -267,41 +133,24 @@ export const updateUserName = updateProfileName;
  * Busca configurações do cartão
  */
 export const getCardSettings = async (userId: string) => {
-  const { data, error } = await supabase
-    .from('hero_card_settings')
-    .select('*')
-    .eq('user_id', userId)
-    .maybeSingle();
-
+  const { data, error } = await supabase.from('hero_card_settings').select('*').eq('user_id', userId).maybeSingle();
   if (error) return null;
   return data;
 };
 
 /**
- * Atualiza configurações do cartão (resiliente a variações de schema)
+ * Atualiza configurações do cartão
  */
 export const updateCardSettings = async (userId: string, settings: any) => {
   const payload: any = {};
+  if (settings.templateId !== undefined) payload.card_template_id = settings.templateId;
+  if (settings.fontFamily !== undefined) payload.font_style = settings.fontFamily;
+  if (settings.fontColor !== undefined) payload.font_color = settings.fontColor;
+  if (settings.fontSize !== undefined) payload.font_size = settings.fontSize;
+  if (settings.heroTheme !== undefined) payload.hero_theme = settings.heroTheme;
+  if (settings.mode !== undefined) payload.mode = settings.mode;
 
-  if (settings.templateId) payload.card_template_id = settings.templateId;
-  if (settings.fontFamily) payload.font_style = settings.fontFamily;
-  if (settings.fontColor) payload.font_color = settings.fontColor;
-  if (settings.fontSize) {
-    // tenta duas colunas (se uma não existir, supabase pode avisar; não dá pra saber qual schema)
-    payload.font_size = settings.fontSize;
-    payload.font_size_px = settings.fontSize;
-  }
-  if (settings.heroTheme) payload.hero_theme = settings.heroTheme;
-  if (settings.mode) {
-    payload.mode = settings.mode;
-    payload.theme_mode = settings.mode;
-  }
-
-  const { error } = await supabase
-    .from('hero_card_settings')
-    .update(payload)
-    .eq('user_id', userId);
-
+  const { error } = await supabase.from('hero_card_settings').update(payload).eq('user_id', userId);
   if (error) throw error;
 };
 
@@ -330,10 +179,7 @@ export const uploadAndSyncAvatar = async (userId: string, file: File): Promise<s
   const fileName = `${userId}-${Date.now()}.${fileExt}`;
   const filePath = `user-avatars/${fileName}`;
 
-  const { error: uploadError } = await supabase.storage
-    .from(bucketName)
-    .upload(filePath, file, { upsert: true });
-
+  const { error: uploadError } = await supabase.storage.from(bucketName).upload(filePath, file, { upsert: true });
   if (uploadError) {
     console.error('Upload failed:', uploadError);
     throw uploadError;
@@ -342,22 +188,18 @@ export const uploadAndSyncAvatar = async (userId: string, file: File): Promise<s
   const { data } = supabase.storage.from(bucketName).getPublicUrl(filePath);
   const publicUrl = data.publicUrl;
 
-  const { error: updateError } = await supabase
-    .from('user_profiles')
-    .update({ avatar_url: publicUrl })
-    .eq('user_id', userId);
-
+  const { error: updateError } = await supabase.from('user_profiles').update({ avatar_url: publicUrl }).eq('user_id', userId);
   if (updateError) throw updateError;
 
   return publicUrl;
 };
 
 /**
- * Garante e retorna o código de herói (se sua RPC existir)
- * OBS: mantém assinatura para não quebrar chamadas existentes.
+ * Garante e retorna o código de herói
+ * (se sua RPC não receber p_user_id, remova o arg e deixe só rpc('ensure_hero_identity'))
  */
-export const ensureHeroIdentity = async (_userId?: string): Promise<string | null> => {
-  const { data, error } = await supabase.rpc('ensure_hero_identity');
+export const ensureHeroIdentity = async (userId: string): Promise<string | null> => {
+  const { data, error } = await supabase.rpc('ensure_hero_identity', { p_user_id: userId });
   if (error) {
     console.error('ensure_hero_identity error:', error);
     return null;
@@ -367,23 +209,16 @@ export const ensureHeroIdentity = async (_userId?: string): Promise<string | nul
 
 /**
  * Auto-cura de perfil na sessão
- * ✅ Agora faz bootstrap direto (sem RPC que está falhando).
+ * - agora envia whatsapp como null (e a coluna existe)
  */
 export const ensureProfileFromSession = async (user: SupabaseUser) => {
-  try {
-    await ensureUserBootstrap({
-      userId: user.id,
-      email: user.email || '',
-      displayName: (user.user_metadata as any)?.full_name || 'Herói',
-      avatarUrl: (user.user_metadata as any)?.avatar_url || null,
-      // CPF não dá pra inventar; deixa null aqui
-      cpf: null,
-      birthdate: null,
-      role: 'client',
-    });
-  } catch (e) {
-    console.error('ensureProfileFromSession warning:', e);
-  }
+  const { error } = await supabase.rpc('ensure_user_profile', {
+    p_display_name: (user.user_metadata as any)?.full_name || 'Hero',
+    p_email: user.email,
+    p_cpf: null,
+    p_whatsapp: null,
+  });
+  if (error) console.error('ensureProfileFromSession warning:', error);
 };
 
 /**
@@ -391,12 +226,31 @@ export const ensureProfileFromSession = async (user: SupabaseUser) => {
  */
 export const getPublicProfileByCode = async (code: string): Promise<PublicProfile | null> => {
   const { data, error } = await supabase.rpc('get_public_profile_by_code', { p_code: code });
+
   if (error) {
     console.error('Erro ao buscar perfil público:', error);
     return null;
   }
+
   if (Array.isArray(data) && data.length > 0) return data[0] as PublicProfile;
   if (data && !Array.isArray(data)) return data as PublicProfile;
 
   return null;
 };
+
+/**
+ * Alguns pontos do app pedem esse export.
+ * Aqui ele só chama getFullUserProfile.
+ */
+export const getFullUserProfileById = async (userId: string): Promise<FullUserProfile | null> => {
+  const { data: authUser, error } = await supabase.auth.getUser();
+  if (error || !authUser?.user) return null;
+  if (authUser.user.id !== userId) return null;
+  return getFullUserProfile(authUser.user);
+};
+
+/**
+ * Outro export que apareceu no seu erro: getFullUserProfile
+ * (já existe, mas deixo aqui só pra ficar explícito)
+ */
+export const getFullUserProfileSafe = getFullUserProfile;
