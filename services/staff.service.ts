@@ -16,93 +16,69 @@ export type StaffLookupResult = {
   month_date: string | null;
 };
 
-export type StaffRedeemResult = {
-  ok: boolean;
-  message:
-    | 'ok'
-    | 'session_expired'
-    | 'not_allowed'
-    | 'missing_restaurant'
-    | 'missing_token'
-    | 'client_not_found'
-    | 'subscription_inactive'
-    | 'drop_inactive'
-    | 'no_voucher'
-    | 'already_redeemed'
-    | string;
-  client_user_id: string | null;
-  voucher_id: string | null;
-  voucher_status: string | null;
-};
-
-const isSessionExpired = (errMsg: string) => {
-  const msg = (errMsg || '').toLowerCase();
-  return msg.includes('jwt') || msg.includes('expired') || msg.includes('invalid token');
-};
-
 export const staffService = {
   async lookupClient(query: string): Promise<StaffLookupResult | null> {
     const { data, error } = await supabase.rpc('staff_lookup_client', { p_query: query });
 
     if (error) {
-      if (isSessionExpired(error.message || '')) throw new Error('SESSION_EXPIRED');
+      // padroniza mensagens comuns
+      const msg = (error.message || '').toLowerCase();
+      if (msg.includes('jwt') || msg.includes('expired')) throw new Error('SESSION_EXPIRED');
       throw error;
     }
 
-    if (!data || (Array.isArray(data) && data.length === 0)) return null;
-
-    // rpc returns table -> array
-    const row = Array.isArray(data) ? data[0] : data;
-    return row as StaffLookupResult;
+    if (!data || data.length === 0) return null;
+    return data[0] as StaffLookupResult;
   },
 
-  /**
-   * Resgata voucher do cliente pelo hero_code (painel do staff).
-   * IMPORTANTe: restaurantId deve ser UUID válido. Se vier vazio, a RPC retorna missing_restaurant.
-   */
-  async redeemVoucherByCode(heroCode: string, restaurantId: string): Promise<StaffRedeemResult> {
-    if (!heroCode || !heroCode.trim()) {
-      return {
-        ok: false,
-        message: 'missing_token',
-        client_user_id: null,
-        voucher_id: null,
-        voucher_status: null,
-      };
-    }
-
-    if (!restaurantId || !restaurantId.trim()) {
-      return {
-        ok: false,
-        message: 'missing_restaurant',
-        client_user_id: null,
-        voucher_id: null,
-        voucher_status: null,
-      };
-    }
-
+  async redeemVoucherByCode(heroCode: string, restaurantId?: string) {
     const { data, error } = await supabase.rpc('staff_redeem_voucher', {
       p_qr_token: null,
       p_hero_code: heroCode,
-      p_restaurant_id: restaurantId,
+      p_restaurant_id: restaurantId ?? null,
     });
 
     if (error) {
-      if (isSessionExpired(error.message || '')) {
-        return { ok: false, message: 'session_expired', client_user_id: null, voucher_id: null, voucher_status: null };
-      }
-      return { ok: false, message: error.message || 'error', client_user_id: null, voucher_id: null, voucher_status: null };
+      const msg = (error.message || '').toLowerCase();
+      if (msg.includes('jwt') || msg.includes('expired')) return { ok: false, message: 'session_expired' };
+      return { ok: false, message: error.message || 'error' };
     }
 
     // rpc returns table -> array com 1 item
-    const row: any = Array.isArray(data) ? data[0] : data;
+    const row = Array.isArray(data) ? data[0] : data;
 
     return {
       ok: !!row?.ok,
       message: row?.message || 'error',
-      client_user_id: row?.client_user_id ?? null, // ✅ alinhado com a RPC
-      voucher_id: row?.voucher_id ?? null,
-      voucher_status: row?.voucher_status ?? null,
+      client_id: row?.client_id || null,
+      voucher_id: row?.voucher_id || null,
+      voucher_status: row?.voucher_status || null,
     };
   },
+
+  /**
+   * Conta quantos vouchers o staff logado resgatou desde o início do dia (UTC 00:00)
+   */
+  async getShiftRedemptionsCount(): Promise<number> {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return 0;
+
+    // Define o início do dia em UTC para filtrar o turno atual
+    const today = new Date();
+    today.setUTCHours(0, 0, 0, 0);
+    const isoDate = today.toISOString();
+
+    const { count, error } = await supabase
+      .from('voucher_redemptions')
+      .select('*', { count: 'exact', head: true })
+      .eq('staff_id', user.id)
+      .gte('redeemed_at', isoDate);
+
+    if (error) {
+      console.error('Erro ao contar resgates do turno:', error);
+      return 0;
+    }
+
+    return count || 0;
+  }
 };
