@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Card, CardBody } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
@@ -15,8 +16,11 @@ import {
 } from 'lucide-react';
 import QrScanner from '../components/QrScanner';
 import { staffService, StaffLookupResult } from '../services/staff.service';
+import { supabase } from '../lib/supabaseClient';
 
 const StaffValidate: React.FC = () => {
+  const navigate = useNavigate();
+
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [redeeming, setRedeeming] = useState(false);
@@ -31,23 +35,28 @@ const StaffValidate: React.FC = () => {
   const [deliveredOpen, setDeliveredOpen] = useState(false);
   const [deliveredInfo, setDeliveredInfo] = useState<{ name: string; code: string } | null>(null);
 
-  // Normaliza e extrai o termo (código do herói ou CPF)
+  // Extrai código do herói OU CPF, mesmo se vier em URL
   const extractSearchTerm = (input: string): string | null => {
     if (!input) return null;
     const cleanInput = input.trim();
 
-    // Pega código do herói em qualquer texto/URL
     const heroCodeMatch = cleanInput.match(/(BH-[A-Z0-9]+)/i);
-    if (heroCodeMatch) {
-      return heroCodeMatch[1].toUpperCase();
-    }
+    if (heroCodeMatch) return heroCodeMatch[1].toUpperCase();
 
-    // CPF / números
-    if (/^[\d.-]+$/.test(cleanInput)) {
-      return cleanInput.replace(/\D/g, '');
+    // CPF (mantém só dígitos)
+    if (/^[\d.\-\/\s]+$/.test(cleanInput)) {
+      const digits = cleanInput.replace(/\D/g, '');
+      return digits.length ? digits : null;
     }
 
     return cleanInput.toUpperCase();
+  };
+
+  const forceRelogin = async () => {
+    try {
+      await supabase.auth.signOut();
+    } catch {}
+    navigate('/auth'); // ajuste se sua rota for outra
   };
 
   const handleLookup = useCallback(async (rawValue: string) => {
@@ -67,8 +76,17 @@ const StaffValidate: React.FC = () => {
       } else {
         setErrorMsg('Cliente não encontrado. Verifique o código do herói ou CPF.');
       }
-    } catch (err) {
-      setErrorMsg('Erro de conexão ao buscar cliente.');
+    } catch (err: any) {
+      console.error('Lookup failed:', err);
+
+      if (err?.message === 'SESSION_EXPIRED') {
+        setErrorMsg('Sua sessão expirou. Faça login novamente.');
+        // faz relogin automático sem quebrar o app
+        setTimeout(() => forceRelogin(), 700);
+        return;
+      }
+
+      setErrorMsg(err?.message ? `Erro ao buscar cliente: ${err.message}` : 'Erro ao buscar cliente.');
     } finally {
       setLoading(false);
     }
@@ -81,7 +99,6 @@ const StaffValidate: React.FC = () => {
 
   const voucherIsAvailable = useMemo(() => {
     if (!client) return false;
-    // Preferir voucher_status quando existir
     if (client.voucher_status) return client.voucher_status === 'available';
     return !!client.has_current_voucher;
   }, [client]);
@@ -96,7 +113,6 @@ const StaffValidate: React.FC = () => {
       return { text: 'Bloqueado', color: 'text-slate-400', bg: 'bg-slate-100', icon: ShieldAlert };
     }
 
-    // Se tiver voucher_status, ele manda
     const st = clientData.voucher_status;
     if (st === 'available') {
       return { text: 'Disponível', color: 'text-blue-600', bg: 'bg-blue-100', icon: ShieldCheck };
@@ -108,7 +124,6 @@ const StaffValidate: React.FC = () => {
       return { text: String(st), color: 'text-amber-600', bg: 'bg-amber-100', icon: AlertTriangle };
     }
 
-    // Fallback antigo (boolean)
     return clientData.has_current_voucher
       ? { text: 'Disponível', color: 'text-blue-600', bg: 'bg-blue-100', icon: ShieldCheck }
       : { text: 'Já Utilizado', color: 'text-amber-600', bg: 'bg-amber-100', icon: AlertTriangle };
@@ -128,23 +143,31 @@ const StaffValidate: React.FC = () => {
       const res = await staffService.redeemVoucherByCode(client.hero_code);
 
       if (res.ok) {
-        // 3) Mensagem clara de entregue
+        // 3) Mensagem clara de entregue ✅
         setDeliveredInfo({ name: client.display_name, code: client.hero_code });
         setDeliveredOpen(true);
 
         setSuccessMsg('Resgate realizado com sucesso! ✅');
-        // Recarrega o cliente pra atualizar status (available -> redeemed)
+
+        // Atualiza status na tela
         await handleLookup(client.hero_code);
       } else {
         let msg = res.message;
+
+        if (msg === 'session_expired') msg = 'Sua sessão expirou. Faça login novamente.';
         if (msg === 'subscription_inactive') msg = 'Assinatura do cliente não está ativa.';
         if (msg === 'no_voucher_available') msg = 'Cliente não possui voucher disponível para este mês.';
         if (msg === 'already_redeemed') msg = 'Voucher deste mês já foi resgatado.';
         if (msg === 'client_not_found') msg = 'Cliente não encontrado pelo código do herói.';
+
         setErrorMsg(msg);
+
+        if (res.message === 'session_expired') {
+          setTimeout(() => forceRelogin(), 700);
+        }
       }
-    } catch (err) {
-      setErrorMsg('Erro ao processar resgate.');
+    } catch (err: any) {
+      setErrorMsg(err?.message ? `Erro ao processar resgate: ${err.message}` : 'Erro ao processar resgate.');
     } finally {
       setRedeeming(false);
     }
@@ -159,7 +182,6 @@ const StaffValidate: React.FC = () => {
         <p className="text-slate-500 text-sm">Identifique o herói para liberar o benefício.</p>
       </div>
 
-      {/* Área de Busca */}
       <Card>
         <CardBody className="p-4 space-y-4">
           <Button
@@ -201,7 +223,6 @@ const StaffValidate: React.FC = () => {
         </CardBody>
       </Card>
 
-      {/* Feedback de Erro Geral */}
       {errorMsg && !client && (
         <div className="bg-red-50 text-red-600 p-4 rounded-xl flex items-center gap-3 border border-red-100 animate-in fade-in slide-in-from-top-2">
           <ShieldAlert size={24} />
@@ -209,7 +230,6 @@ const StaffValidate: React.FC = () => {
         </div>
       )}
 
-      {/* Cartão do Cliente */}
       {client && (
         <div className="animate-in fade-in slide-in-from-bottom-4">
           <Card className="overflow-hidden border-0 shadow-2xl">
@@ -320,7 +340,6 @@ const StaffValidate: React.FC = () => {
         </div>
       )}
 
-      {/* Scanner Modal */}
       <Modal isOpen={isScannerOpen} onClose={() => setIsScannerOpen(false)} title="Escanear Cartão" size="fullscreen">
         <div className="w-full h-full flex flex-col relative bg-black">
           <div className="flex-1 relative">
@@ -344,12 +363,7 @@ const StaffValidate: React.FC = () => {
       </Modal>
 
       {/* Modal Entregue ✅ */}
-      <Modal
-        isOpen={deliveredOpen}
-        onClose={() => setDeliveredOpen(false)}
-        title="Entregue com sucesso"
-        size="md"
-      >
+      <Modal isOpen={deliveredOpen} onClose={() => setDeliveredOpen(false)} title="Entregue com sucesso" size="md">
         <div className="p-4 space-y-3">
           <div className="flex items-center gap-3 bg-green-50 border border-green-200 rounded-xl p-4">
             <CheckCircle2 className="text-green-600" />
