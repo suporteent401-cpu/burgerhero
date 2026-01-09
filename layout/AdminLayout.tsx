@@ -2,22 +2,19 @@ import React from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { LayoutDashboard, Users, CreditCard, Tag, LogOut, Image as ImageIcon } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
+import { useThemeStore } from '../store/themeStore';
 import { supabase } from '../lib/supabaseClient';
 
 const AdminLayout: React.FC = () => {
   const user = useAuthStore(s => s.user);
   const logout = useAuthStore(s => s.logout);
+  const heroTheme = useThemeStore(s => s.heroTheme);
   const navigate = useNavigate();
   const location = useLocation();
 
   const handleLogout = async () => {
-    // 1. Limpa estado visual imediatamente para feedback instantâneo
     logout();
-    
-    // 2. Garante navegação para fora da área protegida
     navigate('/auth');
-
-    // 3. Encerra sessão no backend (limpa cookies/tokens)
     try {
       await supabase.auth.signOut();
     } catch (error) {
@@ -33,12 +30,17 @@ const AdminLayout: React.FC = () => {
     { label: 'Cupons', icon: Tag, path: '/admin/coupons' },
   ];
 
+  // Lógica de cor condicional para o 'Hero' no Admin
+  const heroTextColor = heroTheme === 'preto-absoluto' ? 'text-blue-400' : 'text-hero-primary';
+
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-slate-100">
       {/* Sidebar Desktop */}
       <aside className="hidden md:flex w-64 bg-slate-800 text-white flex-col">
         <div className="p-6 border-b border-white/10">
-          <h1 className="text-2xl font-black tracking-tighter">Admin<span className="text-hero-primary">Hero</span></h1>
+          <h1 className="text-2xl font-black tracking-tighter">
+            Admin<span className={heroTextColor}>Hero</span>
+          </h1>
         </div>
         <nav className="flex-1 p-4 space-y-1">
           {navItems.map(item => {
@@ -72,7 +74,7 @@ const AdminLayout: React.FC = () => {
 
       {/* Mobile Header */}
       <header className="md:hidden bg-slate-900 text-white p-4 flex justify-between items-center sticky top-0 z-20">
-        <h1 className="text-xl font-black">Admin<span className="text-hero-primary">Hero</span></h1>
+        <h1 className="text-xl font-black">Admin<span className={heroTextColor}>Hero</span></h1>
         <button onClick={handleLogout}><LogOut size={20} /></button>
       </header>
 

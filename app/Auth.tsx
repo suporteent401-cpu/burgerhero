@@ -40,6 +40,10 @@ const Auth: React.FC = () => {
   const [error, setError] = useState('');
   const navigate = useNavigate();
   const login = useAuthStore((state) => state.login);
+  
+  // Acessando o tema atual para aplicar a lógica de cor no título
+  const heroTheme = useThemeStore(state => state.heroTheme);
+  const heroTextColor = heroTheme === 'preto-absoluto' ? 'text-blue-400' : 'text-hero-primary';
 
   const {
     register,
@@ -132,10 +136,8 @@ const Auth: React.FC = () => {
           throw new Error('Não foi possível iniciar a sessão.');
         }
 
-        // 1) tenta carregar perfil
         let full = await getFullUserProfile(signInData.session.user);
 
-        // 2) se não veio, roda auto-cura SEM inventar CPF
         if (!full) {
           console.warn('Falha ao carregar perfil no login. Tentando auto-cura...');
           await ensureProfileFromSession(signInData.session.user);
@@ -157,7 +159,6 @@ const Auth: React.FC = () => {
         return;
       }
 
-      // --- CADASTRO ---
       if (step === 1) {
         const cpfExists = await checkCpfExists(data.cpf);
         if (cpfExists) throw new Error('Este CPF já está cadastrado em nossa base.');
@@ -196,7 +197,6 @@ const Auth: React.FC = () => {
         throw new Error('Erro ao estabelecer sessão após cadastro.');
       }
 
-      // ✅ Bootstrap real (com cpf/whatsapp/birthdate reais)
       const boot = await ensureBootstrap({
         name: fullUserData.name,
         email: fullUserData.email,
@@ -245,7 +245,7 @@ const Auth: React.FC = () => {
             className="w-24 h-24 rounded-full mx-auto mb-6 border-4 border-white/20 shadow-lg"
           />
           <h1 className="text-3xl font-black mb-2 tracking-tight text-white">
-            Burger<span className="text-hero-primary">Hero</span>
+            Burger<span className={heroTextColor}>Hero</span>
           </h1>
           <p className="text-slate-400 font-medium">{isLogin ? 'Bem-vindo de volta, Herói!' : 'Crie sua identidade secreta'}</p>
         </div>

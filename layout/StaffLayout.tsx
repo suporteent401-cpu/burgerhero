@@ -16,17 +16,20 @@ const StaffLayout: React.FC = () => {
     { label: 'Validar', icon: QrCode, path: '/staff/validate' },
   ];
 
-  const themesForBlueText = ['guardiao-escarlate', 'aurora-rosa', 'tita-dourado', 'vermelho-heroi', 'laranja-vulcanico'];
+  // Incluindo tema preto na lógica de cores contrastantes
+  const themesForBlueText = [
+    'guardiao-escarlate', 
+    'aurora-rosa', 
+    'tita-dourado', 
+    'vermelho-heroi', 
+    'laranja-vulcanico', 
+    'preto-absoluto'
+  ];
   const heroTextColor = themesForBlueText.includes(heroTheme) ? 'text-blue-300' : 'text-red-500';
 
   const handleLogout = async () => {
-    // 1. Limpa estado local imediatamente
     logout();
-    
-    // 2. Redireciona
     navigate('/auth');
-
-    // 3. Limpa sessão Supabase
     const { error } = await supabase.auth.signOut();
     if (error) {
       console.error('Erro ao fazer logout no servidor:', error);

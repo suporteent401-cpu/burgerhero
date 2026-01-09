@@ -17,12 +17,14 @@ const ClientLayout: React.FC = () => {
     { label: 'Perfil', icon: User, path: '/app/profile' },
   ];
 
+  // Adicionando 'preto-absoluto' à lista que força o texto azul
   const themesForBlueText = [
     'guardiao-escarlate', 
     'aurora-rosa', 
     'tita-dourado', 
     'vermelho-heroi', 
-    'laranja-vulcanico'
+    'laranja-vulcanico',
+    'preto-absoluto'
   ];
   const heroTextColor = themesForBlueText.includes(heroTheme) ? 'text-blue-300' : 'text-red-500';
 
