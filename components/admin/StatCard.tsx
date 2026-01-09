@@ -17,7 +17,7 @@ export const StatCard: React.FC<StatCardProps> = ({ title, value, delta, icon: I
   const DeltaIcon = isPositive ? ArrowUpRight : ArrowDownRight;
 
   return (
-    <Card className="transition-all hover:border-slate-300 hover:-translate-y-1 overflow-visible relative hover:z-20">
+    <Card className="transition-all hover:border-slate-300 hover:-translate-y-1">
       <CardBody className="p-5">
         <div className="flex justify-between items-start">
           <div className="flex items-center gap-3">
@@ -28,9 +28,9 @@ export const StatCard: React.FC<StatCardProps> = ({ title, value, delta, icon: I
           </div>
           <div className="relative group">
             <Info size={14} className="text-slate-300 cursor-help" />
-            <div className="absolute bottom-full mb-2 -right-4 w-48 bg-slate-800 text-white text-xs rounded-lg p-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 shadow-xl">
+            <div className="absolute bottom-full mb-2 -right-4 w-48 bg-slate-800 text-white text-xs rounded-lg p-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10">
               {tooltip}
-              <div className="absolute top-full right-4 border-8 border-transparent border-t-slate-800"></div>
+              <div className="absolute top-full right-6 border-8 border-transparent border-t-slate-800"></div>
             </div>
           </div>
         </div>

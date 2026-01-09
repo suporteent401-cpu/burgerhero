@@ -17,15 +17,6 @@ const normalizeRole = (input: any): Role => {
   return 'client';
 };
 
-const DEFAULT_SETTINGS = {
-  cardTemplateId: null as string | null,
-  fontStyle: 'Inter',
-  fontColor: '#FFFFFF',
-  fontSize: 22,
-  heroTheme: 'sombra-noturna',
-  mode: 'system' as 'light' | 'dark' | 'system',
-};
-
 export const SupabaseAuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const login = useAuthStore((s) => s.login);
   const logout = useAuthStore((s) => s.logout);
@@ -37,27 +28,24 @@ export const SupabaseAuthProvider: React.FC<AuthProviderProps> = ({ children }) 
     if (isInitializingRef.current) return;
     isInitializingRef.current = true;
 
-    const applySettingsAndLoadTemplates = async (settingsRaw: any) => {
-      const settings = settingsRaw ?? DEFAULT_SETTINGS;
-
+    const applySettingsAndLoadTemplates = async (settings: any) => {
+      // 1) Aplica configurações do usuário
       if (settings?.heroTheme) useThemeStore.getState().setHeroTheme(settings.heroTheme);
-      else useThemeStore.getState().setHeroTheme(DEFAULT_SETTINGS.heroTheme);
-
       if (settings?.mode) useThemeStore.getState().setMode(settings.mode);
-      else useThemeStore.getState().setMode(DEFAULT_SETTINGS.mode);
 
       useCardStore.getState().setAll({
         templateId: settings?.cardTemplateId || undefined,
-        font: settings?.fontStyle || DEFAULT_SETTINGS.fontStyle,
-        color: settings?.fontColor || DEFAULT_SETTINGS.fontColor,
-        fontSize: settings?.fontSize || DEFAULT_SETTINGS.fontSize,
+        font: settings?.fontStyle || undefined,
+        color: settings?.fontColor || undefined,
+        fontSize: settings?.fontSize || undefined,
       });
 
       useThemeStore.getState().applyTheme();
 
+      // 2) Carrega templates ativos do banco
       try {
         const dbTemplates = await templatesService.getActiveTemplates();
-        if (dbTemplates && dbTemplates.length > 0) {
+        if (dbTemplates.length > 0) {
           useCardStore.getState().setTemplates(templatesService.mapToStoreFormat(dbTemplates));
         }
       } catch (err) {
@@ -67,7 +55,8 @@ export const SupabaseAuthProvider: React.FC<AuthProviderProps> = ({ children }) 
 
     const buildLoginFromSession = async (sessionUser: any) => {
       let full = await getFullUserProfile(sessionUser);
-
+      
+      // 🔥 AUTO-CURA: Se não achou perfil, tenta criar agora
       if (!full) {
         console.warn('Perfil incompleto detectado. Tentando auto-cura...');
         try {
@@ -101,8 +90,8 @@ export const SupabaseAuthProvider: React.FC<AuthProviderProps> = ({ children }) 
         const safeProfile = await buildLoginFromSession(session.user);
 
         if (!safeProfile) {
-          console.warn('[SupabaseAuthProvider] Perfil não pôde ser recuperado. Logout de limpeza.');
-          logout();
+          console.warn('[SupabaseAuthProvider] Perfil não pôde ser recuperado. Realizando logout de limpeza.');
+          logout(); // Segurança: se falhar tudo, sai.
           return;
         }
 
@@ -130,9 +119,9 @@ export const SupabaseAuthProvider: React.FC<AuthProviderProps> = ({ children }) 
         try {
           const safeProfile = await buildLoginFromSession(session.user);
           if (!safeProfile) {
-            console.error('Falha crítica ao montar perfil no evento de Auth. Logout forçado.');
-            logout();
-            return;
+             console.error('Falha crítica ao montar perfil no evento de Auth. Logout forçado.');
+             logout();
+             return;
           }
 
           login(safeProfile);

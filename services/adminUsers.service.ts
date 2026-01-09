@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabaseClient';
-import { User } from '../types';
+import { User, Subscription } from '../types';
 
 export interface AdminUserListItem {
   id: string;
@@ -15,7 +15,7 @@ export interface AdminUserListItem {
 export const adminUsersService = {
   async listUsers(params: { page: number; search: string; limit: number; filters?: any }) {
     const { page, search, limit, filters } = params;
-
+    
     const { data, error } = await supabase.rpc('admin_list_users', {
       p_page: page,
       p_search: search,
@@ -47,39 +47,30 @@ export const adminUsersService = {
   },
 
   async getUserDetails(userId: string) {
-    // 1. Perfil
-    const { data: profile, error: profErr } = await supabase
+    // 1. Dados do perfil
+    const { data: profile } = await supabase
       .from('user_profiles')
       .select('*')
       .eq('user_id', userId)
       .single();
 
-    if (profErr || !profile) throw new Error('Usuário não encontrado');
+    if (!profile) throw new Error('Usuário não encontrado');
 
-    // 2. Role
+    // 2. Dados de sistema (role)
     const { data: appUser } = await supabase
       .from('app_users')
       .select('role')
       .eq('id', userId)
       .single();
 
-    // 3. Assinatura + Plano (prioriza active e a mais recente)
-    const { data: subRows } = await supabase
+    // 3. Assinatura e Plano
+    const { data: sub } = await supabase
       .from('subscriptions')
       .select('*, plan:plans(*)')
       .eq('user_id', userId)
-      .order('current_period_end', { ascending: false, nullsFirst: false });
+      .maybeSingle();
 
-    const sub = (subRows || []).sort((a: any, b: any) => {
-      const aActive = a?.status === 'active' ? 1 : 0;
-      const bActive = b?.status === 'active' ? 1 : 0;
-      if (aActive !== bActive) return bActive - aActive;
-      const aEnd = a?.current_period_end ? new Date(a.current_period_end).getTime() : 0;
-      const bEnd = b?.current_period_end ? new Date(b.current_period_end).getTime() : 0;
-      return bEnd - aEnd;
-    })[0];
-
-    // 4. Vouchers (últimos 5)
+    // 4. Histórico de Vouchers
     const { data: redemptions } = await supabase
       .from('voucher_redemptions')
       .select('*')

@@ -2,7 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { adminUsersService } from '../services/adminUsers.service';
 import { Card, CardBody, CardHeader } from '../components/ui/Card';
-import { ArrowLeft, Mail, CreditCard, Calendar, CheckCircle, Gift, ShieldCheck, User as UserIcon } from 'lucide-react';
+import { Button } from '../components/ui/Button';
+import { ArrowLeft, Mail, Phone, CreditCard, Calendar, CheckCircle, Gift, ShieldCheck, User as UserIcon } from 'lucide-react';
 
 const DetailItem: React.FC<{ icon: React.ElementType, label: string, value: React.ReactNode }> = ({ icon: Icon, label, value }) => (
   <div>
@@ -31,11 +32,12 @@ const AdminUserDetails: React.FC = () => {
   const { user, subscription, plan, redemptionHistory } = data;
 
   return (
-    <div className="space-y-8 pb-28">
+    <div className="space-y-8">
       <Link to="/admin/users" className="flex items-center gap-2 font-bold text-slate-500 hover:text-hero-primary">
         <ArrowLeft size={18} /> Voltar para Usuários
       </Link>
 
+      {/* Header */}
       <div className="flex items-center gap-6">
         <img src={user.avatarUrl || `https://picsum.photos/seed/${user.id}/200`} alt={user.name} className="w-24 h-24 rounded-full shadow-lg" />
         <div>
@@ -45,6 +47,7 @@ const AdminUserDetails: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {/* Coluna Principal */}
         <div className="lg:col-span-2 space-y-8">
           <Card>
             <CardHeader><h3 className="font-bold text-slate-700">Assinatura e Plano</h3></CardHeader>
@@ -84,6 +87,7 @@ const AdminUserDetails: React.FC = () => {
           </Card>
         </div>
 
+        {/* Coluna Lateral */}
         <div className="space-y-8">
           <Card>
             <CardHeader><h3 className="font-bold text-slate-700">Informações Pessoais</h3></CardHeader>
