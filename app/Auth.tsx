@@ -53,15 +53,37 @@ const DEFAULT_SETTINGS = {
   mode: 'system' as 'light' | 'dark' | 'system',
 };
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+const buildSupabaseErrorDebug = (e: any) => {
+  if (!e) return '';
+  const msg = e?.message ? String(e.message) : '';
+  const details = e?.details ? String(e.details) : '';
+  const hint = e?.hint ? String(e.hint) : '';
+  const code = e?.code ? String(e.code) : '';
+  const status = e?.status ? String(e.status) : '';
+  const name = e?.name ? String(e.name) : '';
+  return [
+    name && `name=${name}`,
+    status && `status=${status}`,
+    code && `code=${code}`,
+    msg && `message=${msg}`,
+    details && `details=${details}`,
+    hint && `hint=${hint}`,
+  ]
+    .filter(Boolean)
+    .join(' | ');
+};
+
 const humanizeBootstrapMessage = (msg: string) => {
   const m = String(msg || '').toLowerCase();
   if (m.includes('invalid_cpf')) return 'CPF inválido. Digite um CPF válido para continuar.';
   if (m.includes('no_auth')) return 'Sessão inválida. Faça login novamente.';
+  if (m.includes('refresh token')) return 'Sessão inconsistente. Volte para o login e entre novamente.';
+  if (m.includes('jwt')) return 'Sessão inválida. Volte para o login e entre novamente.';
   if (m.includes('bootstrap_failed')) return 'Falha ao criar seu perfil. Tente novamente.';
   return msg || 'Falha ao criar seu perfil. Tente novamente.';
 };
-
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 const Auth: React.FC = () => {
   const [isLogin, setIsLogin] = useState(true);
@@ -95,10 +117,9 @@ const Auth: React.FC = () => {
     return isLogin ? 'Bem-vindo de volta, Herói!' : 'Crie sua identidade secreta';
   }, [isLogin, recoverMode]);
 
-  // >>> FIX: sempre que entrar no passo 2 (cadastro) ou recovery, limpa WhatsApp
+  // FIX: sempre que entrar no passo 2 (cadastro) ou recovery, limpa WhatsApp
   useEffect(() => {
     if (!isLogin && step === 2) {
-      // evita autofill/repasse indevido (CPF indo pro Whats)
       try {
         resetField('whatsapp');
       } catch {}
@@ -110,7 +131,13 @@ const Auth: React.FC = () => {
   useEffect(() => {
     const run = async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
+        const { data: sessionWrap, error: sessErr } = await supabase.auth.getSession();
+        if (sessErr) {
+          console.warn('[AUTH] getSession error:', buildSupabaseErrorDebug(sessErr));
+          return;
+        }
+
+        const session = sessionWrap?.session;
         if (!session?.user) return;
 
         const full = await getFullUserProfile(session.user);
@@ -130,12 +157,11 @@ const Auth: React.FC = () => {
 
           if (session.user.email) setValue('email', session.user.email);
 
-          // deixa cpf e whatsapp limpos nesse modo
           setValue('cpf', '');
           setValue('whatsapp', '');
         }
-      } catch {
-        // soft-fail
+      } catch (e) {
+        console.warn('[AUTH] recovery auto-run falhou:', e);
       }
     };
     run();
@@ -178,25 +204,37 @@ const Auth: React.FC = () => {
     else navigate('/app', { replace: true });
   };
 
-  // RPC bootstrap com retry (não muda sua assinatura)
-  const ensureBootstrap = async (payload: {
-    name: string;
-    email: string;
-    cpf: string;
-    birthDate?: string | null;
-    whatsapp?: string | null;
-  }) => {
+  /**
+   * BOOTSTRAP SEM TRIGGER:
+   * - não faz loop chamando getSession (isso costuma disparar refresh e quebrar com "Refresh Token Not Found")
+   * - usa a sessão do fluxo (signUpData.session ou session atual no recovery)
+   * - log completo de data+error
+   */
+  const ensureBootstrap = async (
+    sessionUser: any,
+    payload: {
+      name: string;
+      email: string;
+      cpf: string;
+      birthDate?: string | null;
+      whatsapp?: string | null;
+    }
+  ) => {
     const cpf = normalizeCpf(payload.cpf);
 
     if (!isValidCpf(cpf)) {
       return { ok: false, message: 'invalid_cpf' };
     }
 
-    let lastErr: any = null;
-    for (let attempt = 0; attempt < 4; attempt++) {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user) return { ok: false, message: 'no_auth' };
+    if (!sessionUser?.id) {
+      console.warn('[BOOTSTRAP] sem sessionUser.id (no_auth)');
+      return { ok: false, message: 'no_auth' };
+    }
 
+    let lastErr: any = null;
+
+    // Pequeno retry, mas sem getSession (pra não tentar refresh)
+    for (let attempt = 0; attempt < 3; attempt++) {
       const { data, error } = await supabase.rpc('ensure_user_bootstrap', {
         p_display_name: payload.name,
         p_email: payload.email,
@@ -205,19 +243,25 @@ const Auth: React.FC = () => {
         p_whatsapp: payload.whatsapp ? payload.whatsapp : null,
       });
 
+      const result = Array.isArray(data) ? data[0] : data;
+
+      console.log(`[BOOTSTRAP] attempt ${attempt + 1}/3 data:`, result);
+      if (error) console.error(`[BOOTSTRAP] attempt ${attempt + 1}/3 error:`, error, buildSupabaseErrorDebug(error));
+
       if (!error) {
-        const result = Array.isArray(data) ? data[0] : data;
         return result || { ok: true, message: 'ok' };
       }
 
       lastErr = error;
-      console.error(`RPC ensure_user_bootstrap falhou (tentativa ${attempt + 1}/4):`, error);
 
-      if (String(error.message || '').toLowerCase().includes('no_auth')) break;
-      await sleep(300 + attempt * 350);
+      // se for erro de auth/refresh, não adianta insistir
+      const msg = String(error?.message || '').toLowerCase();
+      if (msg.includes('refresh token') || msg.includes('jwt') || msg.includes('no_auth')) break;
+
+      await sleep(250 + attempt * 250);
     }
 
-    return { ok: false, message: lastErr?.message || 'bootstrap_failed' };
+    return { ok: false, message: lastErr?.message || 'bootstrap_failed', detail: buildSupabaseErrorDebug(lastErr) };
   };
 
   const onSubmit = async (data: any) => {
@@ -251,7 +295,6 @@ const Auth: React.FC = () => {
         }
 
         if (!full) {
-          // recovery (não derruba login)
           setRecoverMode(true);
           setRecoverHint('Seu login foi aceito, mas seu perfil do app não existe/está incompleto. Vamos finalizar agora.');
           setIsLogin(false);
@@ -296,7 +339,6 @@ const Auth: React.FC = () => {
         setStep1Data({ name: data.name, cpf: cleanCpf });
         setStep(2);
 
-        // >>> FIX: limpa whatsapp ao passar pro passo 2
         setValue('whatsapp', '');
         setLoading(false);
         return;
@@ -322,8 +364,12 @@ const Auth: React.FC = () => {
           options: { data: { full_name: fullUserData.name } },
         });
 
-        if (signUpError) throw signUpError;
+        if (signUpError) {
+          console.error('[SIGNUP] error:', signUpError, buildSupabaseErrorDebug(signUpError));
+          throw new Error(signUpError.message || 'Falha no cadastro.');
+        }
 
+        // Se exigir confirmação de e-mail, sessão vem null
         if (!signUpData.session) {
           setLoading(false);
           alert('Cadastro realizado com sucesso! Faça login para continuar.');
@@ -331,15 +377,26 @@ const Auth: React.FC = () => {
           return;
         }
 
+        // FIX CRÍTICO: “fixar” sessão no storage (evita refresh token not found em seguida)
+        try {
+          await supabase.auth.setSession({
+            access_token: signUpData.session.access_token,
+            refresh_token: signUpData.session.refresh_token,
+          });
+        } catch (e: any) {
+          console.warn('[SIGNUP] setSession falhou (segue mesmo assim):', e);
+        }
+
         sessionUser = signUpData.session.user;
       } else {
-        const { data: { session } } = await supabase.auth.getSession();
-        sessionUser = session?.user;
+        const { data: sessionWrap, error: sessErr } = await supabase.auth.getSession();
+        if (sessErr) console.warn('[RECOVERY] getSession error:', buildSupabaseErrorDebug(sessErr));
+        sessionUser = sessionWrap?.session?.user;
         if (!sessionUser) throw new Error('Sessão inválida. Faça login novamente.');
       }
 
-      // Tenta RPC, mas NÃO trava se falhar: tenta pegar perfil do DB (trigger pode ter criado!)
-      const boot = await ensureBootstrap({
+      // 1) tenta bootstrap via RPC (sem trigger)
+      const boot = await ensureBootstrap(sessionUser, {
         name: fullUserData.name,
         email: fullUserData.email,
         cpf: fullUserData.cpf,
@@ -347,16 +404,20 @@ const Auth: React.FC = () => {
         whatsapp: fullUserData.whatsapp || null,
       });
 
-      // >>> COMPORTAMENTO PREMIUM:
-      // Se boot falhou, tenta carregar perfil mesmo assim (trigger pode ter criado / ou perfil já existia)
+      if (!boot?.ok) {
+        console.warn('[BOOTSTRAP] retorno ok=false:', boot);
+      }
+
+      // 2) tenta carregar perfil de verdade
       let full = await getFullUserProfile(sessionUser);
 
-      if (!full && !boot?.ok) {
-        // tenta auto-cura + buscar de novo (mais uma chance)
+      // 3) se ainda não tem perfil, tenta auto-cura e busca de novo
+      if (!full) {
         await ensureProfileFromSession(sessionUser);
         full = await getFullUserProfile(sessionUser);
       }
 
+      // 4) se conseguiu, loga e navega
       if (full) {
         const role = normalizeRole(full.profile.role);
         const safeProfile = { ...full.profile, role };
@@ -368,7 +429,7 @@ const Auth: React.FC = () => {
         return;
       }
 
-      // Se ainda não achou perfil, aí sim entra no recovery com erro
+      // 5) se falhou, entra recovery com mensagem + debug em console
       setRecoverMode(true);
       setRecoverHint('Seu usuário foi criado, mas o perfil do app não foi finalizado. Revise os dados e tente novamente.');
       setIsLogin(false);
@@ -378,7 +439,8 @@ const Auth: React.FC = () => {
         cpf: fullUserData.cpf,
       }));
 
-      throw new Error(humanizeBootstrapMessage(boot?.message));
+      const debug = boot?.detail ? ` (debug: ${boot.detail})` : '';
+      throw new Error(humanizeBootstrapMessage(boot?.message) + debug);
     } catch (err: any) {
       console.error('AUTH_ERROR', err);
       setError(`Erro: ${err.message || 'Ocorreu um erro inesperado.'}`);
