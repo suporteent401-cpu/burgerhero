@@ -18,11 +18,18 @@ const FilterGroup: React.FC<{ title: string; children: React.ReactNode }> = ({ t
   </div>
 );
 
-const ToggleButton: React.FC<{ active: boolean; onClick: () => void; children: React.ReactNode }> = ({ active, onClick, children }) => (
+const ToggleButton: React.FC<{ active: boolean; onClick: () => void; children: React.ReactNode }> = ({
+  active,
+  onClick,
+  children,
+}) => (
   <button
+    type="button"
     onClick={onClick}
     className={`px-3 py-1.5 text-sm font-semibold rounded-lg border-2 transition-all ${
-      active ? 'bg-hero-primary/10 border-hero-primary text-hero-primary' : 'bg-slate-50 dark:bg-slate-800 border-transparent text-slate-500 dark:text-slate-300 hover:border-slate-200 dark:hover:border-slate-700'
+      active
+        ? 'bg-hero-primary/10 border-hero-primary text-hero-primary'
+        : 'bg-slate-50 dark:bg-slate-800 border-transparent text-slate-500 dark:text-slate-300 hover:border-slate-200 dark:hover:border-slate-700'
     }`}
   >
     {children}
@@ -34,7 +41,25 @@ export const AdminUserFilters: React.FC<AdminUserFiltersProps> = ({ isOpen, onCl
   const [plans, setPlans] = useState<Plan[]>([]);
 
   useEffect(() => {
-    plansService.listAllPlans().then(setPlans);
+    let alive = true;
+
+    const loadPlans = async () => {
+      try {
+        const all = await plansService.listAllPlans();
+        if (!alive) return;
+        setPlans(Array.isArray(all) ? all : []);
+      } catch (err) {
+        console.error('[AdminUserFilters] Falha ao carregar planos:', err);
+        if (!alive) return;
+        setPlans([]);
+      }
+    };
+
+    loadPlans();
+
+    return () => {
+      alive = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -49,32 +74,79 @@ export const AdminUserFilters: React.FC<AdminUserFiltersProps> = ({ isOpen, onCl
     setFilters((prev: any) => ({ ...prev, [key]: value }));
   };
 
-  const handleApply = () => { onApply(filters); onClose(); };
-  const handleClear = () => { const cleared = { sortBy: 'newest' }; setFilters(cleared); onApply(cleared); onClose(); };
+  const handleApply = () => {
+    onApply(filters);
+    onClose();
+  };
+
+  const handleClear = () => {
+    const cleared = { sortBy: 'newest' };
+    setFilters(cleared);
+    onApply(cleared);
+    onClose();
+  };
 
   const modalContent = (
     <div className="space-y-2">
       <FilterGroup title="Status da Assinatura">
         <div className="flex flex-wrap gap-2">
-          <ToggleButton active={filters.status === 'active'} onClick={() => handleToggle('status', 'active')}>Ativo</ToggleButton>
-          <ToggleButton active={filters.status === 'inactive'} onClick={() => handleToggle('status', 'inactive')}>Inativo</ToggleButton>
-          <ToggleButton active={filters.status === 'canceled'} onClick={() => handleToggle('status', 'canceled')}>Cancelado</ToggleButton>
-        </div>
-      </FilterGroup>
-      
-      <FilterGroup title="Função (Role)">
-        <div className="flex flex-wrap gap-2">
-          <ToggleButton active={filters.role === 'client'} onClick={() => handleToggle('role', 'client')}>Cliente</ToggleButton>
-          <ToggleButton active={filters.role === 'staff'} onClick={() => handleToggle('role', 'staff')}>Staff</ToggleButton>
-          <ToggleButton active={filters.role === 'admin'} onClick={() => handleToggle('role', 'admin')}>Admin</ToggleButton>
+          <ToggleButton active={filters.status === 'ACTIVE'} onClick={() => handleToggle('status', 'ACTIVE')}>
+            Ativo
+          </ToggleButton>
+          <ToggleButton active={filters.status === 'INACTIVE'} onClick={() => handleToggle('status', 'INACTIVE')}>
+            Inativo
+          </ToggleButton>
+          <ToggleButton active={filters.status === 'CANCELED'} onClick={() => handleToggle('status', 'CANCELED')}>
+            Cancelado
+          </ToggleButton>
         </div>
       </FilterGroup>
 
+      <FilterGroup title="Resgate do Mês">
+        <div className="flex flex-wrap gap-2">
+          <ToggleButton active={filters.canRedeem === 'yes'} onClick={() => handleToggle('canRedeem', 'yes')}>
+            Disponível
+          </ToggleButton>
+          <ToggleButton active={filters.hasRedeemed === 'yes'} onClick={() => handleToggle('hasRedeemed', 'yes')}>
+            Já Resgatou
+          </ToggleButton>
+        </div>
+      </FilterGroup>
+
+      <FilterGroup title="Função (Role)">
+        <div className="flex flex-wrap gap-2">
+          <ToggleButton active={filters.role === 'CLIENT'} onClick={() => handleToggle('role', 'CLIENT')}>
+            Cliente
+          </ToggleButton>
+          <ToggleButton active={filters.role === 'STAFF'} onClick={() => handleToggle('role', 'STAFF')}>
+            Staff
+          </ToggleButton>
+          <ToggleButton active={filters.role === 'ADMIN'} onClick={() => handleToggle('role', 'ADMIN')}>
+            Admin
+          </ToggleButton>
+        </div>
+      </FilterGroup>
+
+      <FilterGroup title="Plano">
+        <select
+          value={filters.planId || ''}
+          onChange={(e) => handleSelect('planId', e.target.value || null)}
+          className="w-full bg-slate-50 dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm font-semibold"
+        >
+          <option value="">Todos os Planos</option>
+          {plans.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </select>
+      </FilterGroup>
+
       <FilterGroup title="Ordenar por">
-        <select 
-          value={filters.sortBy || 'newest'} 
-          onChange={(e) => handleSelect('sortBy', e.target.value)} 
-          className="w-full bg-slate-50 dark:bg-slate-950 border-2 border-slate-100 dark:border-slate-800 rounded-xl px-3 py-2.5 text-sm font-semibold outline-none focus:border-hero-primary transition-all"
+        <select
+          value={filters.sortBy}
+          onChange={(e) => handleSelect('sortBy', e.target.value)}
+          className="w-full bg-slate-50 dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm font-semibold"
         >
           <option value="newest">Mais Recentes</option>
           <option value="oldest">Mais Antigos</option>
@@ -85,8 +157,12 @@ export const AdminUserFilters: React.FC<AdminUserFiltersProps> = ({ isOpen, onCl
 
   const modalFooter = (
     <div className="flex gap-2">
-      <Button variant="outline" onClick={handleClear} className="w-full">Limpar</Button>
-      <Button onClick={handleApply} className="w-full">Aplicar Filtros</Button>
+      <Button variant="outline" onClick={handleClear} className="w-full">
+        Limpar
+      </Button>
+      <Button onClick={handleApply} className="w-full">
+        Aplicar Filtros
+      </Button>
     </div>
   );
 
