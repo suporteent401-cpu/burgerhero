@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Input } from '../components/ui/Input';
 import { Button } from '../components/ui/Button';
 import { Card, CardBody } from '../components/ui/Card';
@@ -13,7 +13,8 @@ import { subscriptionMockService } from '../services/subscriptionMock.service';
 import { useThemeStore } from '../store/themeStore';
 import { useCardStore } from '../store/cardStore';
 import { templatesService } from '../services/templates.service';
-import type { Role, HeroTheme } from '../types';
+import { plansService } from '../services/plans.service';
+import type { Role, HeroTheme, Plan } from '../types';
 
 const normalizeRole = (input: any): Role => {
   const r = String(input || '').toLowerCase();
@@ -85,6 +86,20 @@ const humanizeBootstrapMessage = (msg: string) => {
   return msg || 'Falha ao criar seu perfil. Tente novamente.';
 };
 
+const sanitizeNextPath = (raw: string | null): string | null => {
+  if (!raw) return null;
+  const v = String(raw).trim();
+
+  // Só aceitamos paths internos
+  if (!v.startsWith('/')) return null;
+  if (v.startsWith('//')) return null;
+
+  // Evita enviar para telas protegidas indevidas
+  // (checkout só faz sentido com pendingPlan; protegida por route)
+  // Mantém simples e seguro.
+  return v;
+};
+
 const Auth: React.FC = () => {
   const [isLogin, setIsLogin] = useState(true);
   const [step, setStep] = useState(1);
@@ -94,7 +109,17 @@ const Auth: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const navigate = useNavigate();
+  const location = useLocation();
+
   const login = useAuthStore((state) => state.login);
+
+  // intenção vinda da URL: /auth?next=/plans&planId=uuid
+  const intent = useMemo(() => {
+    const sp = new URLSearchParams(location.search || '');
+    const next = sanitizeNextPath(sp.get('next'));
+    const planId = sp.get('planId') ? String(sp.get('planId')) : null;
+    return { next, planId };
+  }, [location.search]);
 
   const heroTheme = useThemeStore((state) => state.heroTheme);
   const heroTextColor = heroTheme === 'preto-absoluto' ? 'text-blue-400' : 'text-hero-primary';
@@ -192,16 +217,65 @@ const Auth: React.FC = () => {
     }
   };
 
-  const handlePostAuthRedirect = (role: Role) => {
+  const findPlanById = async (planId: string): Promise<Plan | null> => {
+    try {
+      const plans = await plansService.listActivePlans();
+      const found = plans?.find((p) => String(p.id) === String(planId));
+      return found || null;
+    } catch (e) {
+      console.warn('[AUTH] falha ao buscar planos (planId intent):', e);
+      return null;
+    }
+  };
+
+  const handlePostAuthRedirect = async (role: Role) => {
+    // Admin/Staff ignoram intenção de checkout/planos
+    if (role === 'admin') {
+      navigate('/admin', { replace: true });
+      return;
+    }
+    if (role === 'staff') {
+      navigate('/staff', { replace: true });
+      return;
+    }
+
+    // Client: prioridade 1 = pendingPlan existente
     const pendingPlan = subscriptionMockService.getPendingPlan();
     if (pendingPlan) {
       navigate('/checkout', { replace: true });
       return;
     }
 
-    if (role === 'admin') navigate('/admin', { replace: true });
-    else if (role === 'staff') navigate('/staff', { replace: true });
-    else navigate('/app', { replace: true });
+    // Client: prioridade 2 = intenção vinda da URL (planId)
+    if (intent.planId) {
+      const plan = await findPlanById(intent.planId);
+      if (plan) {
+        subscriptionMockService.setPendingPlan({
+          id: plan.id,
+          name: plan.name,
+          priceCents: plan.priceCents,
+        });
+        navigate('/checkout', { replace: true });
+        return;
+      }
+
+      // Se não achou plano, manda pro next ou /plans (melhor UX)
+      if (intent.next) {
+        navigate(intent.next, { replace: true });
+        return;
+      }
+      navigate('/plans', { replace: true });
+      return;
+    }
+
+    // Client: prioridade 3 = next (se existir)
+    if (intent.next) {
+      navigate(intent.next, { replace: true });
+      return;
+    }
+
+    // Client: padrão
+    navigate('/app', { replace: true });
   };
 
   /**
@@ -320,7 +394,7 @@ const Auth: React.FC = () => {
         await applySettingsAndLoadTemplates(full.settings);
 
         login(safeProfile);
-        handlePostAuthRedirect(role);
+        await handlePostAuthRedirect(role);
         return;
       }
 
@@ -417,7 +491,7 @@ const Auth: React.FC = () => {
         full = await getFullUserProfile(sessionUser);
       }
 
-      // 4) se conseguiu, loga e navega
+      // 4) se conseguiu, loga e navega (com redirect inteligente)
       if (full) {
         const role = normalizeRole(full.profile.role);
         const safeProfile = { ...full.profile, role };
@@ -425,7 +499,7 @@ const Auth: React.FC = () => {
         await applySettingsAndLoadTemplates(full.settings);
 
         login(safeProfile);
-        handlePostAuthRedirect(role);
+        await handlePostAuthRedirect(role);
         return;
       }
 
@@ -467,6 +541,13 @@ const Auth: React.FC = () => {
             Burger<span className={heroTextColor}>Hero</span>
           </h1>
           <p className="text-slate-400 font-medium">{pageTitle}</p>
+
+          {/* Mensagem sutil quando vem da intenção de assinar */}
+          {intent.planId && (
+            <p className="mt-2 text-xs font-bold text-slate-400">
+              Entre ou crie sua conta para continuar a assinatura.
+            </p>
+          )}
         </div>
 
         <Card>
