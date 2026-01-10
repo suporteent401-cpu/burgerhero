@@ -6,25 +6,27 @@ export type MySubscription = {
   id: string;
   user_id: string;
   status: SubscriptionStatus | string;
-  plan_id: string | null;
-  plan_slug?: string | null;
+  plan_slug: string | null; // no teu banco é plan_slug (text)
+  current_period_start?: string | null;
+  current_period_end?: string | null;
   created_at?: string;
   updated_at?: string;
   canceled_at?: string | null;
-  current_period_start?: string | null;
-  current_period_end?: string | null;
+};
+
+const getAuthedUserId = async (): Promise<string | null> => {
+  const { data } = await supabase.auth.getUser();
+  return data.user?.id ?? null;
 };
 
 export const subscriptionsService = {
   async getMyActiveSubscription(): Promise<MySubscription | null> {
-    const userId = (await supabase.auth.getUser()).data.user?.id ?? '';
+    const userId = await getAuthedUserId();
     if (!userId) return null;
 
     const { data, error } = await supabase
       .from('subscriptions')
-      .select(
-        'id,user_id,status,plan_id,plan_slug,created_at,updated_at,canceled_at,current_period_start,current_period_end'
-      )
+      .select('id,user_id,status,plan_slug,current_period_start,current_period_end,created_at,updated_at,canceled_at')
       .eq('user_id', userId)
       .eq('status', 'active')
       .order('created_at', { ascending: false })
@@ -38,10 +40,10 @@ export const subscriptionsService = {
     return data?.[0] ? (data[0] as MySubscription) : null;
   },
 
-  async activateMock(planRef: string, days = 30): Promise<{ ok: boolean; message: string; detail?: string }> {
+  async activateMock(planRef: string, periodDays = 30): Promise<{ ok: boolean; message: string; detail?: string }> {
     const { data, error } = await supabase.rpc('activate_mock_subscription', {
       p_plan_ref: planRef,
-      p_days: days,
+      p_period_days: periodDays,
     });
 
     if (error) {
