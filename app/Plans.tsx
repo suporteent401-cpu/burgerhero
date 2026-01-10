@@ -87,18 +87,30 @@ const Plans: React.FC = () => {
             <Loader2 className="w-12 h-12 text-hero-primary animate-spin" />
           </div>
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-stretch">
             {plans.map((plan, index) => (
               <motion.div
                 key={plan.id}
                 initial={{ opacity: 0, y: 30 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.5, delay: 0.2 + index * 0.1 }}
-                className="relative rounded-3xl overflow-hidden shadow-xl transition-all duration-300 hover:scale-[1.02]"
+                className="group relative rounded-[2.5rem] overflow-hidden shadow-xl transition-all duration-300 hover:shadow-2xl hover:-translate-y-1 flex flex-col"
               >
-                <div className="p-8 bg-slate-900 text-white">
-                  <h3 className="text-2xl font-black mb-2">{plan.name}</h3>
-                  <p className="mb-8 h-10 text-slate-400 text-sm line-clamp-2">{plan.description}</p>
+                {/* Imagem do Plano */}
+                <div className="h-44 relative overflow-hidden bg-slate-800">
+                  <img 
+                    src={plan.imageUrl || 'https://images.unsplash.com/photo-1571091718767-18b5b1457add?auto=format&fit=crop&w=800&q=80'} 
+                    alt={plan.name} 
+                    className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/10 to-transparent" />
+                </div>
+
+                <div className="p-8 pt-6 bg-slate-900 text-white flex-1 flex flex-col relative z-10">
+                  <h3 className="text-3xl font-black mb-2 tracking-tight">{plan.name}</h3>
+                  <p className="mb-8 text-slate-400 text-sm line-clamp-2 font-medium">
+                    {plan.description}
+                  </p>
 
                   <div className="mb-8">
                     <span className="text-5xl font-black">
@@ -107,16 +119,21 @@ const Plans: React.FC = () => {
                     <span className="ml-1 font-bold text-slate-400">/mês</span>
                   </div>
 
-                  <Button onClick={() => handleSelectPlan(plan)} className="w-full" size="lg" variant="primary">
+                  <Button 
+                    onClick={() => handleSelectPlan(plan)} 
+                    className="w-full py-4 rounded-2xl shadow-lg shadow-hero-primary/20" 
+                    size="lg" 
+                    variant="primary"
+                  >
                     Assinar Agora
                   </Button>
                 </div>
 
                 <div className="p-8 bg-slate-800 text-white">
-                  <p className="font-bold mb-4 text-sm">O que está incluso:</p>
-                  <ul className="space-y-3">
+                  <p className="font-bold mb-5 text-sm uppercase tracking-widest text-slate-400">O que está incluso:</p>
+                  <ul className="space-y-4">
                     {plan.benefits.map((b, i) => (
-                      <li key={i} className="flex items-center gap-3 text-sm font-medium text-slate-200">
+                      <li key={i} className="flex items-center gap-3 text-sm font-semibold text-slate-200">
                         <CheckCircle2 size={18} className="text-hero-primary flex-shrink-0" />
                         <span>{b}</span>
                       </li>
