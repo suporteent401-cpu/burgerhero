@@ -30,16 +30,13 @@ const isValidCpf = (cpfInput: string): boolean => {
   const cpf = normalizeCpf(cpfInput);
 
   if (!cpf || cpf.length !== 11) return false;
-  if (/^(\d)\1+$/.test(cpf)) return false; // 00000000000, 11111111111 etc.
+  if (/^(\d)\1+$/.test(cpf)) return false;
 
   const calcDv = (base: string, factor: number) => {
     let sum = 0;
-    for (let i = 0; i < base.length; i++) {
-      sum += parseInt(base[i], 10) * (factor - i);
-    }
+    for (let i = 0; i < base.length; i++) sum += parseInt(base[i], 10) * (factor - i);
     const mod = sum % 11;
-    const dv = mod < 2 ? 0 : 11 - mod;
-    return dv;
+    return mod < 2 ? 0 : 11 - mod;
   };
 
   const base9 = cpf.slice(0, 9);
@@ -59,6 +56,17 @@ const DEFAULT_SETTINGS = {
   mode: 'system' as 'light' | 'dark' | 'system',
 };
 
+const humanizeBootstrapMessage = (msg: string) => {
+  const m = String(msg || '').toLowerCase();
+
+  if (m.includes('invalid_cpf')) return 'CPF inválido. Digite um CPF válido para continuar.';
+  if (m.includes('bootstrap_failed')) return 'Falha ao criar seu perfil. Tente novamente.';
+  if (m.includes('no_auth')) return 'Sessão inválida. Faça login novamente.';
+  if (m.includes('duplicate')) return 'Dados já cadastrados. Verifique e tente novamente.';
+
+  return msg || 'Falha ao criar seu perfil. Tente novamente.';
+};
+
 const Auth: React.FC = () => {
   const [isLogin, setIsLogin] = useState(true);
   const [step, setStep] = useState(1);
@@ -71,14 +79,7 @@ const Auth: React.FC = () => {
   const heroTheme = useThemeStore(state => state.heroTheme);
   const heroTextColor = heroTheme === 'preto-absoluto' ? 'text-blue-400' : 'text-hero-primary';
 
-  const {
-    register,
-    handleSubmit,
-    watch,
-    formState: { errors },
-    getValues,
-  } = useForm();
-
+  const { register, handleSubmit, watch, formState: { errors }, getValues } = useForm();
   const password = watch('password');
 
   const applySettingsAndLoadTemplates = async (settings: any) => {
@@ -127,6 +128,11 @@ const Auth: React.FC = () => {
   }) => {
     const cpf = normalizeCpf(payload.cpf);
 
+    // redundância hard (não deixa passar cpf ruim)
+    if (!isValidCpf(cpf)) {
+      return { ok: false, message: 'invalid_cpf' };
+    }
+
     const { data, error } = await supabase.rpc('ensure_user_bootstrap', {
       p_display_name: payload.name,
       p_email: payload.email,
@@ -141,7 +147,7 @@ const Auth: React.FC = () => {
     }
 
     const result = Array.isArray(data) ? data[0] : data;
-    return result || { ok: true };
+    return result || { ok: true, message: 'ok' };
   };
 
   const onSubmit = async (data: any) => {
@@ -159,9 +165,7 @@ const Auth: React.FC = () => {
           throw new Error(authError.message === 'Invalid login credentials' ? 'Credenciais inválidas.' : authError.message);
         }
 
-        if (!signInData.session) {
-          throw new Error('Não foi possível iniciar a sessão.');
-        }
+        if (!signInData.session) throw new Error('Não foi possível iniciar a sessão.');
 
         let full = await getFullUserProfile(signInData.session.user);
 
@@ -171,18 +175,16 @@ const Auth: React.FC = () => {
           full = await getFullUserProfile(signInData.session.user);
         }
 
-        if (full) {
-          const role = normalizeRole(full.profile.role);
-          const safeProfile = { ...full.profile, role };
+        if (!full) throw new Error('Não foi possível carregar seu perfil. Tente novamente em alguns segundos.');
 
-          await applySettingsAndLoadTemplates(full.settings);
+        const role = normalizeRole(full.profile.role);
+        const safeProfile = { ...full.profile, role };
 
-          login(safeProfile);
-          handlePostAuthRedirect(role);
-          return;
-        }
+        await applySettingsAndLoadTemplates(full.settings);
 
-        throw new Error('Não foi possível carregar seu perfil. Tente novamente em alguns segundos.');
+        login(safeProfile);
+        handlePostAuthRedirect(role);
+        return;
       }
 
       // =========================
@@ -192,18 +194,12 @@ const Auth: React.FC = () => {
         const rawCpf = getValues('cpf') || data.cpf;
         const cleanCpf = normalizeCpf(rawCpf);
 
-        if (!isValidCpf(cleanCpf)) {
-          throw new Error('CPF inválido. Digite um CPF válido para continuar.');
-        }
+        if (!isValidCpf(cleanCpf)) throw new Error('CPF inválido. Digite um CPF válido para continuar.');
 
         const cpfExists = await checkCpfExists(cleanCpf);
         if (cpfExists) throw new Error('Este CPF já está cadastrado em nossa base.');
 
-        setStep1Data({
-          name: data.name,
-          cpf: cleanCpf,
-        });
-
+        setStep1Data({ name: data.name, cpf: cleanCpf });
         setStep(2);
         setLoading(false);
         return;
@@ -215,10 +211,7 @@ const Auth: React.FC = () => {
         cpf: normalizeCpf(step1Data?.cpf || data.cpf),
       };
 
-      // redundância de segurança (nunca deixar passar CPF ruim)
-      if (!isValidCpf(fullUserData.cpf)) {
-        throw new Error('CPF inválido. Volte e corrija seu CPF para continuar.');
-      }
+      if (!isValidCpf(fullUserData.cpf)) throw new Error('CPF inválido. Volte e corrija seu CPF para continuar.');
 
       const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
         email: fullUserData.email,
@@ -228,7 +221,6 @@ const Auth: React.FC = () => {
 
       if (signUpError) throw signUpError;
 
-      // Se por algum motivo a sessão não vier, orienta o usuário (mesmo com email confirm desligado, pode acontecer em edge cases)
       if (!signUpData.session) {
         setLoading(false);
         alert('Cadastro realizado com sucesso! Faça login para continuar.');
@@ -245,8 +237,7 @@ const Auth: React.FC = () => {
       });
 
       if (!boot?.ok) {
-        // se aqui ainda der invalid_cpf, significa que o banco está com regra diferente
-        throw new Error(boot?.message || 'Falha ao criar seu perfil. Tente novamente.');
+        throw new Error(humanizeBootstrapMessage(boot?.message));
       }
 
       const full = await getFullUserProfile(signUpData.session.user);
@@ -287,7 +278,9 @@ const Auth: React.FC = () => {
           <h1 className="text-3xl font-black mb-2 tracking-tight text-white">
             Burger<span className={heroTextColor}>Hero</span>
           </h1>
-          <p className="text-slate-400 font-medium">{isLogin ? 'Bem-vindo de volta, Herói!' : 'Crie sua identidade secreta'}</p>
+          <p className="text-slate-400 font-medium">
+            {isLogin ? 'Bem-vindo de volta, Herói!' : 'Crie sua identidade secreta'}
+          </p>
         </div>
 
         <Card>
@@ -380,7 +373,9 @@ const Auth: React.FC = () => {
                       )}
                       <div className="flex items-start gap-2 pt-2">
                         <input type="checkbox" className="mt-1" {...register('terms', { required: true })} />
-                        <label className="text-xs text-slate-500">Aceito os termos e condições de uso da BurgerHero.</label>
+                        <label className="text-xs text-slate-500">
+                          Aceito os termos e condições de uso da BurgerHero.
+                        </label>
                       </div>
                     </>
                   )}
@@ -408,6 +403,7 @@ const Auth: React.FC = () => {
             </div>
 
             <button
+              type="button"
               onClick={() => {
                 setIsLogin(!isLogin);
                 setStep(1);
