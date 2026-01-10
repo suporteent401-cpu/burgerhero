@@ -120,6 +120,10 @@ const App: React.FC = () => {
               <Route index element={<Home />} />
               <Route path="qrcode" element={<QRCodePage />} />
               <Route path="voucher" element={<Voucher />} />
+
+              {/* ✅ NOVO MENU/ROTA */}
+              <Route path="plans" element={<Plans />} />
+
               {/* <Route path="burgers" element={<Burgers />} /> */}
               <Route path="burgers" element={<Navigate to="/app" replace />} />
               <Route path="profile" element={<Profile />} />
