@@ -21,10 +21,14 @@ export const adminUsersService = {
       p_search: search,
       p_limit: limit,
       p_status: filters?.status || null,
-      p_role: filters?.role || null
+      p_role: filters?.role || null,
+      p_sort_by: filters?.sortBy || 'newest'
     });
 
-    if (error) throw error;
+    if (error) {
+      console.error('[AdminUsersService] Error listing users:', error);
+      throw error;
+    }
 
     const users = (data || []).map((u: any) => ({
       id: u.id,
@@ -42,7 +46,7 @@ export const adminUsersService = {
     return {
       data: users,
       total,
-      totalPages: Math.ceil(total / limit)
+      totalPages: Math.ceil(Number(total) / limit)
     };
   },
 
@@ -68,15 +72,13 @@ export const adminUsersService = {
       .from('subscriptions')
       .select('*')
       .eq('user_id', userId)
-      .order('current_period_end', { ascending: false, nullsFirst: false });
+      .order('current_period_end', { ascending: false });
 
     const sub = (subRows || []).sort((a: any, b: any) => {
-      // Prioriza 'active'
       const aActive = a?.status === 'active' ? 1 : 0;
       const bActive = b?.status === 'active' ? 1 : 0;
       if (aActive !== bActive) return bActive - aActive;
       
-      // Desempate por data (mais longe no futuro é melhor)
       const aEnd = a?.current_period_end ? new Date(a.current_period_end).getTime() : 0;
       const bEnd = b?.current_period_end ? new Date(b.current_period_end).getTime() : 0;
       return bEnd - aEnd;
@@ -85,7 +87,6 @@ export const adminUsersService = {
     // Busca o plano manualmente se houver assinatura
     let planData = null;
     if (sub && sub.plan_slug) {
-      // Tenta pelo ID (uuid)
       const { data: pById } = await supabase
         .from('plans')
         .select('*')
@@ -95,7 +96,6 @@ export const adminUsersService = {
       if (pById) {
         planData = pById;
       } else {
-        // Fallback: tenta pelo nome (caso legado ou slug textual)
         const { data: pByName } = await supabase
           .from('plans')
           .select('*')
