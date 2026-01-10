@@ -26,6 +26,8 @@ const DEFAULT_SETTINGS = {
   mode: 'system' as 'light' | 'dark' | 'system',
 };
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 export const SupabaseAuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const login = useAuthStore((s) => s.login);
   const logout = useAuthStore((s) => s.logout);
@@ -40,11 +42,8 @@ export const SupabaseAuthProvider: React.FC<AuthProviderProps> = ({ children }) 
     const applySettingsAndLoadTemplates = async (settings: any) => {
       const safe = settings || DEFAULT_SETTINGS;
 
-      if (safe?.heroTheme) useThemeStore.getState().setHeroTheme(safe.heroTheme);
-      else useThemeStore.getState().setHeroTheme(DEFAULT_SETTINGS.heroTheme);
-
-      if (safe?.mode) useThemeStore.getState().setMode(safe.mode);
-      else useThemeStore.getState().setMode(DEFAULT_SETTINGS.mode);
+      useThemeStore.getState().setHeroTheme(safe?.heroTheme || DEFAULT_SETTINGS.heroTheme);
+      useThemeStore.getState().setMode(safe?.mode || DEFAULT_SETTINGS.mode);
 
       useCardStore.getState().setAll({
         templateId: safe?.cardTemplateId ?? undefined,
@@ -57,7 +56,7 @@ export const SupabaseAuthProvider: React.FC<AuthProviderProps> = ({ children }) 
 
       try {
         const dbTemplates = await templatesService.getActiveTemplates();
-        if (dbTemplates.length > 0) {
+        if (dbTemplates && dbTemplates.length > 0) {
           useCardStore.getState().setTemplates(templatesService.mapToStoreFormat(dbTemplates));
         }
       } catch (err) {
@@ -65,17 +64,29 @@ export const SupabaseAuthProvider: React.FC<AuthProviderProps> = ({ children }) 
       }
     };
 
-    const buildLoginFromSession = async (sessionUser: any) => {
-      let full = await getFullUserProfile(sessionUser);
+    const getFullWithRetry = async (sessionUser: any, attempts = 4) => {
+      for (let i = 0; i < attempts; i++) {
+        const full = await getFullUserProfile(sessionUser);
+        if (full) return full;
+        await sleep(250 + i * 250);
+      }
+      return null;
+    };
 
+    const buildLoginFromSession = async (sessionUser: any) => {
+      // 1) tenta normal
+      let full = await getFullWithRetry(sessionUser, 3);
+
+      // 2) se não achou, tenta auto-cura + retry mais forte
       if (!full) {
         console.warn('Perfil incompleto detectado. Tentando auto-cura...');
         try {
           await ensureProfileFromSession(sessionUser);
-          full = await getFullUserProfile(sessionUser);
         } catch (e) {
           console.error('Falha na auto-cura de perfil:', e);
         }
+
+        full = await getFullWithRetry(sessionUser, 5);
       }
 
       if (!full) return null;
@@ -101,7 +112,7 @@ export const SupabaseAuthProvider: React.FC<AuthProviderProps> = ({ children }) 
         const safeProfile = await buildLoginFromSession(session.user);
 
         if (!safeProfile) {
-          console.warn('[SupabaseAuthProvider] Perfil não pôde ser recuperado. Realizando logout de limpeza.');
+          console.warn('[SupabaseAuthProvider] Perfil não pôde ser recuperado após tentativas. Logout de limpeza.');
           logout();
           return;
         }
@@ -129,8 +140,9 @@ export const SupabaseAuthProvider: React.FC<AuthProviderProps> = ({ children }) 
         setLoading(true);
         try {
           const safeProfile = await buildLoginFromSession(session.user);
+
           if (!safeProfile) {
-            console.error('Falha crítica ao montar perfil no evento de Auth. Logout forçado.');
+            console.error('Falha ao montar perfil no evento de Auth após tentativas. Logout forçado.');
             logout();
             return;
           }
