@@ -20,18 +20,16 @@ export const LineChart: React.FC<LineChartProps> = ({ data, labels }) => {
   const maxVal = rawMax <= 0 ? 1 : rawMax;
 
   // 3. Geração robusta dos pontos da linha
-  // Se houver apenas 1 ponto, centralizamos ele no eixo X (width / 2)
   const points = sanitizedData.map((val, i) => {
     const x = sanitizedData.length > 1
       ? (i / (sanitizedData.length - 1)) * width
       : width / 2;
     const y = height - (val / maxVal) * height;
     
-    // Usamos toFixed para garantir que a string enviada ao SVG seja puramente numérica
     return `${x.toFixed(2)},${y.toFixed(2)}`;
   }).join(' ');
 
-  // 4. Geração dos pontos da área (fechamento do polígono na base do gráfico)
+  // 4. Geração dos pontos da área
   const lastX = sanitizedData.length > 1 ? width : width / 2;
   const firstX = sanitizedData.length > 1 ? 0 : width / 2;
   const areaPoints = `${points} ${lastX.toFixed(2)},${height} ${firstX.toFixed(2)},${height}`;
@@ -46,7 +44,7 @@ export const LineChart: React.FC<LineChartProps> = ({ data, labels }) => {
           </linearGradient>
         </defs>
         
-        {/* Camada de Preenchimento (Gradiente) */}
+        {/* Camada de Preenchimento */}
         <polygon points={areaPoints} fill="url(#areaGradient)" />
         
         {/* Camada da Linha */}
@@ -60,11 +58,32 @@ export const LineChart: React.FC<LineChartProps> = ({ data, labels }) => {
         />
       </svg>
       
-      {/* Labels do Eixo X */}
-      <div className="absolute bottom-0 left-0 right-0 flex justify-between text-[10px] font-bold text-slate-400 px-2 -mb-5">
-        {labels && labels.map((label, i) => (
-          <span key={`${label}-${i}`}>{label}</span>
-        ))}
+      {/* Labels do Eixo X com Lógica de "Skip" para evitar overlap */}
+      <div className="absolute bottom-0 left-0 right-0 h-4 -mb-6">
+        {labels && labels.map((label, i) => {
+          // Mostra no máximo ~6 labels distribuídos uniformemente
+          const step = Math.max(1, Math.floor((labels.length - 1) / 5));
+          const show = i === 0 || i === labels.length - 1 || i % step === 0;
+          
+          if (!show) return null;
+
+          const leftPct = (i / (labels.length - 1)) * 100;
+          
+          // Ajusta o alinhamento do texto dependendo da posição (esquerda, centro, direita)
+          let transform = "-translate-x-1/2";
+          if (i === 0) transform = "translate-x-0";
+          if (i === labels.length - 1) transform = "-translate-x-full";
+
+          return (
+            <span 
+              key={`${label}-${i}`} 
+              className={`absolute text-[10px] font-bold text-slate-400 ${transform}`}
+              style={{ left: `${leftPct}%` }}
+            >
+              {label}
+            </span>
+          );
+        })}
       </div>
     </div>
   );
