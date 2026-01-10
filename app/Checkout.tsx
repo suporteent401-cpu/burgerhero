@@ -6,16 +6,18 @@ import { CheckCircle2, CreditCard, QrCode } from "lucide-react";
 import { subscriptionMockService } from "../services/subscriptionMock.service";
 import { useAuthStore } from "../store/authStore";
 import { subscriptionsService } from "../services/subscriptions.service";
+import { supabase } from "../lib/supabaseClient";
 
 const formatBRL = (value: number) =>
   value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
 const humanize = (msg: string) => {
   const m = String(msg || "").toLowerCase();
-  if (m.includes("already_active")) return "Você já possui uma assinatura ativa. Para mudar, cancele primeiro.";
+  if (m.includes("already_active")) return "Você já possui uma assinatura ativa. Para assinar novamente, cancele primeiro.";
   if (m.includes("missing_plan")) return "Plano inválido. Volte e selecione novamente.";
   if (m.includes("no_auth")) return "Sessão expirada. Faça login novamente.";
   if (m.includes("activate_failed")) return "Não foi possível ativar sua assinatura agora. Tente novamente.";
+  if (m.includes("voucher")) return "Assinatura ativada, mas não consegui gerar o voucher automaticamente. Tente abrir o Voucher novamente.";
   return msg || "Não foi possível finalizar a assinatura.";
 };
 
@@ -47,16 +49,32 @@ const Checkout: React.FC = () => {
       // Simula pagamento processado
       await new Promise((r) => setTimeout(r, 500));
 
-      const planRef = plan.id; // UUID em string
-
+      // 1) ATIVA/REATIVA ASSINATURA NO BANCO
+      const planRef = plan.id; // UUID string do plano
       const res = await subscriptionsService.activateMock(planRef, 30);
+
       if (!res.ok) {
         console.error("[CHECKOUT] activateMock failed:", res);
         setErrorMsg(humanize(res.message));
         return;
       }
 
-      // (Opcional) manter mock local, mas banco é o oficial
+      // 2) GARANTE VOUCHER DO MÊS (FORÇA)
+      // Função existente no seu banco:
+      // ensure_voucher_for_user(p_user_id uuid, p_force boolean)
+      const { data: vData, error: vErr } = await supabase.rpc("ensure_voucher_for_user", {
+        p_user_id: user.id,
+        p_force: true,
+      });
+
+      if (vErr) {
+        console.warn("[CHECKOUT] ensure_voucher_for_user warning:", vErr);
+        // Não bloqueia: assinatura tá ativa. Voucher pode ser gerado depois ao abrir a tela.
+      } else {
+        console.log("[CHECKOUT] voucher ensured:", vData);
+      }
+
+      // 3) (Opcional) manter mock local - ok
       subscriptionMockService.setActiveSubscription(user.id, plan);
       subscriptionMockService.clearPendingPlan();
 
