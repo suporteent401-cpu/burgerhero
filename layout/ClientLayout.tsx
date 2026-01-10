@@ -1,65 +1,65 @@
 import React from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { Home, QrCode, Ticket, User } from 'lucide-react';
+import { Home, QrCode, Ticket, User, Crown } from 'lucide-react';
 import { useThemeStore } from '../store/themeStore';
 import { useAuthStore } from '../store/authStore';
 
 const ClientLayout: React.FC = () => {
   const location = useLocation();
-  const heroTheme = useThemeStore(state => state.heroTheme);
-  const user = useAuthStore(state => state.user);
-  
-  const navItems = [
-    { label: 'Home', icon: Home, path: '/app' },
-    { label: 'QR', icon: QrCode, path: '/app/qrcode' },
-    { label: 'Voucher', icon: Ticket, path: '/app/voucher' },
-    // { label: 'Burgers', icon: UtensilsCrossed, path: '/app/burgers' }, // Ocultado temporariamente
-    { label: 'Perfil', icon: User, path: '/app/profile' },
-  ];
+  const heroTheme = useThemeStore((state) => state.heroTheme);
+  const user = useAuthStore((state) => state.user);
 
-  const themesForBlueText = [
-    'guardiao-escarlate', 
-    'aurora-rosa', 
-    'tita-dourado', 
-    'vermelho-heroi', 
-    'laranja-vulcanico',
-    'preto-absoluto'
+  const isActive = (path: string) => location.pathname === path;
+
+  // Ajuste fino de cor para temas (mantive simples pra não quebrar teu tema atual)
+  const barBg = heroTheme === 'preto-absoluto' ? 'bg-black/80' : 'bg-slate-900/90';
+  const activeColor = 'text-hero-primary';
+  const inactiveColor = 'text-slate-300';
+
+  const navItems = [
+    { to: '/app', label: 'Início', icon: <Home size={22} /> },
+    { to: '/app/qrcode', label: 'QR Code', icon: <QrCode size={22} /> },
+    { to: '/app/voucher', label: 'Voucher', icon: <Ticket size={22} /> },
+    { to: '/app/plans', label: 'Planos', icon: <Crown size={22} /> },
+    { to: '/app/profile', label: 'Perfil', icon: <User size={22} /> },
   ];
-  const heroTextColor = themesForBlueText.includes(heroTheme) ? 'text-blue-300' : 'text-red-500';
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 pb-20 transition-colors duration-300">
-      <header className="sticky top-0 z-30 bg-hero-primary text-white px-4 py-3 shadow-md">
-        <div className="flex items-center justify-center max-w-lg mx-auto">
-          <Link to="/app" className="flex items-center gap-3">
-            <img src="https://ik.imagekit.io/lflb43qwh/Heros/images.jpg" alt="BurgerHero Logo" className="h-10 w-10 rounded-full border-2 border-white/50" />
-            <h1 className="text-xl font-extrabold tracking-tight">
-              <span className="text-white/90">Burger</span><span className={heroTextColor}>Hero</span>
-            </h1>
-          </Link>
-        </div>
-      </header>
-
-      <main className="max-w-lg mx-auto px-4 py-6">
+    <div className="min-h-screen flex flex-col bg-slate-50">
+      {/* Conteúdo */}
+      <main className="flex-1 pb-24">
         <Outlet />
       </main>
 
-      <nav className="fixed bottom-0 left-0 right-0 bg-hero-primary px-4 py-2 z-40 transition-colors shadow-[0_-2px_10px_rgba(0,0,0,0.1)]">
-        <div className="flex items-center justify-around max-w-lg mx-auto">
-          {navItems.map((item) => {
-            const isActive = location.pathname === item.path;
-            const Icon = item.icon;
-            return (
-              <Link 
-                key={item.path} 
-                to={item.path}
-                className={`flex flex-col items-center p-2 rounded-xl transition-all duration-200 ${isActive ? 'text-white bg-white/25 scale-110' : 'text-white/70 hover:text-white'}`}
-              >
-                <Icon size={22} strokeWidth={isActive ? 2.5 : 2} />
-                <span className="text-[10px] font-bold mt-1 uppercase tracking-wider">{item.label}</span>
-              </Link>
-            );
-          })}
+      {/* Bottom Nav */}
+      <nav className={`fixed bottom-0 left-0 right-0 ${barBg} backdrop-blur-md border-t border-white/10`}>
+        <div className="max-w-2xl mx-auto px-4 py-2">
+          <div className="grid grid-cols-5 gap-2">
+            {navItems.map((item) => {
+              const active = isActive(item.to);
+              return (
+                <Link
+                  key={item.to}
+                  to={item.to}
+                  className={`flex flex-col items-center justify-center gap-1 py-2 rounded-2xl transition ${
+                    active ? 'bg-white/10' : 'hover:bg-white/5'
+                  }`}
+                >
+                  <span className={active ? activeColor : inactiveColor}>{item.icon}</span>
+                  <span className={`text-[10px] font-bold ${active ? activeColor : inactiveColor}`}>
+                    {item.label}
+                  </span>
+                </Link>
+              );
+            })}
+          </div>
+
+          {/* opcional: mini status do usuário (não quebra nada) */}
+          {user?.display_name && (
+            <div className="text-center text-[10px] text-slate-300 mt-1">
+              Logado como <span className="font-bold">{user.display_name}</span>
+            </div>
+          )}
         </div>
       </nav>
     </div>
