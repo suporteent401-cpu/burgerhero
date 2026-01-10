@@ -1,6 +1,6 @@
 import React from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { Home, QrCode, Ticket, UtensilsCrossed, User } from 'lucide-react';
+import { Home, QrCode, Ticket, User } from 'lucide-react';
 import { useThemeStore } from '../store/themeStore';
 import { useAuthStore } from '../store/authStore';
 
@@ -13,11 +13,10 @@ const ClientLayout: React.FC = () => {
     { label: 'Home', icon: Home, path: '/app' },
     { label: 'QR', icon: QrCode, path: '/app/qrcode' },
     { label: 'Voucher', icon: Ticket, path: '/app/voucher' },
-    { label: 'Burgers', icon: UtensilsCrossed, path: '/app/burgers' },
+    // { label: 'Burgers', icon: UtensilsCrossed, path: '/app/burgers' }, // Ocultado temporariamente
     { label: 'Perfil', icon: User, path: '/app/profile' },
   ];
 
-  // Adicionando 'preto-absoluto' à lista que força o texto azul
   const themesForBlueText = [
     'guardiao-escarlate', 
     'aurora-rosa', 

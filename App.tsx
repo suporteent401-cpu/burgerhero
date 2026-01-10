@@ -19,7 +19,7 @@ import Checkout from './app/Checkout';
 import Home from './app/Home';
 import QRCodePage from './app/QRCodePage';
 import Voucher from './app/Voucher';
-import Burgers from './app/Burgers';
+// import Burgers from './app/Burgers'; // Ocultado temporariamente
 import Profile from './app/Profile';
 import AdminDashboard from './app/AdminDashboard';
 import AdminUsers from './app/AdminUsers';
@@ -120,7 +120,8 @@ const App: React.FC = () => {
               <Route index element={<Home />} />
               <Route path="qrcode" element={<QRCodePage />} />
               <Route path="voucher" element={<Voucher />} />
-              <Route path="burgers" element={<Burgers />} />
+              {/* <Route path="burgers" element={<Burgers />} /> */}
+              <Route path="burgers" element={<Navigate to="/app" replace />} />
               <Route path="profile" element={<Profile />} />
             </Route>
 
