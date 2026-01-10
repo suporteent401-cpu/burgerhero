@@ -28,6 +28,11 @@ const DEFAULT_SETTINGS = {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+const isInvalidRefreshToken = (err: any) => {
+  const msg = String(err?.message || err || '').toLowerCase();
+  return msg.includes('invalid refresh token') || msg.includes('refresh token not found');
+};
+
 export const SupabaseAuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const login = useAuthStore((s) => s.login);
   const logout = useAuthStore((s) => s.logout);
@@ -74,18 +79,11 @@ export const SupabaseAuthProvider: React.FC<AuthProviderProps> = ({ children }) 
     };
 
     const buildLoginFromSession = async (sessionUser: any) => {
-      // 1) tenta normal
       let full = await getFullWithRetry(sessionUser, 3);
 
-      // 2) se não achou, tenta auto-cura + retry mais forte
       if (!full) {
         console.warn('Perfil incompleto detectado. Tentando auto-cura...');
-        try {
-          await ensureProfileFromSession(sessionUser);
-        } catch (e) {
-          console.error('Falha na auto-cura de perfil:', e);
-        }
-
+        await ensureProfileFromSession(sessionUser);
         full = await getFullWithRetry(sessionUser, 5);
       }
 
@@ -99,12 +97,29 @@ export const SupabaseAuthProvider: React.FC<AuthProviderProps> = ({ children }) 
       return safeProfile;
     };
 
+    const hardResetAuth = async () => {
+      try {
+        await supabase.auth.signOut();
+      } catch {}
+      logout();
+    };
+
     const initAuth = async () => {
       setLoading(true);
       try {
         const { data: { session }, error } = await supabase.auth.getSession();
 
-        if (error || !session?.user) {
+        if (error) {
+          if (isInvalidRefreshToken(error)) {
+            console.warn('[Auth] refresh token inválido. Forçando signOut.');
+            await hardResetAuth();
+            return;
+          }
+          logout();
+          return;
+        }
+
+        if (!session?.user) {
           logout();
           return;
         }
@@ -112,16 +127,17 @@ export const SupabaseAuthProvider: React.FC<AuthProviderProps> = ({ children }) 
         const safeProfile = await buildLoginFromSession(session.user);
 
         if (!safeProfile) {
-          // IMPORTANTÍSSIMO: não faz logout aqui.
-          // Mantém a sessão e deixa a tela de Auth finalizar o cadastro.
-          console.warn(
-            '[SupabaseAuthProvider] Usuário tem sessão, mas perfil não pôde ser recuperado. Mantendo sessão (soft-fail).'
-          );
+          // Soft-fail: mantém sessão para tela de Auth finalizar.
+          console.warn('[SupabaseAuthProvider] Sessão existe, mas perfil não recuperado. Mantendo sessão (soft-fail).');
           return;
         }
 
         login(safeProfile);
-      } catch (err) {
+      } catch (err: any) {
+        if (isInvalidRefreshToken(err)) {
+          await hardResetAuth();
+          return;
+        }
         console.error('Erro na inicialização do auth:', err);
         logout();
       } finally {
@@ -145,17 +161,17 @@ export const SupabaseAuthProvider: React.FC<AuthProviderProps> = ({ children }) 
           const safeProfile = await buildLoginFromSession(session.user);
 
           if (!safeProfile) {
-            // IMPORTANTÍSSIMO: não desloga.
-            console.warn(
-              '[SupabaseAuthProvider] Sessão existe, mas perfil não recuperado no evento. Mantendo sessão (soft-fail).'
-            );
+            console.warn('[SupabaseAuthProvider] Sessão ok, perfil ainda não. Mantendo sessão (soft-fail).');
             return;
           }
 
           login(safeProfile);
-        } catch (e) {
+        } catch (e: any) {
+          if (isInvalidRefreshToken(e)) {
+            await hardResetAuth();
+            return;
+          }
           console.error('Erro no onAuthStateChange:', e);
-          // aqui pode logout porque é erro grave de estado
           logout();
         } finally {
           setLoading(false);
