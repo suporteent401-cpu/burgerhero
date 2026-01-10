@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router-dom';
 import { Input } from '../components/ui/Input';
@@ -23,6 +23,41 @@ const normalizeRole = (input: any): Role => {
 
 const normalizeCpf = (cpf: string) => (cpf ? cpf.replace(/[^\d]/g, '') : '');
 
+const formatCpfMask = (value: string) => {
+  const digits = normalizeCpf(value).slice(0, 11);
+  const part1 = digits.slice(0, 3);
+  const part2 = digits.slice(3, 6);
+  const part3 = digits.slice(6, 9);
+  const part4 = digits.slice(9, 11);
+
+  let out = part1;
+  if (part2) out += `.${part2}`;
+  if (part3) out += `.${part3}`;
+  if (part4) out += `-${part4}`;
+  return out;
+};
+
+const isValidCPF = (cpfInput: string): boolean => {
+  const cpf = normalizeCpf(cpfInput);
+
+  if (cpf.length !== 11) return false;
+  if (/^(\d)\1{10}$/.test(cpf)) return false;
+
+  const calcDigit = (base: string, factor: number) => {
+    let total = 0;
+    for (let i = 0; i < base.length; i++) {
+      total += Number(base[i]) * (factor - i);
+    }
+    const mod = total % 11;
+    return mod < 2 ? 0 : 11 - mod;
+  };
+
+  const d1 = calcDigit(cpf.slice(0, 9), 10);
+  const d2 = calcDigit(cpf.slice(0, 10), 11);
+
+  return d1 === Number(cpf[9]) && d2 === Number(cpf[10]);
+};
+
 const DEFAULT_SETTINGS = {
   cardTemplateId: null as string | null,
   fontStyle: 'Inter',
@@ -32,6 +67,19 @@ const DEFAULT_SETTINGS = {
   mode: 'system' as 'light' | 'dark' | 'system',
 };
 
+type FormValues = {
+  email?: string;
+  password?: string;
+  confirmPassword?: string;
+  name?: string;
+  cpf?: string;
+  whatsapp?: string;
+  birthDate?: string;
+  terms?: boolean;
+};
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 const Auth: React.FC = () => {
   const [isLogin, setIsLogin] = useState(true);
   const [step, setStep] = useState(1);
@@ -40,19 +88,30 @@ const Auth: React.FC = () => {
   const [error, setError] = useState('');
   const navigate = useNavigate();
   const login = useAuthStore((state) => state.login);
-  
-  // Acessando o tema atual para aplicar a lógica de cor no título
-  const heroTheme = useThemeStore(state => state.heroTheme);
+
+  const heroTheme = useThemeStore((state) => state.heroTheme);
   const heroTextColor = heroTheme === 'preto-absoluto' ? 'text-blue-400' : 'text-hero-primary';
 
   const {
     register,
     handleSubmit,
     watch,
+    setValue,
+    getValues,
+    trigger,
     formState: { errors },
-  } = useForm();
+  } = useForm<FormValues>({
+    mode: 'onChange',
+    defaultValues: {
+      cpf: '',
+    },
+  });
 
   const password = watch('password');
+  const cpfWatch = watch('cpf') || '';
+
+  const cpfDigits = useMemo(() => normalizeCpf(cpfWatch), [cpfWatch]);
+  const cpfIsValid = useMemo(() => isValidCPF(cpfWatch), [cpfWatch]);
 
   const applySettingsAndLoadTemplates = async (settings: any) => {
     const safe = settings || DEFAULT_SETTINGS;
@@ -117,15 +176,24 @@ const Auth: React.FC = () => {
     return result || { ok: true };
   };
 
-  const onSubmit = async (data: any) => {
+  const getFullProfileWithRetry = async (user: any, attempts = 4) => {
+    for (let i = 0; i < attempts; i++) {
+      const full = await getFullUserProfile(user);
+      if (full) return full;
+      await sleep(250 + i * 250);
+    }
+    return null;
+  };
+
+  const onSubmit = async (data: FormValues) => {
     setError('');
     setLoading(true);
 
     try {
       if (isLogin) {
         const { data: signInData, error: authError } = await supabase.auth.signInWithPassword({
-          email: data.email,
-          password: data.password,
+          email: data.email || '',
+          password: data.password || '',
         });
 
         if (authError) {
@@ -136,12 +204,12 @@ const Auth: React.FC = () => {
           throw new Error('Não foi possível iniciar a sessão.');
         }
 
-        let full = await getFullUserProfile(signInData.session.user);
+        let full = await getFullProfileWithRetry(signInData.session.user, 3);
 
         if (!full) {
           console.warn('Falha ao carregar perfil no login. Tentando auto-cura...');
           await ensureProfileFromSession(signInData.session.user);
-          full = await getFullUserProfile(signInData.session.user);
+          full = await getFullProfileWithRetry(signInData.session.user, 4);
         }
 
         if (full) {
@@ -155,18 +223,33 @@ const Auth: React.FC = () => {
           return;
         }
 
-        navigate('/app', { replace: true });
-        return;
+        throw new Error('Não foi possível carregar seu perfil. Tente novamente em alguns segundos.');
       }
 
+      // =============================
+      // CADASTRO (2 passos)
+      // =============================
       if (step === 1) {
-        const cpfExists = await checkCpfExists(data.cpf);
+        const cpfValue = getValues('cpf') || '';
+        const cpfClean = normalizeCpf(cpfValue);
+
+        if (!cpfClean || cpfClean.length !== 11) {
+          throw new Error('CPF inválido. Digite um CPF válido para continuar.');
+        }
+
+        if (!isValidCPF(cpfClean)) {
+          throw new Error('CPF inválido. Digite um CPF válido para continuar.');
+        }
+
+        // Só consulta se CPF for válido
+        const cpfExists = await checkCpfExists(cpfClean);
         if (cpfExists) throw new Error('Este CPF já está cadastrado em nossa base.');
 
         setStep1Data({
-          name: data.name,
-          cpf: normalizeCpf(data.cpf),
+          name: data.name || '',
+          cpf: cpfClean,
         });
+
         setStep(2);
         setLoading(false);
         return;
@@ -175,21 +258,23 @@ const Auth: React.FC = () => {
       const fullUserData = {
         ...step1Data,
         ...data,
-        cpf: normalizeCpf(step1Data?.cpf || data.cpf),
+        cpf: normalizeCpf(step1Data?.cpf || data.cpf || ''),
       };
 
       const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-        email: fullUserData.email,
-        password: fullUserData.password,
-        options: { data: { full_name: fullUserData.name } },
+        email: String(fullUserData.email || ''),
+        password: String(fullUserData.password || ''),
+        options: { data: { full_name: String(fullUserData.name || '') } },
       });
 
       if (signUpError) throw signUpError;
 
+      // Se email confirmation estiver ligado, session vem null
       if (signUpData.user && !signUpData.session) {
         setLoading(false);
         alert('Cadastro realizado com sucesso! Verifique seu e-mail para confirmar a conta antes de entrar.');
         setIsLogin(true);
+        setStep(1);
         return;
       }
 
@@ -198,18 +283,19 @@ const Auth: React.FC = () => {
       }
 
       const boot = await ensureBootstrap({
-        name: fullUserData.name,
-        email: fullUserData.email,
-        cpf: fullUserData.cpf,
-        birthDate: fullUserData.birthDate || null,
-        whatsapp: fullUserData.whatsapp || null,
+        name: String(fullUserData.name || ''),
+        email: String(fullUserData.email || ''),
+        cpf: String(fullUserData.cpf || ''),
+        birthDate: (fullUserData.birthDate as any) || null,
+        whatsapp: (fullUserData.whatsapp as any) || null,
       });
 
       if (!boot?.ok) {
-        console.warn('Bootstrap retornou alerta:', boot?.message);
+        // Aqui a RPC agora devolve mensagens importantes (invalid_cpf, cpf_already_used, etc.)
+        throw new Error(boot?.message || 'Falha ao criar seu perfil. Tente novamente.');
       }
 
-      const full = await getFullUserProfile(signUpData.session.user);
+      const full = await getFullProfileWithRetry(signUpData.session.user, 5);
 
       if (full) {
         const role = normalizeRole(full.profile.role);
@@ -219,9 +305,10 @@ const Auth: React.FC = () => {
 
         login(safeProfile);
         handlePostAuthRedirect(role);
-      } else {
-        navigate('/app', { replace: true });
+        return;
       }
+
+      throw new Error('Seu cadastro foi criado, mas seu perfil ainda está sincronizando. Tente entrar novamente em alguns segundos.');
     } catch (err: any) {
       console.error('AUTH_ERROR', err);
       setError(`Erro: ${err.message || 'Ocorreu um erro inesperado.'}`);
@@ -229,6 +316,11 @@ const Auth: React.FC = () => {
       setLoading(false);
     }
   };
+
+  const cpfErrorText =
+    errors.cpf?.message ||
+    (cpfDigits.length > 0 && cpfDigits.length < 11 ? 'CPF deve ter 11 dígitos.' : '') ||
+    (cpfDigits.length === 11 && !cpfIsValid ? 'CPF inválido. Digite um CPF válido para continuar.' : '');
 
   return (
     <div className="min-h-screen hero-gradient flex flex-col justify-center items-center px-4 py-12">
@@ -255,37 +347,96 @@ const Auth: React.FC = () => {
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
               {isLogin ? (
                 <>
-                  <Input label="E-mail" placeholder="heroi@email.com" icon={<Mail size={18} />} {...register('email', { required: true })} />
-                  <Input label="Senha" type="password" placeholder="••••••••" icon={<Lock size={18} />} {...register('password', { required: true })} />
+                  <Input
+                    label="E-mail"
+                    placeholder="heroi@email.com"
+                    icon={<Mail size={18} />}
+                    {...register('email', { required: 'E-mail é obrigatório.' })}
+                  />
+                  <Input
+                    label="Senha"
+                    type="password"
+                    placeholder="••••••••"
+                    icon={<Lock size={18} />}
+                    {...register('password', { required: 'Senha é obrigatória.' })}
+                  />
                 </>
               ) : (
                 <>
                   {step === 1 ? (
                     <>
-                      <Input label="Nome Completo" placeholder="Bruce Wayne" icon={<UserIcon size={18} />} {...register('name', { required: true })} />
-                      <Input label="CPF" placeholder="000.000.000-00" icon={<CreditCard size={18} />} {...register('cpf', { required: true, minLength: 11 })} />
-                      {errors.cpf && <p className="text-red-500 text-xs">CPF é obrigatório.</p>}
+                      <Input
+                        label="Nome Completo"
+                        placeholder="Bruce Wayne"
+                        icon={<UserIcon size={18} />}
+                        {...register('name', { required: 'Nome é obrigatório.' })}
+                      />
+
+                      <Input
+                        label="CPF"
+                        placeholder="000.000.000-00"
+                        icon={<CreditCard size={18} />}
+                        {...register('cpf', {
+                          required: 'CPF é obrigatório.',
+                          validate: (v) => {
+                            const clean = normalizeCpf(String(v || ''));
+                            if (clean.length !== 11) return 'CPF deve ter 11 dígitos.';
+                            if (!isValidCPF(clean)) return 'CPF inválido. Digite um CPF válido para continuar.';
+                            return true;
+                          },
+                          onChange: (e: any) => {
+                            const masked = formatCpfMask(e.target.value || '');
+                            setValue('cpf', masked, { shouldValidate: true, shouldDirty: true });
+                          },
+                        })}
+                      />
+
+                      {cpfErrorText ? <p className="text-red-500 text-xs">{cpfErrorText}</p> : null}
                     </>
                   ) : (
                     <>
-                      <Input label="WhatsApp" placeholder="(11) 99999-9999" icon={<Phone size={18} />} {...register('whatsapp', { required: true })} />
-                      <Input label="E-mail" type="email" placeholder="heroi@email.com" icon={<Mail size={18} />} {...register('email', { required: true })} />
-                      <Input label="Nascimento" type="date" icon={<Calendar size={18} />} {...register('birthDate', { required: true })} />
-                      <Input label="Senha" type="password" placeholder="Mínimo 6 caracteres" icon={<Lock size={18} />} {...register('password', { required: true, minLength: 6 })} />
-                      {errors.password && <p className="text-red-500 text-xs -mt-2 ml-1">A senha deve ter no mínimo 6 caracteres.</p>}
+                      <Input
+                        label="WhatsApp"
+                        placeholder="(11) 99999-9999"
+                        icon={<Phone size={18} />}
+                        {...register('whatsapp', { required: 'WhatsApp é obrigatório.' })}
+                      />
+                      <Input
+                        label="E-mail"
+                        type="email"
+                        placeholder="heroi@email.com"
+                        icon={<Mail size={18} />}
+                        {...register('email', { required: 'E-mail é obrigatório.' })}
+                      />
+                      <Input
+                        label="Nascimento"
+                        type="date"
+                        icon={<Calendar size={18} />}
+                        {...register('birthDate', { required: 'Nascimento é obrigatório.' })}
+                      />
+                      <Input
+                        label="Senha"
+                        type="password"
+                        placeholder="Mínimo 6 caracteres"
+                        icon={<Lock size={18} />}
+                        {...register('password', { required: 'Senha é obrigatória.', minLength: { value: 6, message: 'A senha deve ter no mínimo 6 caracteres.' } })}
+                      />
+                      {errors.password && <p className="text-red-500 text-xs -mt-2 ml-1">{String(errors.password.message || '')}</p>}
+
                       <Input
                         label="Confirmar Senha"
                         type="password"
                         placeholder="Repita a senha"
                         icon={<Lock size={18} />}
                         {...register('confirmPassword', {
-                          required: true,
+                          required: 'Confirmação de senha é obrigatória.',
                           validate: (value) => value === password || 'As senhas não coincidem',
                         })}
                       />
                       {errors.confirmPassword && (
                         <p className="text-red-500 text-xs -mt-2 ml-1">{(errors.confirmPassword as any).message}</p>
                       )}
+
                       <div className="flex items-start gap-2 pt-2">
                         <input type="checkbox" className="mt-1" {...register('terms', { required: true })} />
                         <label className="text-xs text-slate-500">Aceito os termos e condições de uso da BurgerHero.</label>
@@ -301,7 +452,16 @@ const Auth: React.FC = () => {
                 </p>
               )}
 
-              <Button type="submit" className="w-full rounded-full py-3" size="md" isLoading={loading}>
+              <Button
+                type="submit"
+                className="w-full rounded-full py-3"
+                size="md"
+                isLoading={loading}
+                disabled={
+                  loading ||
+                  (!isLogin && step === 1 && (!cpfDigits || cpfDigits.length !== 11 || !cpfIsValid))
+                }
+              >
                 {!isLogin && step === 1 ? 'Próximo Passo' : isLogin ? 'Entrar' : 'Finalizar Cadastro'}
               </Button>
             </form>
@@ -319,6 +479,7 @@ const Auth: React.FC = () => {
               onClick={() => {
                 setIsLogin(!isLogin);
                 setStep(1);
+                setStep1Data(null);
                 setError('');
               }}
               className="w-full text-center text-sm font-bold text-slate-600 hover:text-hero-primary transition-colors"
