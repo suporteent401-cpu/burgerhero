@@ -112,8 +112,11 @@ export const SupabaseAuthProvider: React.FC<AuthProviderProps> = ({ children }) 
         const safeProfile = await buildLoginFromSession(session.user);
 
         if (!safeProfile) {
-          console.warn('[SupabaseAuthProvider] Perfil não pôde ser recuperado após tentativas. Logout de limpeza.');
-          logout();
+          // IMPORTANTÍSSIMO: não faz logout aqui.
+          // Mantém a sessão e deixa a tela de Auth finalizar o cadastro.
+          console.warn(
+            '[SupabaseAuthProvider] Usuário tem sessão, mas perfil não pôde ser recuperado. Mantendo sessão (soft-fail).'
+          );
           return;
         }
 
@@ -142,14 +145,17 @@ export const SupabaseAuthProvider: React.FC<AuthProviderProps> = ({ children }) 
           const safeProfile = await buildLoginFromSession(session.user);
 
           if (!safeProfile) {
-            console.error('Falha ao montar perfil no evento de Auth após tentativas. Logout forçado.');
-            logout();
+            // IMPORTANTÍSSIMO: não desloga.
+            console.warn(
+              '[SupabaseAuthProvider] Sessão existe, mas perfil não recuperado no evento. Mantendo sessão (soft-fail).'
+            );
             return;
           }
 
           login(safeProfile);
         } catch (e) {
           console.error('Erro no onAuthStateChange:', e);
+          // aqui pode logout porque é erro grave de estado
           logout();
         } finally {
           setLoading(false);
