@@ -9,6 +9,7 @@ import {
   AlertTriangle,
   Sparkles,
   Clock,
+  Users,
 } from 'lucide-react';
 
 type Period = '7d' | '30d' | 'month';
@@ -19,6 +20,7 @@ const safeEmpty = () => ({
     activeSubscribers: 0,
     newSubscriptions: 0,
     cancellations: 0,
+    totalClients: 0,
     mrrCents: 0,
     monthlyRedemptions: 0,
     monthlyRedemptionRate: 0,
@@ -63,13 +65,18 @@ function buildUiPayload(r: any) {
   // Lógica de apresentação para Insights
   const topPlanName = charts.popularPlans?.[0]?.name || 'N/A';
   const redeemRateVal = (kpis.monthlyRedemptionRate || 0) * 100;
+  
+  // Novo Cálculo: Heróis Inativos
+  const totalClients = Number(kpis.totalClients || 0);
+  const activeSubs = Number(kpis.activeSubscribers || 0);
+  const inactiveCount = Math.max(0, totalClients - activeSubs);
 
   return {
     kpis: [
       {
         title: 'Assinantes Ativos',
         value: Number(kpis.activeSubscribers || 0).toLocaleString('pt-BR'),
-        delta: '—', // Delta real exigiria comparação com período anterior (v2)
+        delta: '—',
         icon: TrendingUp,
         tooltip: 'Total de assinaturas com status ATIVO e período vigente.',
       },
@@ -124,9 +131,9 @@ function buildUiPayload(r: any) {
         color: 'blue',
       },
       {
-        icon: Clock,
-        title: 'Pico de Atividade',
-        description: 'Veja o gráfico diário para alinhar a operação.',
+        icon: Users,
+        title: 'Conversão de Heróis',
+        description: `${inactiveCount} heróis na plataforma ainda não possuem um plano ativo.`,
         color: 'purple',
       },
     ],
