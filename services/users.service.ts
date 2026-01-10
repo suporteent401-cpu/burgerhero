@@ -44,7 +44,7 @@ const normalizeCpf = (cpf: string) => (cpf ? cpf.replace(/[^\d]/g, '') : '');
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function getProfileRow(userId: string) {
-  // 1) tenta user_profiles (base principal)
+  // principal
   const { data: up, error: upErr } = await supabase
     .from('user_profiles')
     .select('*')
@@ -53,7 +53,7 @@ async function getProfileRow(userId: string) {
 
   if (!upErr && up) return up;
 
-  // 2) fallback: client_profiles (legado)
+  // legado (somente leitura)
   const { data: cp, error: cpErr } = await supabase
     .from('client_profiles')
     .select('*')
@@ -65,9 +65,6 @@ async function getProfileRow(userId: string) {
   return null;
 }
 
-/**
- * Busca o perfil completo do usuário (perfil + role + settings)
- */
 export const getFullUserProfile = async (user: SupabaseUser): Promise<FullUserProfile | null> => {
   const userId = user.id;
 
@@ -124,16 +121,11 @@ export const getUserProfileById = async (userId: string) => {
 };
 
 export const updateProfileName = async (userId: string, displayName: string) => {
-  // mantém compatibilidade sem quebrar nada
   await supabase.from('user_profiles').update({ display_name: displayName }).eq('user_id', userId);
-  await supabase.from('client_profiles').update({ display_name: displayName }).eq('user_id', userId);
 };
 
 export const updateUserName = updateProfileName;
 
-/**
- * Atualiza configurações do cartão e do app
- */
 export const updateCardSettings = async (userId: string, settings: any) => {
   const payload: any = {};
   if (settings.templateId !== undefined) payload.card_template_id = settings.templateId ?? null;
@@ -152,12 +144,12 @@ export const checkCpfExists = async (cpf: string): Promise<boolean> => {
   const cleanCpf = normalizeCpf(cpf);
   if (!cleanCpf) return false;
 
-  // compat: checa nas duas tabelas
   const { count: c1 } = await supabase
     .from('user_profiles')
     .select('user_id', { count: 'exact', head: true })
     .eq('cpf', cleanCpf);
 
+  // legado (somente leitura)
   const { count: c2 } = await supabase
     .from('client_profiles')
     .select('user_id', { count: 'exact', head: true })
@@ -178,9 +170,7 @@ export const uploadAndSyncAvatar = async (userId: string, file: File): Promise<s
   const { data } = supabase.storage.from(bucketName).getPublicUrl(filePath);
   const publicUrl = data.publicUrl;
 
-  // compat: atualiza nas duas
   await supabase.from('user_profiles').update({ avatar_url: publicUrl }).eq('user_id', userId);
-  await supabase.from('client_profiles').update({ avatar_url: publicUrl }).eq('user_id', userId);
 
   return publicUrl;
 };
@@ -202,7 +192,6 @@ const callBootstrapWithRetry = async (args: {
 
   for (let attempt = 0; attempt < 4; attempt++) {
     try {
-      // garante sessão está válida antes do RPC (mitiga intermitência auth.uid null)
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user) return { ok: false, message: 'no_auth' };
 
@@ -213,9 +202,6 @@ const callBootstrapWithRetry = async (args: {
       }
 
       lastErr = error;
-      console.warn(`[ensure_user_bootstrap] falhou (tentativa ${attempt + 1}/4):`, error);
-
-      // se for algo de auth, não adianta insistir
       if (String(error.message || '').toLowerCase().includes('no_auth')) break;
 
       await sleep(250 + attempt * 350);
@@ -228,12 +214,6 @@ const callBootstrapWithRetry = async (args: {
   return { ok: false, message: 'bootstrap_failed', detail: String(lastErr?.message || lastErr || '') };
 };
 
-/**
- * Auto-cura de perfil:
- * - NÃO manda CPF vazio
- * - NÃO pode derrubar login se falhar (soft-fail)
- * - tenta garantir user_profiles + app_users + hero_card_settings via RPC
- */
 export const ensureProfileFromSession = async (user: SupabaseUser) => {
   try {
     const displayName =
