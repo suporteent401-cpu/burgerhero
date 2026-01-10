@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { plansService } from '../services/plans.service';
 import { Plan } from '../types';
 import { Button } from '../components/ui/Button';
-import { PlusCircle, TrendingUp, Award, AlertTriangle, BarChart } from 'lucide-react';
+import { PlusCircle, TrendingUp, Award } from 'lucide-react';
 import { PlanCard } from '../components/admin/PlanCard';
 import { PlanFormModal } from '../components/admin/PlanFormModal';
 import { Card, CardBody } from '../components/ui/Card';
@@ -65,6 +65,17 @@ const AdminPlans: React.FC = () => {
     fetchPlans();
   };
 
+  const handleDelete = async (plan: Plan) => {
+    if (window.confirm(`ATENÇÃO: Deseja realmente excluir permanentemente o plano "${plan.name}"? Esta ação não pode ser desfeita.`)) {
+      try {
+        await plansService.deletePlan(plan.id);
+        fetchPlans();
+      } catch (error) {
+        alert('Erro ao excluir o plano. Ele pode estar vinculado a assinaturas existentes.');
+      }
+    }
+  };
+
   return (
     <div className="space-y-8">
       <div className="flex justify-between items-center">
@@ -92,6 +103,7 @@ const AdminPlans: React.FC = () => {
             onEdit={openModal}
             onDuplicate={handleDuplicate}
             onToggleStatus={handleToggleStatus}
+            onDelete={handleDelete}
           />
         ))}
       </div>

@@ -2,20 +2,22 @@ import React from 'react';
 import { Plan } from '../../types';
 import { Card, CardBody } from '../ui/Card';
 import { Button } from '../ui/Button';
-import { MoreHorizontal, Edit, Copy, ToggleLeft, ToggleRight, Users, BarChart2 } from 'lucide-react';
+import { Edit, Copy, ToggleLeft, ToggleRight, Users, BarChart2, Trash2 } from 'lucide-react';
 
 interface PlanCardProps {
   plan: Plan;
   onEdit: (plan: Plan) => void;
   onDuplicate: (plan: Plan) => void;
   onToggleStatus: (plan: Plan) => void;
+  onDelete: (plan: Plan) => void;
 }
 
-export const PlanCard: React.FC<PlanCardProps> = ({ plan, onEdit, onDuplicate, onToggleStatus }) => {
+export const PlanCard: React.FC<PlanCardProps> = ({ plan, onEdit, onDuplicate, onToggleStatus, onDelete }) => {
   return (
     <Card className="flex flex-col h-full group">
       <div className="relative">
-        <div className="aspect-video bg-slate-100 rounded-t-2xl overflow-hidden">
+        {/* Tamanho da imagem reduzido de aspect-video para aspect-[3/1] para ocupar menos espaço vertical */}
+        <div className="aspect-[3/1] bg-slate-100 rounded-t-2xl overflow-hidden">
           <img src={plan.imageUrl} alt={plan.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
         </div>
         <div className={`absolute top-3 right-3 px-2.5 py-1 text-xs font-bold rounded-full flex items-center gap-1.5 text-white ${plan.active ? 'bg-green-500' : 'bg-slate-500'}`}>
@@ -56,16 +58,19 @@ export const PlanCard: React.FC<PlanCardProps> = ({ plan, onEdit, onDuplicate, o
           </div>
         </div>
       </CardBody>
-      <div className="p-3 bg-slate-50 border-t border-slate-100 flex gap-2">
-        <Button size="sm" variant="outline" className="w-full" onClick={() => onEdit(plan)}>
+      <div className="p-3 bg-slate-50 border-t border-slate-100 flex flex-wrap gap-2">
+        <Button size="sm" variant="outline" className="flex-1 min-w-[80px]" onClick={() => onEdit(plan)}>
           <Edit size={14} className="mr-2" /> Editar
         </Button>
-        <Button size="sm" variant="outline" className="w-full" onClick={() => onDuplicate(plan)}>
+        <Button size="sm" variant="outline" className="flex-1 min-w-[80px]" onClick={() => onDuplicate(plan)}>
           <Copy size={14} className="mr-2" /> Duplicar
         </Button>
-        <Button size="sm" variant="outline" onClick={() => onToggleStatus(plan)}>
+        <Button size="sm" variant="outline" className="flex-1 min-w-[100px]" onClick={() => onToggleStatus(plan)}>
           {plan.active ? <ToggleRight size={14} className="mr-2 text-green-500" /> : <ToggleLeft size={14} className="mr-2 text-slate-500" />}
           {plan.active ? 'Desativar' : 'Ativar'}
+        </Button>
+        <Button size="sm" variant="outline" className="text-red-500 hover:text-red-600 hover:bg-red-50" onClick={() => onDelete(plan)} title="Excluir Plano">
+          <Trash2 size={14} />
         </Button>
       </div>
     </Card>

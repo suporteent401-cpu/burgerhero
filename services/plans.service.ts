@@ -5,7 +5,7 @@ import { Plan } from '../types';
  * PlansService
  * - Tenta ler de uma VIEW "plans_with_stats" (assinantes/popularidade em tempo real).
  * - Fallback seguro para tabela "plans" se a view não existir ou falhar.
- * - Escritas (create/update) sempre vão na tabela "plans".
+ * - Escritas (create/update/delete) sempre vão na tabela "plans".
  */
 
 type DbPlanRow = {
@@ -152,5 +152,22 @@ export const plansService = {
     }
 
     return data ? mapDbToPlan(data as any) : null;
+  },
+
+  /**
+   * Remove permanentemente um plano.
+   */
+  async deletePlan(planId: string): Promise<void> {
+    if (!planId) throw new Error('planId é obrigatório');
+
+    const { error } = await supabase
+      .from('plans')
+      .delete()
+      .eq('id', planId);
+
+    if (error) {
+      console.error('[PlansService] Erro ao excluir plano:', error);
+      throw error;
+    }
   },
 };
