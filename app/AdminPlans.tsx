@@ -77,7 +77,7 @@ const AdminPlans: React.FC = () => {
   };
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 pb-24">
       <div className="flex justify-between items-center">
         <div>
           <h2 className="text-3xl font-black text-slate-800">Planos</h2>
