@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router-dom';
 import { Input } from '../components/ui/Input';
@@ -23,39 +23,31 @@ const normalizeRole = (input: any): Role => {
 
 const normalizeCpf = (cpf: string) => (cpf ? cpf.replace(/[^\d]/g, '') : '');
 
-const formatCpfMask = (value: string) => {
-  const digits = normalizeCpf(value).slice(0, 11);
-  const part1 = digits.slice(0, 3);
-  const part2 = digits.slice(3, 6);
-  const part3 = digits.slice(6, 9);
-  const part4 = digits.slice(9, 11);
-
-  let out = part1;
-  if (part2) out += `.${part2}`;
-  if (part3) out += `.${part3}`;
-  if (part4) out += `-${part4}`;
-  return out;
-};
-
-const isValidCPF = (cpfInput: string): boolean => {
+/**
+ * Validação REAL de CPF (DV + bloqueio de repetidos)
+ */
+const isValidCpf = (cpfInput: string): boolean => {
   const cpf = normalizeCpf(cpfInput);
 
-  if (cpf.length !== 11) return false;
-  if (/^(\d)\1{10}$/.test(cpf)) return false;
+  if (!cpf || cpf.length !== 11) return false;
+  if (/^(\d)\1+$/.test(cpf)) return false; // 00000000000, 11111111111 etc.
 
-  const calcDigit = (base: string, factor: number) => {
-    let total = 0;
+  const calcDv = (base: string, factor: number) => {
+    let sum = 0;
     for (let i = 0; i < base.length; i++) {
-      total += Number(base[i]) * (factor - i);
+      sum += parseInt(base[i], 10) * (factor - i);
     }
-    const mod = total % 11;
-    return mod < 2 ? 0 : 11 - mod;
+    const mod = sum % 11;
+    const dv = mod < 2 ? 0 : 11 - mod;
+    return dv;
   };
 
-  const d1 = calcDigit(cpf.slice(0, 9), 10);
-  const d2 = calcDigit(cpf.slice(0, 10), 11);
+  const base9 = cpf.slice(0, 9);
+  const dv1 = calcDv(base9, 10);
+  const base10 = cpf.slice(0, 10);
+  const dv2 = calcDv(base10, 11);
 
-  return d1 === Number(cpf[9]) && d2 === Number(cpf[10]);
+  return cpf === `${base9}${dv1}${dv2}`;
 };
 
 const DEFAULT_SETTINGS = {
@@ -67,19 +59,6 @@ const DEFAULT_SETTINGS = {
   mode: 'system' as 'light' | 'dark' | 'system',
 };
 
-type FormValues = {
-  email?: string;
-  password?: string;
-  confirmPassword?: string;
-  name?: string;
-  cpf?: string;
-  whatsapp?: string;
-  birthDate?: string;
-  terms?: boolean;
-};
-
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
 const Auth: React.FC = () => {
   const [isLogin, setIsLogin] = useState(true);
   const [step, setStep] = useState(1);
@@ -89,29 +68,18 @@ const Auth: React.FC = () => {
   const navigate = useNavigate();
   const login = useAuthStore((state) => state.login);
 
-  const heroTheme = useThemeStore((state) => state.heroTheme);
+  const heroTheme = useThemeStore(state => state.heroTheme);
   const heroTextColor = heroTheme === 'preto-absoluto' ? 'text-blue-400' : 'text-hero-primary';
 
   const {
     register,
     handleSubmit,
     watch,
-    setValue,
-    getValues,
-    trigger,
     formState: { errors },
-  } = useForm<FormValues>({
-    mode: 'onChange',
-    defaultValues: {
-      cpf: '',
-    },
-  });
+    getValues,
+  } = useForm();
 
   const password = watch('password');
-  const cpfWatch = watch('cpf') || '';
-
-  const cpfDigits = useMemo(() => normalizeCpf(cpfWatch), [cpfWatch]);
-  const cpfIsValid = useMemo(() => isValidCPF(cpfWatch), [cpfWatch]);
 
   const applySettingsAndLoadTemplates = async (settings: any) => {
     const safe = settings || DEFAULT_SETTINGS;
@@ -176,24 +144,15 @@ const Auth: React.FC = () => {
     return result || { ok: true };
   };
 
-  const getFullProfileWithRetry = async (user: any, attempts = 4) => {
-    for (let i = 0; i < attempts; i++) {
-      const full = await getFullUserProfile(user);
-      if (full) return full;
-      await sleep(250 + i * 250);
-    }
-    return null;
-  };
-
-  const onSubmit = async (data: FormValues) => {
+  const onSubmit = async (data: any) => {
     setError('');
     setLoading(true);
 
     try {
       if (isLogin) {
         const { data: signInData, error: authError } = await supabase.auth.signInWithPassword({
-          email: data.email || '',
-          password: data.password || '',
+          email: data.email,
+          password: data.password,
         });
 
         if (authError) {
@@ -204,12 +163,12 @@ const Auth: React.FC = () => {
           throw new Error('Não foi possível iniciar a sessão.');
         }
 
-        let full = await getFullProfileWithRetry(signInData.session.user, 3);
+        let full = await getFullUserProfile(signInData.session.user);
 
         if (!full) {
           console.warn('Falha ao carregar perfil no login. Tentando auto-cura...');
           await ensureProfileFromSession(signInData.session.user);
-          full = await getFullProfileWithRetry(signInData.session.user, 4);
+          full = await getFullUserProfile(signInData.session.user);
         }
 
         if (full) {
@@ -226,28 +185,23 @@ const Auth: React.FC = () => {
         throw new Error('Não foi possível carregar seu perfil. Tente novamente em alguns segundos.');
       }
 
-      // =============================
-      // CADASTRO (2 passos)
-      // =============================
+      // =========================
+      // CADASTRO
+      // =========================
       if (step === 1) {
-        const cpfValue = getValues('cpf') || '';
-        const cpfClean = normalizeCpf(cpfValue);
+        const rawCpf = getValues('cpf') || data.cpf;
+        const cleanCpf = normalizeCpf(rawCpf);
 
-        if (!cpfClean || cpfClean.length !== 11) {
+        if (!isValidCpf(cleanCpf)) {
           throw new Error('CPF inválido. Digite um CPF válido para continuar.');
         }
 
-        if (!isValidCPF(cpfClean)) {
-          throw new Error('CPF inválido. Digite um CPF válido para continuar.');
-        }
-
-        // Só consulta se CPF for válido
-        const cpfExists = await checkCpfExists(cpfClean);
+        const cpfExists = await checkCpfExists(cleanCpf);
         if (cpfExists) throw new Error('Este CPF já está cadastrado em nossa base.');
 
         setStep1Data({
-          name: data.name || '',
-          cpf: cpfClean,
+          name: data.name,
+          cpf: cleanCpf,
         });
 
         setStep(2);
@@ -258,44 +212,44 @@ const Auth: React.FC = () => {
       const fullUserData = {
         ...step1Data,
         ...data,
-        cpf: normalizeCpf(step1Data?.cpf || data.cpf || ''),
+        cpf: normalizeCpf(step1Data?.cpf || data.cpf),
       };
 
+      // redundância de segurança (nunca deixar passar CPF ruim)
+      if (!isValidCpf(fullUserData.cpf)) {
+        throw new Error('CPF inválido. Volte e corrija seu CPF para continuar.');
+      }
+
       const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-        email: String(fullUserData.email || ''),
-        password: String(fullUserData.password || ''),
-        options: { data: { full_name: String(fullUserData.name || '') } },
+        email: fullUserData.email,
+        password: fullUserData.password,
+        options: { data: { full_name: fullUserData.name } },
       });
 
       if (signUpError) throw signUpError;
 
-      // Se email confirmation estiver ligado, session vem null
-      if (signUpData.user && !signUpData.session) {
+      // Se por algum motivo a sessão não vier, orienta o usuário (mesmo com email confirm desligado, pode acontecer em edge cases)
+      if (!signUpData.session) {
         setLoading(false);
-        alert('Cadastro realizado com sucesso! Verifique seu e-mail para confirmar a conta antes de entrar.');
+        alert('Cadastro realizado com sucesso! Faça login para continuar.');
         setIsLogin(true);
-        setStep(1);
         return;
       }
 
-      if (!signUpData.session) {
-        throw new Error('Erro ao estabelecer sessão após cadastro.');
-      }
-
       const boot = await ensureBootstrap({
-        name: String(fullUserData.name || ''),
-        email: String(fullUserData.email || ''),
-        cpf: String(fullUserData.cpf || ''),
-        birthDate: (fullUserData.birthDate as any) || null,
-        whatsapp: (fullUserData.whatsapp as any) || null,
+        name: fullUserData.name,
+        email: fullUserData.email,
+        cpf: fullUserData.cpf,
+        birthDate: fullUserData.birthDate || null,
+        whatsapp: fullUserData.whatsapp || null,
       });
 
       if (!boot?.ok) {
-        // Aqui a RPC agora devolve mensagens importantes (invalid_cpf, cpf_already_used, etc.)
+        // se aqui ainda der invalid_cpf, significa que o banco está com regra diferente
         throw new Error(boot?.message || 'Falha ao criar seu perfil. Tente novamente.');
       }
 
-      const full = await getFullProfileWithRetry(signUpData.session.user, 5);
+      const full = await getFullUserProfile(signUpData.session.user);
 
       if (full) {
         const role = normalizeRole(full.profile.role);
@@ -305,10 +259,9 @@ const Auth: React.FC = () => {
 
         login(safeProfile);
         handlePostAuthRedirect(role);
-        return;
+      } else {
+        navigate('/app', { replace: true });
       }
-
-      throw new Error('Seu cadastro foi criado, mas seu perfil ainda está sincronizando. Tente entrar novamente em alguns segundos.');
     } catch (err: any) {
       console.error('AUTH_ERROR', err);
       setError(`Erro: ${err.message || 'Ocorreu um erro inesperado.'}`);
@@ -316,11 +269,6 @@ const Auth: React.FC = () => {
       setLoading(false);
     }
   };
-
-  const cpfErrorText =
-    errors.cpf?.message ||
-    (cpfDigits.length > 0 && cpfDigits.length < 11 ? 'CPF deve ter 11 dígitos.' : '') ||
-    (cpfDigits.length === 11 && !cpfIsValid ? 'CPF inválido. Digite um CPF válido para continuar.' : '');
 
   return (
     <div className="min-h-screen hero-gradient flex flex-col justify-center items-center px-4 py-12">
@@ -351,14 +299,14 @@ const Auth: React.FC = () => {
                     label="E-mail"
                     placeholder="heroi@email.com"
                     icon={<Mail size={18} />}
-                    {...register('email', { required: 'E-mail é obrigatório.' })}
+                    {...register('email', { required: true })}
                   />
                   <Input
                     label="Senha"
                     type="password"
                     placeholder="••••••••"
                     icon={<Lock size={18} />}
-                    {...register('password', { required: 'Senha é obrigatória.' })}
+                    {...register('password', { required: true })}
                   />
                 </>
               ) : (
@@ -369,7 +317,7 @@ const Auth: React.FC = () => {
                         label="Nome Completo"
                         placeholder="Bruce Wayne"
                         icon={<UserIcon size={18} />}
-                        {...register('name', { required: 'Nome é obrigatório.' })}
+                        {...register('name', { required: true })}
                       />
 
                       <Input
@@ -378,20 +326,13 @@ const Auth: React.FC = () => {
                         icon={<CreditCard size={18} />}
                         {...register('cpf', {
                           required: 'CPF é obrigatório.',
-                          validate: (v) => {
-                            const clean = normalizeCpf(String(v || ''));
-                            if (clean.length !== 11) return 'CPF deve ter 11 dígitos.';
-                            if (!isValidCPF(clean)) return 'CPF inválido. Digite um CPF válido para continuar.';
-                            return true;
-                          },
-                          onChange: (e: any) => {
-                            const masked = formatCpfMask(e.target.value || '');
-                            setValue('cpf', masked, { shouldValidate: true, shouldDirty: true });
-                          },
+                          validate: (v) => isValidCpf(v) || 'CPF inválido. Digite um CPF válido.',
                         })}
                       />
 
-                      {cpfErrorText ? <p className="text-red-500 text-xs">{cpfErrorText}</p> : null}
+                      {errors.cpf && (
+                        <p className="text-red-500 text-xs -mt-2 ml-1">{(errors.cpf as any).message}</p>
+                      )}
                     </>
                   ) : (
                     <>
@@ -399,44 +340,44 @@ const Auth: React.FC = () => {
                         label="WhatsApp"
                         placeholder="(11) 99999-9999"
                         icon={<Phone size={18} />}
-                        {...register('whatsapp', { required: 'WhatsApp é obrigatório.' })}
+                        {...register('whatsapp', { required: true })}
                       />
                       <Input
                         label="E-mail"
                         type="email"
                         placeholder="heroi@email.com"
                         icon={<Mail size={18} />}
-                        {...register('email', { required: 'E-mail é obrigatório.' })}
+                        {...register('email', { required: true })}
                       />
                       <Input
                         label="Nascimento"
                         type="date"
                         icon={<Calendar size={18} />}
-                        {...register('birthDate', { required: 'Nascimento é obrigatório.' })}
+                        {...register('birthDate', { required: true })}
                       />
                       <Input
                         label="Senha"
                         type="password"
                         placeholder="Mínimo 6 caracteres"
                         icon={<Lock size={18} />}
-                        {...register('password', { required: 'Senha é obrigatória.', minLength: { value: 6, message: 'A senha deve ter no mínimo 6 caracteres.' } })}
+                        {...register('password', { required: true, minLength: 6 })}
                       />
-                      {errors.password && <p className="text-red-500 text-xs -mt-2 ml-1">{String(errors.password.message || '')}</p>}
-
+                      {errors.password && (
+                        <p className="text-red-500 text-xs -mt-2 ml-1">A senha deve ter no mínimo 6 caracteres.</p>
+                      )}
                       <Input
                         label="Confirmar Senha"
                         type="password"
                         placeholder="Repita a senha"
                         icon={<Lock size={18} />}
                         {...register('confirmPassword', {
-                          required: 'Confirmação de senha é obrigatória.',
+                          required: true,
                           validate: (value) => value === password || 'As senhas não coincidem',
                         })}
                       />
                       {errors.confirmPassword && (
                         <p className="text-red-500 text-xs -mt-2 ml-1">{(errors.confirmPassword as any).message}</p>
                       )}
-
                       <div className="flex items-start gap-2 pt-2">
                         <input type="checkbox" className="mt-1" {...register('terms', { required: true })} />
                         <label className="text-xs text-slate-500">Aceito os termos e condições de uso da BurgerHero.</label>
@@ -452,16 +393,7 @@ const Auth: React.FC = () => {
                 </p>
               )}
 
-              <Button
-                type="submit"
-                className="w-full rounded-full py-3"
-                size="md"
-                isLoading={loading}
-                disabled={
-                  loading ||
-                  (!isLogin && step === 1 && (!cpfDigits || cpfDigits.length !== 11 || !cpfIsValid))
-                }
-              >
+              <Button type="submit" className="w-full rounded-full py-3" size="md" isLoading={loading}>
                 {!isLogin && step === 1 ? 'Próximo Passo' : isLogin ? 'Entrar' : 'Finalizar Cadastro'}
               </Button>
             </form>
@@ -479,7 +411,6 @@ const Auth: React.FC = () => {
               onClick={() => {
                 setIsLogin(!isLogin);
                 setStep(1);
-                setStep1Data(null);
                 setError('');
               }}
               className="w-full text-center text-sm font-bold text-slate-600 hover:text-hero-primary transition-colors"
