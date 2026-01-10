@@ -41,6 +41,8 @@ const normalizeRole = (input: any): Role => {
 
 const normalizeCpf = (cpf: string) => (cpf ? cpf.replace(/[^\d]/g, '') : '');
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 async function getProfileRow(userId: string) {
   // 1) tenta user_profiles (base principal)
   const { data: up, error: upErr } = await supabase
@@ -189,16 +191,61 @@ export const ensureHeroIdentity = async (): Promise<string | null> => {
   return data as string;
 };
 
+const callBootstrapWithRetry = async (args: {
+  p_display_name: string;
+  p_email: string;
+  p_cpf: string | null;
+  p_birthdate: string | null;
+  p_whatsapp: string | null;
+}) => {
+  let lastErr: any = null;
+
+  for (let attempt = 0; attempt < 4; attempt++) {
+    try {
+      // garante sessão está válida antes do RPC (mitiga intermitência auth.uid null)
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) return { ok: false, message: 'no_auth' };
+
+      const { data, error } = await supabase.rpc('ensure_user_bootstrap', args);
+      if (!error) {
+        const result = Array.isArray(data) ? data[0] : data;
+        return result || { ok: true, message: 'ok' };
+      }
+
+      lastErr = error;
+      console.warn(`[ensure_user_bootstrap] falhou (tentativa ${attempt + 1}/4):`, error);
+
+      // se for algo de auth, não adianta insistir
+      if (String(error.message || '').toLowerCase().includes('no_auth')) break;
+
+      await sleep(250 + attempt * 350);
+    } catch (e) {
+      lastErr = e;
+      await sleep(250 + attempt * 350);
+    }
+  }
+
+  return { ok: false, message: 'bootstrap_failed', detail: String(lastErr?.message || lastErr || '') };
+};
+
 /**
  * Auto-cura de perfil:
  * - NÃO manda CPF vazio
  * - NÃO pode derrubar login se falhar (soft-fail)
+ * - tenta garantir user_profiles + app_users + hero_card_settings via RPC
  */
 export const ensureProfileFromSession = async (user: SupabaseUser) => {
   try {
-    await supabase.rpc('ensure_user_bootstrap', {
-      p_display_name: (user.user_metadata as any)?.full_name || 'Herói',
-      p_email: user.email || '',
+    const displayName =
+      (user.user_metadata as any)?.full_name ||
+      (user.user_metadata as any)?.name ||
+      'Herói';
+
+    const email = user.email || '';
+
+    await callBootstrapWithRetry({
+      p_display_name: displayName,
+      p_email: email,
       p_cpf: null,
       p_birthdate: null,
       p_whatsapp: null,
