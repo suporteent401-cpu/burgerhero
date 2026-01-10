@@ -41,32 +41,31 @@ const Checkout: React.FC = () => {
       // Simula processamento
       await new Promise((r) => setTimeout(r, 500));
 
-      // ✅ 1) ATIVA NO BANCO (RPC)
-      // plan.id aqui precisa ser um slug. Ex: "vingador"
-      // Se o seu plan.id hoje for UUID, troque para um slug, ou mapeie:
-      const planSlug = plan.id;
+      // ✅ ATIVA NO BANCO (RPC)
+      // OBS: seu banco salva UUID em subscriptions.plan_slug (campo text),
+      // então aqui o "planRef" é o plan.id (UUID em string).
+      const planRef = plan.id;
 
-      await subscriptionsService.activateMock(planSlug, 30);
+      await subscriptionsService.activateMock(planRef, 30);
 
-      // ✅ 2) GARANTE VOUCHER IMEDIATAMENTE (RPC)
-      // Dispara a criação do voucher do mês já que a assinatura acabou de ficar ativa
-      const { error: rpcError } = await supabase.rpc('ensure_voucher_for_user', { 
-        p_user_id: user.id, 
-        p_force: true 
+      // ✅ GARANTE VOUCHER IMEDIATAMENTE (se sua RPC existir)
+      const { error: rpcError } = await supabase.rpc('ensure_voucher_for_user', {
+        p_user_id: user.id,
+        p_force: true
       });
 
       if (rpcError) {
         console.warn("Aviso: Falha ao garantir voucher automático:", rpcError);
-        // Não bloqueia o fluxo, pois o usuário já pagou/ativou
+        // Não bloqueia o fluxo, pois a assinatura foi ativada
       }
 
-      // ✅ 3) (opcional) mantém seu mock local também, mas agora o "oficial" é o banco
+      // ✅ Mantém seu mock local (opcional), mas o oficial é o banco
       subscriptionMockService.setActiveSubscription(user.id, plan);
 
-      // ✅ 4) limpa o plano pendente
+      // ✅ limpa o plano pendente
       subscriptionMockService.clearPendingPlan();
 
-      // ✅ 5) vai pra home
+      // ✅ vai pra home
       navigate("/app", { replace: true });
     } catch (err: any) {
       console.error(err);
