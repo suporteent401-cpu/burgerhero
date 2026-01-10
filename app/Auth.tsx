@@ -23,9 +23,6 @@ const normalizeRole = (input: any): Role => {
 
 const normalizeCpf = (cpf: string) => (cpf ? cpf.replace(/[^\d]/g, '') : '');
 
-/**
- * Validação REAL de CPF (DV + bloqueio de repetidos)
- */
 const isValidCpf = (cpfInput: string): boolean => {
   const cpf = normalizeCpf(cpfInput);
 
@@ -58,12 +55,9 @@ const DEFAULT_SETTINGS = {
 
 const humanizeBootstrapMessage = (msg: string) => {
   const m = String(msg || '').toLowerCase();
-
   if (m.includes('invalid_cpf')) return 'CPF inválido. Digite um CPF válido para continuar.';
-  if (m.includes('bootstrap_failed')) return 'Falha ao criar seu perfil. Tente novamente.';
   if (m.includes('no_auth')) return 'Sessão inválida. Faça login novamente.';
-  if (m.includes('duplicate')) return 'Dados já cadastrados. Verifique e tente novamente.';
-
+  if (m.includes('bootstrap_failed')) return 'Falha ao criar seu perfil. Tente novamente.';
   return msg || 'Falha ao criar seu perfil. Tente novamente.';
 };
 
@@ -91,7 +85,9 @@ const Auth: React.FC = () => {
     getValues,
     setValue,
     reset,
+    resetField,
   } = useForm();
+
   const password = watch('password');
 
   const pageTitle = useMemo(() => {
@@ -99,13 +95,22 @@ const Auth: React.FC = () => {
     return isLogin ? 'Bem-vindo de volta, Herói!' : 'Crie sua identidade secreta';
   }, [isLogin, recoverMode]);
 
-  // Se existe sessão, mas não existe perfil público ainda, entramos em modo "recuperação".
+  // >>> FIX: sempre que entrar no passo 2 (cadastro) ou recovery, limpa WhatsApp
+  useEffect(() => {
+    if (!isLogin && step === 2) {
+      // evita autofill/repasse indevido (CPF indo pro Whats)
+      try {
+        resetField('whatsapp');
+      } catch {}
+      setValue('whatsapp', '');
+    }
+  }, [isLogin, step, resetField, setValue]);
+
+  // Se existe sessão, mas não existe perfil público ainda, entra em modo recuperação.
   useEffect(() => {
     const run = async () => {
       try {
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
+        const { data: { session } } = await supabase.auth.getSession();
         if (!session?.user) return;
 
         const full = await getFullUserProfile(session.user);
@@ -120,11 +125,16 @@ const Auth: React.FC = () => {
 
           const metaName =
             (session.user.user_metadata as any)?.full_name || (session.user.user_metadata as any)?.name;
+
           setStep1Data({ name: metaName || 'Herói', cpf: '' });
 
           if (session.user.email) setValue('email', session.user.email);
+
+          // deixa cpf e whatsapp limpos nesse modo
+          setValue('cpf', '');
+          setValue('whatsapp', '');
         }
-      } catch (e) {
+      } catch {
         // soft-fail
       }
     };
@@ -168,6 +178,7 @@ const Auth: React.FC = () => {
     else navigate('/app', { replace: true });
   };
 
+  // RPC bootstrap com retry (não muda sua assinatura)
   const ensureBootstrap = async (payload: {
     name: string;
     email: string;
@@ -181,12 +192,9 @@ const Auth: React.FC = () => {
       return { ok: false, message: 'invalid_cpf' };
     }
 
-    // Retry com backoff (muita gente toma “auth.uid() null” intermitente na RPC)
     let lastErr: any = null;
     for (let attempt = 0; attempt < 4; attempt++) {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+      const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user) return { ok: false, message: 'no_auth' };
 
       const { data, error } = await supabase.rpc('ensure_user_bootstrap', {
@@ -217,6 +225,9 @@ const Auth: React.FC = () => {
     setLoading(true);
 
     try {
+      // =========================
+      // LOGIN
+      // =========================
       if (isLogin) {
         const { data: signInData, error: authError } = await supabase.auth.signInWithPassword({
           email: data.email,
@@ -240,7 +251,7 @@ const Auth: React.FC = () => {
         }
 
         if (!full) {
-          // Não derruba o login: entra em modo de recuperação para o usuário completar o cadastro.
+          // recovery (não derruba login)
           setRecoverMode(true);
           setRecoverHint('Seu login foi aceito, mas seu perfil do app não existe/está incompleto. Vamos finalizar agora.');
           setIsLogin(false);
@@ -249,9 +260,13 @@ const Auth: React.FC = () => {
           const metaName =
             (signInData.session.user.user_metadata as any)?.full_name ||
             (signInData.session.user.user_metadata as any)?.name;
+
           setStep1Data({ name: metaName || 'Herói', cpf: '' });
 
           if (signInData.session.user.email) setValue('email', signInData.session.user.email);
+
+          setValue('cpf', '');
+          setValue('whatsapp', '');
           setLoading(false);
           return;
         }
@@ -267,7 +282,7 @@ const Auth: React.FC = () => {
       }
 
       // =========================
-      // CADASTRO / RECUPERAÇÃO
+      // CADASTRO (step 1)
       // =========================
       if (step === 1 && !recoverMode) {
         const rawCpf = getValues('cpf') || data.cpf;
@@ -280,10 +295,16 @@ const Auth: React.FC = () => {
 
         setStep1Data({ name: data.name, cpf: cleanCpf });
         setStep(2);
+
+        // >>> FIX: limpa whatsapp ao passar pro passo 2
+        setValue('whatsapp', '');
         setLoading(false);
         return;
       }
 
+      // =========================
+      // CADASTRO (step 2) / RECOVERY
+      // =========================
       const fullUserData = {
         ...step1Data,
         ...data,
@@ -292,7 +313,6 @@ const Auth: React.FC = () => {
 
       if (!isValidCpf(fullUserData.cpf)) throw new Error('CPF inválido. Volte e corrija seu CPF para continuar.');
 
-      // Em recovery mode, o usuário já tem sessão (Auth existe), então NÃO faz signUp de novo.
       let sessionUser = null as any;
 
       if (!recoverMode) {
@@ -313,13 +333,12 @@ const Auth: React.FC = () => {
 
         sessionUser = signUpData.session.user;
       } else {
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
+        const { data: { session } } = await supabase.auth.getSession();
         sessionUser = session?.user;
         if (!sessionUser) throw new Error('Sessão inválida. Faça login novamente.');
       }
 
+      // Tenta RPC, mas NÃO trava se falhar: tenta pegar perfil do DB (trigger pode ter criado!)
       const boot = await ensureBootstrap({
         name: fullUserData.name,
         email: fullUserData.email,
@@ -328,20 +347,15 @@ const Auth: React.FC = () => {
         whatsapp: fullUserData.whatsapp || null,
       });
 
-      if (!boot?.ok) {
-        // Não cria usuário de novo. Mantém o usuário logado e permite tentar novamente.
-        setRecoverMode(true);
-        setRecoverHint('Seu usuário foi criado, mas o perfil do app não foi finalizado. Revise os dados e tente novamente.');
-        setIsLogin(false);
-        setStep(2);
-        setStep1Data((prev: any) => ({
-          name: prev?.name || fullUserData.name,
-          cpf: fullUserData.cpf,
-        }));
-        throw new Error(humanizeBootstrapMessage(boot?.message));
-      }
+      // >>> COMPORTAMENTO PREMIUM:
+      // Se boot falhou, tenta carregar perfil mesmo assim (trigger pode ter criado / ou perfil já existia)
+      let full = await getFullUserProfile(sessionUser);
 
-      const full = await getFullUserProfile(sessionUser);
+      if (!full && !boot?.ok) {
+        // tenta auto-cura + buscar de novo (mais uma chance)
+        await ensureProfileFromSession(sessionUser);
+        full = await getFullUserProfile(sessionUser);
+      }
 
       if (full) {
         const role = normalizeRole(full.profile.role);
@@ -351,14 +365,20 @@ const Auth: React.FC = () => {
 
         login(safeProfile);
         handlePostAuthRedirect(role);
-      } else {
-        setRecoverMode(true);
-        setRecoverHint(
-          'Seu cadastro foi salvo, mas o perfil ainda não apareceu. Aguarde alguns segundos e clique em "Finalizar Cadastro" novamente.'
-        );
-        setIsLogin(false);
-        setStep(2);
+        return;
       }
+
+      // Se ainda não achou perfil, aí sim entra no recovery com erro
+      setRecoverMode(true);
+      setRecoverHint('Seu usuário foi criado, mas o perfil do app não foi finalizado. Revise os dados e tente novamente.');
+      setIsLogin(false);
+      setStep(2);
+      setStep1Data((prev: any) => ({
+        name: prev?.name || fullUserData.name,
+        cpf: fullUserData.cpf,
+      }));
+
+      throw new Error(humanizeBootstrapMessage(boot?.message));
     } catch (err: any) {
       console.error('AUTH_ERROR', err);
       setError(`Erro: ${err.message || 'Ocorreu um erro inesperado.'}`);
@@ -396,6 +416,7 @@ const Auth: React.FC = () => {
                     label="E-mail"
                     placeholder="heroi@email.com"
                     icon={<Mail size={18} />}
+                    autoComplete="email"
                     {...register('email', { required: true })}
                   />
                   <Input
@@ -403,6 +424,7 @@ const Auth: React.FC = () => {
                     type="password"
                     placeholder="••••••••"
                     icon={<Lock size={18} />}
+                    autoComplete="current-password"
                     {...register('password', { required: true })}
                   />
                 </>
@@ -414,6 +436,7 @@ const Auth: React.FC = () => {
                         label="Nome Completo"
                         placeholder="Bruce Wayne"
                         icon={<UserIcon size={18} />}
+                        autoComplete="name"
                         {...register('name', { required: true })}
                       />
 
@@ -421,6 +444,7 @@ const Auth: React.FC = () => {
                         label="CPF"
                         placeholder="000.000.000-00"
                         icon={<CreditCard size={18} />}
+                        autoComplete="off"
                         {...register('cpf', {
                           required: 'CPF é obrigatório.',
                           validate: (v) => isValidCpf(v) || 'CPF inválido. Digite um CPF válido.',
@@ -439,6 +463,7 @@ const Auth: React.FC = () => {
                           placeholder="Bruce Wayne"
                           icon={<UserIcon size={18} />}
                           defaultValue={step1Data?.name || ''}
+                          autoComplete="name"
                           {...register('name', { required: true })}
                         />
                       )}
@@ -447,6 +472,7 @@ const Auth: React.FC = () => {
                         label="WhatsApp"
                         placeholder="(11) 99999-9999"
                         icon={<Phone size={18} />}
+                        autoComplete="tel"
                         {...register('whatsapp', { required: true })}
                       />
 
@@ -456,6 +482,7 @@ const Auth: React.FC = () => {
                         placeholder="heroi@email.com"
                         icon={<Mail size={18} />}
                         disabled={recoverMode}
+                        autoComplete="email"
                         {...register('email', { required: true })}
                       />
 
@@ -464,6 +491,7 @@ const Auth: React.FC = () => {
                         placeholder="000.000.000-00"
                         icon={<CreditCard size={18} />}
                         defaultValue={step1Data?.cpf || ''}
+                        autoComplete="off"
                         {...register('cpf', {
                           required: 'CPF é obrigatório.',
                           validate: (v) => isValidCpf(v) || 'CPF inválido. Digite um CPF válido.',
@@ -478,6 +506,7 @@ const Auth: React.FC = () => {
                         label="Nascimento"
                         type="date"
                         icon={<Calendar size={18} />}
+                        autoComplete="bday"
                         {...register('birthDate', { required: true })}
                       />
 
@@ -488,6 +517,7 @@ const Auth: React.FC = () => {
                             type="password"
                             placeholder="Mínimo 6 caracteres"
                             icon={<Lock size={18} />}
+                            autoComplete="new-password"
                             {...register('password', { required: true, minLength: 6 })}
                           />
                           {errors.password && (
@@ -498,6 +528,7 @@ const Auth: React.FC = () => {
                             type="password"
                             placeholder="Repita a senha"
                             icon={<Lock size={18} />}
+                            autoComplete="new-password"
                             {...register('confirmPassword', {
                               required: true,
                               validate: (value) => value === password || 'As senhas não coincidem',
