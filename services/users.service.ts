@@ -39,6 +39,30 @@ const normalizeRole = (input: any): Role => {
   return 'client';
 };
 
+const normalizeCpf = (cpf: string) => (cpf ? cpf.replace(/[^\d]/g, '') : '');
+
+async function getProfileRow(userId: string) {
+  // 1) tenta user_profiles
+  const { data: up, error: upErr } = await supabase
+    .from('user_profiles')
+    .select('*')
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (!upErr && up) return up;
+
+  // 2) fallback: client_profiles (seu banco está populando forte aqui)
+  const { data: cp, error: cpErr } = await supabase
+    .from('client_profiles')
+    .select('*')
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (!cpErr && cp) return cp;
+
+  return null;
+}
+
 /**
  * Busca o perfil completo do usuário (perfil + role + settings)
  */
@@ -46,14 +70,8 @@ export const getFullUserProfile = async (user: SupabaseUser): Promise<FullUserPr
   const userId = user.id;
 
   try {
-    const { data: userProfileData, error: profileError } = await supabase
-      .from('user_profiles')
-      .select('*')
-      .eq('user_id', userId)
-      .maybeSingle();
-
-    if (profileError) throw profileError;
-    if (!userProfileData) return null;
+    const profileRow = await getProfileRow(userId);
+    if (!profileRow) return null;
 
     const { data: roleData } = await supabase
       .from('app_users')
@@ -71,11 +89,11 @@ export const getFullUserProfile = async (user: SupabaseUser): Promise<FullUserPr
 
     const profile: AppUser = {
       id: userId,
-      name: userProfileData.display_name || (user.user_metadata as any)?.full_name || 'Herói',
-      email: userProfileData.email || user.email || '',
-      cpf: userProfileData.cpf || '',
-      avatarUrl: userProfileData.avatar_url || (user.user_metadata as any)?.avatar_url || null,
-      customerCode: userProfileData.hero_code || userProfileData.customer_id_public || '',
+      name: profileRow.display_name || (user.user_metadata as any)?.full_name || 'Herói',
+      email: profileRow.email || user.email || '',
+      cpf: profileRow.cpf || '',
+      avatarUrl: profileRow.avatar_url || (user.user_metadata as any)?.avatar_url || null,
+      customerCode: profileRow.hero_code || profileRow.customer_id_public || '',
       role,
     };
 
@@ -99,13 +117,14 @@ export const getFullUserProfile = async (user: SupabaseUser): Promise<FullUserPr
 };
 
 export const getUserProfileById = async (userId: string) => {
-  const { data } = await supabase.from('user_profiles').select('*').eq('user_id', userId).maybeSingle();
-  return data;
+  const row = await getProfileRow(userId);
+  return row;
 };
 
 export const updateProfileName = async (userId: string, displayName: string) => {
-  const { error } = await supabase.from('user_profiles').update({ display_name: displayName }).eq('user_id', userId);
-  if (error) throw error;
+  // atualiza nas duas pra manter compatibilidade sem quebrar nada
+  await supabase.from('user_profiles').update({ display_name: displayName }).eq('user_id', userId);
+  await supabase.from('client_profiles').update({ display_name: displayName }).eq('user_id', userId);
 };
 
 export const updateUserName = updateProfileName;
@@ -128,10 +147,21 @@ export const updateCardSettings = async (userId: string, settings: any) => {
 };
 
 export const checkCpfExists = async (cpf: string): Promise<boolean> => {
-  const cleanCpf = cpf.replace(/[^\d]/g, '');
+  const cleanCpf = normalizeCpf(cpf);
   if (!cleanCpf) return false;
-  const { count } = await supabase.from('user_profiles').select('user_id', { count: 'exact', head: true }).eq('cpf', cleanCpf);
-  return (count || 0) > 0;
+
+  // checa nas duas tabelas (compat)
+  const { count: c1 } = await supabase
+    .from('user_profiles')
+    .select('user_id', { count: 'exact', head: true })
+    .eq('cpf', cleanCpf);
+
+  const { count: c2 } = await supabase
+    .from('client_profiles')
+    .select('user_id', { count: 'exact', head: true })
+    .eq('cpf', cleanCpf);
+
+  return ((c1 || 0) + (c2 || 0)) > 0;
 };
 
 export const uploadAndSyncAvatar = async (userId: string, file: File): Promise<string | null> => {
@@ -146,7 +176,10 @@ export const uploadAndSyncAvatar = async (userId: string, file: File): Promise<s
   const { data } = supabase.storage.from(bucketName).getPublicUrl(filePath);
   const publicUrl = data.publicUrl;
 
+  // atualiza nas duas tabelas pra compatibilidade
   await supabase.from('user_profiles').update({ avatar_url: publicUrl }).eq('user_id', userId);
+  await supabase.from('client_profiles').update({ avatar_url: publicUrl }).eq('user_id', userId);
+
   return publicUrl;
 };
 
@@ -156,11 +189,15 @@ export const ensureHeroIdentity = async (userId: string): Promise<string | null>
   return data as string;
 };
 
+/**
+ * Auto-cura de perfil: NÃO pode mandar CPF vazio (isso gera invalid_cpf)
+ * Agora manda NULL e deixa o banco completar o resto.
+ */
 export const ensureProfileFromSession = async (user: SupabaseUser) => {
   await supabase.rpc('ensure_user_bootstrap', {
     p_display_name: (user.user_metadata as any)?.full_name || 'Hero',
     p_email: user.email || '',
-    p_cpf: '',
+    p_cpf: null,          // ✅ não dispara invalid_cpf
     p_birthdate: null,
     p_whatsapp: null,
   });
