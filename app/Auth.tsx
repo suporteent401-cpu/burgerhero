@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router-dom';
 import { Input } from '../components/ui/Input';
@@ -67,20 +67,69 @@ const humanizeBootstrapMessage = (msg: string) => {
   return msg || 'Falha ao criar seu perfil. Tente novamente.';
 };
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 const Auth: React.FC = () => {
   const [isLogin, setIsLogin] = useState(true);
   const [step, setStep] = useState(1);
   const [step1Data, setStep1Data] = useState<any>(null);
+  const [recoverMode, setRecoverMode] = useState(false);
+  const [recoverHint, setRecoverHint] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const navigate = useNavigate();
   const login = useAuthStore((state) => state.login);
 
-  const heroTheme = useThemeStore(state => state.heroTheme);
+  const heroTheme = useThemeStore((state) => state.heroTheme);
   const heroTextColor = heroTheme === 'preto-absoluto' ? 'text-blue-400' : 'text-hero-primary';
 
-  const { register, handleSubmit, watch, formState: { errors }, getValues } = useForm();
+  const {
+    register,
+    handleSubmit,
+    watch,
+    formState: { errors },
+    getValues,
+    setValue,
+    reset,
+  } = useForm();
   const password = watch('password');
+
+  const pageTitle = useMemo(() => {
+    if (recoverMode) return 'Finalize seu cadastro';
+    return isLogin ? 'Bem-vindo de volta, Herói!' : 'Crie sua identidade secreta';
+  }, [isLogin, recoverMode]);
+
+  // Se existe sessão, mas não existe perfil público ainda, entramos em modo "recuperação".
+  useEffect(() => {
+    const run = async () => {
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        if (!session?.user) return;
+
+        const full = await getFullUserProfile(session.user);
+        if (!full) {
+          setRecoverMode(true);
+          setRecoverHint(
+            'Detectamos que seu usuário foi criado, mas seu perfil do app ainda não foi finalizado. Preencha os dados abaixo para concluir.'
+          );
+
+          setIsLogin(false);
+          setStep(2);
+
+          const metaName =
+            (session.user.user_metadata as any)?.full_name || (session.user.user_metadata as any)?.name;
+          setStep1Data({ name: metaName || 'Herói', cpf: '' });
+
+          if (session.user.email) setValue('email', session.user.email);
+        }
+      } catch (e) {
+        // soft-fail
+      }
+    };
+    run();
+  }, [setValue]);
 
   const applySettingsAndLoadTemplates = async (settings: any) => {
     const safe = settings || DEFAULT_SETTINGS;
@@ -128,26 +177,39 @@ const Auth: React.FC = () => {
   }) => {
     const cpf = normalizeCpf(payload.cpf);
 
-    // redundância hard (não deixa passar cpf ruim)
     if (!isValidCpf(cpf)) {
       return { ok: false, message: 'invalid_cpf' };
     }
 
-    const { data, error } = await supabase.rpc('ensure_user_bootstrap', {
-      p_display_name: payload.name,
-      p_email: payload.email,
-      p_cpf: cpf,
-      p_birthdate: payload.birthDate ? payload.birthDate : null,
-      p_whatsapp: payload.whatsapp ? payload.whatsapp : null,
-    });
+    // Retry com backoff (muita gente toma “auth.uid() null” intermitente na RPC)
+    let lastErr: any = null;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session?.user) return { ok: false, message: 'no_auth' };
 
-    if (error) {
-      console.error('RPC ensure_user_bootstrap falhou:', error);
-      return { ok: false, message: error.message };
+      const { data, error } = await supabase.rpc('ensure_user_bootstrap', {
+        p_display_name: payload.name,
+        p_email: payload.email,
+        p_cpf: cpf,
+        p_birthdate: payload.birthDate ? payload.birthDate : null,
+        p_whatsapp: payload.whatsapp ? payload.whatsapp : null,
+      });
+
+      if (!error) {
+        const result = Array.isArray(data) ? data[0] : data;
+        return result || { ok: true, message: 'ok' };
+      }
+
+      lastErr = error;
+      console.error(`RPC ensure_user_bootstrap falhou (tentativa ${attempt + 1}/4):`, error);
+
+      if (String(error.message || '').toLowerCase().includes('no_auth')) break;
+      await sleep(300 + attempt * 350);
     }
 
-    const result = Array.isArray(data) ? data[0] : data;
-    return result || { ok: true, message: 'ok' };
+    return { ok: false, message: lastErr?.message || 'bootstrap_failed' };
   };
 
   const onSubmit = async (data: any) => {
@@ -162,7 +224,9 @@ const Auth: React.FC = () => {
         });
 
         if (authError) {
-          throw new Error(authError.message === 'Invalid login credentials' ? 'Credenciais inválidas.' : authError.message);
+          throw new Error(
+            authError.message === 'Invalid login credentials' ? 'Credenciais inválidas.' : authError.message
+          );
         }
 
         if (!signInData.session) throw new Error('Não foi possível iniciar a sessão.');
@@ -175,7 +239,22 @@ const Auth: React.FC = () => {
           full = await getFullUserProfile(signInData.session.user);
         }
 
-        if (!full) throw new Error('Não foi possível carregar seu perfil. Tente novamente em alguns segundos.');
+        if (!full) {
+          // Não derruba o login: entra em modo de recuperação para o usuário completar o cadastro.
+          setRecoverMode(true);
+          setRecoverHint('Seu login foi aceito, mas seu perfil do app não existe/está incompleto. Vamos finalizar agora.');
+          setIsLogin(false);
+          setStep(2);
+
+          const metaName =
+            (signInData.session.user.user_metadata as any)?.full_name ||
+            (signInData.session.user.user_metadata as any)?.name;
+          setStep1Data({ name: metaName || 'Herói', cpf: '' });
+
+          if (signInData.session.user.email) setValue('email', signInData.session.user.email);
+          setLoading(false);
+          return;
+        }
 
         const role = normalizeRole(full.profile.role);
         const safeProfile = { ...full.profile, role };
@@ -188,9 +267,9 @@ const Auth: React.FC = () => {
       }
 
       // =========================
-      // CADASTRO
+      // CADASTRO / RECUPERAÇÃO
       // =========================
-      if (step === 1) {
+      if (step === 1 && !recoverMode) {
         const rawCpf = getValues('cpf') || data.cpf;
         const cleanCpf = normalizeCpf(rawCpf);
 
@@ -208,24 +287,37 @@ const Auth: React.FC = () => {
       const fullUserData = {
         ...step1Data,
         ...data,
-        cpf: normalizeCpf(step1Data?.cpf || data.cpf),
+        cpf: normalizeCpf(step1Data?.cpf || data.cpf || ''),
       };
 
       if (!isValidCpf(fullUserData.cpf)) throw new Error('CPF inválido. Volte e corrija seu CPF para continuar.');
 
-      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-        email: fullUserData.email,
-        password: fullUserData.password,
-        options: { data: { full_name: fullUserData.name } },
-      });
+      // Em recovery mode, o usuário já tem sessão (Auth existe), então NÃO faz signUp de novo.
+      let sessionUser = null as any;
 
-      if (signUpError) throw signUpError;
+      if (!recoverMode) {
+        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+          email: fullUserData.email,
+          password: fullUserData.password,
+          options: { data: { full_name: fullUserData.name } },
+        });
 
-      if (!signUpData.session) {
-        setLoading(false);
-        alert('Cadastro realizado com sucesso! Faça login para continuar.');
-        setIsLogin(true);
-        return;
+        if (signUpError) throw signUpError;
+
+        if (!signUpData.session) {
+          setLoading(false);
+          alert('Cadastro realizado com sucesso! Faça login para continuar.');
+          setIsLogin(true);
+          return;
+        }
+
+        sessionUser = signUpData.session.user;
+      } else {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        sessionUser = session?.user;
+        if (!sessionUser) throw new Error('Sessão inválida. Faça login novamente.');
       }
 
       const boot = await ensureBootstrap({
@@ -237,10 +329,19 @@ const Auth: React.FC = () => {
       });
 
       if (!boot?.ok) {
+        // Não cria usuário de novo. Mantém o usuário logado e permite tentar novamente.
+        setRecoverMode(true);
+        setRecoverHint('Seu usuário foi criado, mas o perfil do app não foi finalizado. Revise os dados e tente novamente.');
+        setIsLogin(false);
+        setStep(2);
+        setStep1Data((prev: any) => ({
+          name: prev?.name || fullUserData.name,
+          cpf: fullUserData.cpf,
+        }));
         throw new Error(humanizeBootstrapMessage(boot?.message));
       }
 
-      const full = await getFullUserProfile(signUpData.session.user);
+      const full = await getFullUserProfile(sessionUser);
 
       if (full) {
         const role = normalizeRole(full.profile.role);
@@ -251,7 +352,12 @@ const Auth: React.FC = () => {
         login(safeProfile);
         handlePostAuthRedirect(role);
       } else {
-        navigate('/app', { replace: true });
+        setRecoverMode(true);
+        setRecoverHint(
+          'Seu cadastro foi salvo, mas o perfil ainda não apareceu. Aguarde alguns segundos e clique em "Finalizar Cadastro" novamente.'
+        );
+        setIsLogin(false);
+        setStep(2);
       }
     } catch (err: any) {
       console.error('AUTH_ERROR', err);
@@ -278,9 +384,7 @@ const Auth: React.FC = () => {
           <h1 className="text-3xl font-black mb-2 tracking-tight text-white">
             Burger<span className={heroTextColor}>Hero</span>
           </h1>
-          <p className="text-slate-400 font-medium">
-            {isLogin ? 'Bem-vindo de volta, Herói!' : 'Crie sua identidade secreta'}
-          </p>
+          <p className="text-slate-400 font-medium">{pageTitle}</p>
         </div>
 
         <Card>
@@ -304,7 +408,7 @@ const Auth: React.FC = () => {
                 </>
               ) : (
                 <>
-                  {step === 1 ? (
+                  {step === 1 && !recoverMode ? (
                     <>
                       <Input
                         label="Nome Completo"
@@ -329,57 +433,96 @@ const Auth: React.FC = () => {
                     </>
                   ) : (
                     <>
+                      {recoverMode && (
+                        <Input
+                          label="Nome Completo"
+                          placeholder="Bruce Wayne"
+                          icon={<UserIcon size={18} />}
+                          defaultValue={step1Data?.name || ''}
+                          {...register('name', { required: true })}
+                        />
+                      )}
+
                       <Input
                         label="WhatsApp"
                         placeholder="(11) 99999-9999"
                         icon={<Phone size={18} />}
                         {...register('whatsapp', { required: true })}
                       />
+
                       <Input
                         label="E-mail"
                         type="email"
                         placeholder="heroi@email.com"
                         icon={<Mail size={18} />}
+                        disabled={recoverMode}
                         {...register('email', { required: true })}
                       />
+
+                      <Input
+                        label="CPF"
+                        placeholder="000.000.000-00"
+                        icon={<CreditCard size={18} />}
+                        defaultValue={step1Data?.cpf || ''}
+                        {...register('cpf', {
+                          required: 'CPF é obrigatório.',
+                          validate: (v) => isValidCpf(v) || 'CPF inválido. Digite um CPF válido.',
+                        })}
+                      />
+
+                      {errors.cpf && (
+                        <p className="text-red-500 text-xs -mt-2 ml-1">{(errors.cpf as any).message}</p>
+                      )}
+
                       <Input
                         label="Nascimento"
                         type="date"
                         icon={<Calendar size={18} />}
                         {...register('birthDate', { required: true })}
                       />
-                      <Input
-                        label="Senha"
-                        type="password"
-                        placeholder="Mínimo 6 caracteres"
-                        icon={<Lock size={18} />}
-                        {...register('password', { required: true, minLength: 6 })}
-                      />
-                      {errors.password && (
-                        <p className="text-red-500 text-xs -mt-2 ml-1">A senha deve ter no mínimo 6 caracteres.</p>
+
+                      {!recoverMode && (
+                        <>
+                          <Input
+                            label="Senha"
+                            type="password"
+                            placeholder="Mínimo 6 caracteres"
+                            icon={<Lock size={18} />}
+                            {...register('password', { required: true, minLength: 6 })}
+                          />
+                          {errors.password && (
+                            <p className="text-red-500 text-xs -mt-2 ml-1">A senha deve ter no mínimo 6 caracteres.</p>
+                          )}
+                          <Input
+                            label="Confirmar Senha"
+                            type="password"
+                            placeholder="Repita a senha"
+                            icon={<Lock size={18} />}
+                            {...register('confirmPassword', {
+                              required: true,
+                              validate: (value) => value === password || 'As senhas não coincidem',
+                            })}
+                          />
+                          {errors.confirmPassword && (
+                            <p className="text-red-500 text-xs -mt-2 ml-1">{(errors.confirmPassword as any).message}</p>
+                          )}
+                          <div className="flex items-start gap-2 pt-2">
+                            <input type="checkbox" className="mt-1" {...register('terms', { required: true })} />
+                            <label className="text-xs text-slate-500">
+                              Aceito os termos e condições de uso da BurgerHero.
+                            </label>
+                          </div>
+                        </>
                       )}
-                      <Input
-                        label="Confirmar Senha"
-                        type="password"
-                        placeholder="Repita a senha"
-                        icon={<Lock size={18} />}
-                        {...register('confirmPassword', {
-                          required: true,
-                          validate: (value) => value === password || 'As senhas não coincidem',
-                        })}
-                      />
-                      {errors.confirmPassword && (
-                        <p className="text-red-500 text-xs -mt-2 ml-1">{(errors.confirmPassword as any).message}</p>
-                      )}
-                      <div className="flex items-start gap-2 pt-2">
-                        <input type="checkbox" className="mt-1" {...register('terms', { required: true })} />
-                        <label className="text-xs text-slate-500">
-                          Aceito os termos e condições de uso da BurgerHero.
-                        </label>
-                      </div>
                     </>
                   )}
                 </>
+              )}
+
+              {recoverMode && recoverHint && (
+                <p className="text-amber-700 text-xs font-semibold text-center bg-amber-50 p-2 rounded-lg border border-amber-100">
+                  {recoverHint}
+                </p>
               )}
 
               {error && (
@@ -389,7 +532,13 @@ const Auth: React.FC = () => {
               )}
 
               <Button type="submit" className="w-full rounded-full py-3" size="md" isLoading={loading}>
-                {!isLogin && step === 1 ? 'Próximo Passo' : isLogin ? 'Entrar' : 'Finalizar Cadastro'}
+                {recoverMode
+                  ? 'Finalizar Cadastro'
+                  : !isLogin && step === 1
+                    ? 'Próximo Passo'
+                    : isLogin
+                      ? 'Entrar'
+                      : 'Finalizar Cadastro'}
               </Button>
             </form>
 
@@ -407,11 +556,15 @@ const Auth: React.FC = () => {
               onClick={() => {
                 setIsLogin(!isLogin);
                 setStep(1);
+                setRecoverMode(false);
+                setRecoverHint('');
                 setError('');
+                setStep1Data(null);
+                reset();
               }}
               className="w-full text-center text-sm font-bold text-slate-600 hover:text-hero-primary transition-colors"
             >
-              {isLogin ? 'Não tem conta? Cadastre-se' : 'Já tem conta? Faça Login'}
+              {recoverMode ? 'Voltar para Login' : isLogin ? 'Não tem conta? Cadastre-se' : 'Já tem conta? Faça Login'}
             </button>
           </CardBody>
         </Card>
