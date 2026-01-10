@@ -11,16 +11,6 @@ import { supabase } from "../lib/supabaseClient";
 const formatBRL = (value: number) =>
   value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-const humanize = (msg: string) => {
-  const m = String(msg || "").toLowerCase();
-  if (m.includes("already_active")) return "Você já possui uma assinatura ativa. Para assinar novamente, cancele primeiro.";
-  if (m.includes("missing_plan")) return "Plano inválido. Volte e selecione novamente.";
-  if (m.includes("no_auth")) return "Sessão expirada. Faça login novamente.";
-  if (m.includes("activate_failed")) return "Não foi possível ativar sua assinatura agora. Tente novamente.";
-  if (m.includes("voucher")) return "Assinatura ativada, mas não consegui gerar o voucher automaticamente. Tente abrir o Voucher novamente.";
-  return msg || "Não foi possível finalizar a assinatura.";
-};
-
 const Checkout: React.FC = () => {
   const navigate = useNavigate();
   const user = useAuthStore((state) => state.user);
@@ -46,42 +36,42 @@ const Checkout: React.FC = () => {
     setLoading(true);
 
     try {
-      // Simula pagamento processado
-      await new Promise((r) => setTimeout(r, 500));
+      // Simula processamento
+      await new Promise((r) => setTimeout(r, 400));
 
-      // 1) ATIVA/REATIVA ASSINATURA NO BANCO
-      const planRef = plan.id; // UUID string do plano
-      const res = await subscriptionsService.activateMock(planRef, 30);
+      // 1) Ativa assinatura via RPC (agora suporta reativação depois do cancel)
+      const planRef = plan.id; // UUID em string
+      const act = await subscriptionsService.activateMock(planRef, 30);
 
-      if (!res.ok) {
-        console.error("[CHECKOUT] activateMock failed:", res);
-        setErrorMsg(humanize(res.message));
+      if (!act.ok) {
+        // Mensagem mais humana
+        if (act.message === "already_active") {
+          setErrorMsg("Você já possui uma assinatura ativa. Cancele primeiro para assinar novamente.");
+          return;
+        }
+        setErrorMsg(act.detail ? `${act.message}: ${act.detail}` : act.message);
         return;
       }
 
-      // 2) GARANTE VOUCHER DO MÊS (FORÇA)
-      // Função existente no seu banco:
-      // ensure_voucher_for_user(p_user_id uuid, p_force boolean)
-      const { data: vData, error: vErr } = await supabase.rpc("ensure_voucher_for_user", {
+      // 2) (Opcional) garante voucher também no front
+      // A RPC de ativação já tenta garantir, mas manter aqui não faz mal.
+      const { error: vErr } = await supabase.rpc("ensure_voucher_for_user", {
         p_user_id: user.id,
         p_force: true,
       });
+      if (vErr) console.warn("[Checkout] ensure_voucher_for_user falhou (não bloqueia):", vErr);
 
-      if (vErr) {
-        console.warn("[CHECKOUT] ensure_voucher_for_user warning:", vErr);
-        // Não bloqueia: assinatura tá ativa. Voucher pode ser gerado depois ao abrir a tela.
-      } else {
-        console.log("[CHECKOUT] voucher ensured:", vData);
-      }
-
-      // 3) (Opcional) manter mock local - ok
+      // 3) mantém teu mock local (opcional)
       subscriptionMockService.setActiveSubscription(user.id, plan);
+
+      // 4) limpa pendência
       subscriptionMockService.clearPendingPlan();
 
+      // 5) volta pro app
       navigate("/app", { replace: true });
     } catch (err: any) {
       console.error(err);
-      setErrorMsg(humanize(err?.message));
+      setErrorMsg(err?.message || "Não foi possível ativar sua assinatura agora. Tente novamente.");
     } finally {
       setLoading(false);
     }
