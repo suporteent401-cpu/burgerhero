@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Button } from '../components/ui/Button';
 import { CheckCircle2, ChevronLeft, ShieldCheck, Loader2 } from 'lucide-react';
 import type { Plan } from '../types';
@@ -10,9 +10,14 @@ import { plansService } from '../services/plans.service';
 
 const Plans: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const isAuthed = useAuthStore((state) => state.isAuthed);
+
   const [plans, setPlans] = useState<Plan[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Detecta se está sendo usado dentro do app (menu /app/plans) ou público (/plans)
+  const isInApp = useMemo(() => location.pathname.startsWith('/app'), [location.pathname]);
 
   useEffect(() => {
     const fetchPlans = async () => {
@@ -29,27 +34,44 @@ const Plans: React.FC = () => {
     fetchPlans();
   }, []);
 
+  const goBack = () => {
+    // Dentro do app, volta pro /app; fora do app, volta landing.
+    if (isInApp) navigate('/app', { replace: true });
+    else navigate('/', { replace: true });
+  };
+
   const handleSelectPlan = (plan: Plan) => {
     try {
+      if (!isAuthed) {
+        // 🔒 NOVA REGRA: visitante NÃO cria pendingPlan.
+        // Só manda pro cadastro/login com intenção de retorno.
+        const planId = encodeURIComponent(String(plan.id));
+        const next = encodeURIComponent('/plans'); // volta para a página pública de planos
+        navigate(`/auth?next=${next}&planId=${planId}`);
+        return;
+      }
+
+      // ✅ Logado: pode selecionar e seguir pro checkout
       subscriptionMockService.setPendingPlan({
         id: plan.id,
         name: plan.name,
         priceCents: plan.priceCents,
       });
 
-      if (isAuthed) navigate('/checkout');
-      else navigate('/auth');
+      navigate('/checkout');
     } catch (err) {
       console.error('Erro ao selecionar plano:', err);
       alert('Não foi possível selecionar o plano. Tente novamente.');
     }
   };
 
+  const ctaLabel = (isAuthed: boolean) => (isAuthed ? 'Assinar agora' : 'Cadastre-se para assinar');
+
   return (
     <div className="min-h-screen bg-slate-50 py-12 px-4">
       <div className="max-w-5xl mx-auto">
         <button
-          onClick={() => navigate(-1)}
+          onClick={goBack}
           className="mb-8 flex items-center gap-2 text-slate-500 font-bold hover:text-hero-primary transition-colors"
         >
           <ChevronLeft size={20} /> Voltar
@@ -80,6 +102,17 @@ const Plans: React.FC = () => {
           >
             Assine e garanta seu burger sagrado todos os meses, além de descontos em toda a rede.
           </motion.p>
+
+          {!isAuthed && (
+            <motion.p
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 0.2 }}
+              className="mt-4 text-xs font-bold text-slate-400"
+            >
+              Para assinar, você precisa estar logado.
+            </motion.p>
+          )}
         </div>
 
         {loading ? (
@@ -96,11 +129,13 @@ const Plans: React.FC = () => {
                 transition={{ duration: 0.5, delay: 0.2 + index * 0.1 }}
                 className="group relative rounded-[2.5rem] overflow-hidden shadow-xl transition-all duration-300 hover:shadow-2xl hover:-translate-y-1 flex flex-col"
               >
-                {/* Imagem do Plano */}
                 <div className="h-44 relative overflow-hidden bg-slate-800">
-                  <img 
-                    src={plan.imageUrl || 'https://images.unsplash.com/photo-1571091718767-18b5b1457add?auto=format&fit=crop&w=800&q=80'} 
-                    alt={plan.name} 
+                  <img
+                    src={
+                      plan.imageUrl ||
+                      'https://images.unsplash.com/photo-1571091718767-18b5b1457add?auto=format&fit=crop&w=800&q=80'
+                    }
+                    alt={plan.name}
                     className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/10 to-transparent" />
@@ -108,9 +143,7 @@ const Plans: React.FC = () => {
 
                 <div className="p-8 pt-6 bg-slate-900 text-white flex-1 flex flex-col relative z-10">
                   <h3 className="text-3xl font-black mb-2 tracking-tight">{plan.name}</h3>
-                  <p className="mb-8 text-slate-400 text-sm line-clamp-2 font-medium">
-                    {plan.description}
-                  </p>
+                  <p className="mb-8 text-slate-400 text-sm line-clamp-2 font-medium">{plan.description}</p>
 
                   <div className="mb-8">
                     <span className="text-5xl font-black">
@@ -119,13 +152,13 @@ const Plans: React.FC = () => {
                     <span className="ml-1 font-bold text-slate-400">/mês</span>
                   </div>
 
-                  <Button 
-                    onClick={() => handleSelectPlan(plan)} 
-                    className="w-full py-4 rounded-2xl shadow-lg shadow-hero-primary/20" 
-                    size="lg" 
+                  <Button
+                    onClick={() => handleSelectPlan(plan)}
+                    className="w-full py-4 rounded-2xl shadow-lg shadow-hero-primary/20"
+                    size="lg"
                     variant="primary"
                   >
-                    Assinar Agora
+                    {ctaLabel(isAuthed)}
                   </Button>
                 </div>
 
